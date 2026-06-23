@@ -1,0 +1,12 @@
+data/
+logs/
+__pycache__/
+*.pyc
+*.pyo
+compare_perf_commits.py
+
+# C++ extension build artifacts
+alphacpp*.pyd
+alphacpp*.so
+build/
+*.egg-info/
