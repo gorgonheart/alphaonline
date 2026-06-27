@@ -75,6 +75,13 @@ worker 读。Arrow 快路径下：
 > 需核对 `load_realtime_data` 与下游 worker 的具体传参形态（实现计划阶段细化），
 > 确保由"传内存对象/传 pkl 路径"切换为"传 arrow 路径"不破坏 worker 入参。
 
+> **实现期调整（2026-06-27）**：经核对，`all_candle_df_list.pkl` 是
+> `mem_save_exe` 的 `max_workers=1` 子进程边界（`load_realtime_data` 在子进程写、
+> `core/select_coin.py::calc_factors` 在父进程读），并非纯 in-process 冗余序列化。
+> 消除它需改因子计算 worker 边界，风险高于收益，本期**保持不变**，降级为可选后续。
+> 本期收益来自 Arrow 替换 pkl 反序列化本身（`load_bmac_data` 快路径）。
+
+
 ### 3.3 一致性与 run_time 校验
 
 - ready 标志语义不变，仍是 gate；生产者已保证 ready 在因子写盘后才打（修复竞态）。
@@ -116,6 +123,16 @@ worker 读。Arrow 快路径下：
   （消费者先双格式）规避。
 - **Arrow 列类型**：object/混合类型列 `to_pandas` 可能拷贝或报错。实现阶段对全列
   dtype 做一次校验（与生产者 §3.3 校验同源）。
+- **per-symbol dtype 不可复现（已确认，无害）**：单文件 Arrow IPC 要求所有 record
+  batch 共用一个 schema，生产者以**首个 symbol** 的 schema 为基准。pkl 路径每 symbol
+  独立存储，故能保留 per-symbol dtype。30m 实测：spot 429 symbol 中 2 个
+  （REDUSDT/USUALUSDT）的 `trade_num` 在 pkl 为 float64、Arrow 为 int64。根因是
+  生产者 `resample_candle.py::fill_gaps` 对**曾有缺口**的 symbol reindex 注入 NaN →
+  整数列被提升为 float64，`fillna(0)` 后 dtype 不回落——这是 **legacy pkl 产物**，
+  整数列本应是 int64。值**逐行完全相同**（零 NaN、零小数），下游因子运算 int→float
+  自动提升，结果不变。结论：literal per-symbol dtype parity 在单文件 Arrow 下**架构
+  上不可能**，对账测试据此放宽为"值对账 + dtype 分歧仅限整数值列"。
+
 - **多进程 mmap**：Windows 上同一文件多进程映射只读安全；需确认 worker 生命周期内
   文件不被生产者下一轮覆盖（生产者按 ts 命名，新轮是新文件，旧文件按保留策略清理，
   不会就地覆盖正在读的文件）。
