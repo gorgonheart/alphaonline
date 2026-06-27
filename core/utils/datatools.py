@@ -22,6 +22,7 @@ from tqdm import tqdm
 from config import utc_offset, bmac_data_path, bmac_exginfo_path, stable_symbol
 from core.binance.base_client import BinanceClient
 from core.model.backtest_config import BacktestConfig
+from core.utils.arrow_reader import read_arrow_market_dict_for_run_time
 from core.utils.log_kit import logger
 from core.utils.path_kit import get_file_path, get_folder_path
 
@@ -190,17 +191,34 @@ def read_and_merge_bmac_data(conf: BacktestConfig, symbol_type: str, df: pd.Data
 
 def load_bmac_data(symbol_type, run_time, conf: BacktestConfig):
     """
-    加载数据
+    加载数据：优先 Arrow mmap 零拷贝快路径，缺失/损坏自动 fallback 到 pkl glob。
     :param symbol_type: 数据类型
     :param run_time:  实盘的运行时间
     :param conf:  账户配置
     :return:
     """
-    hour_offset = f'{run_time.minute}m'
-    file_list = get_file_path(bmac_data_path, hour_offset, as_path_type=True).rglob(f'{symbol_type}_dict_batch*.pkl')
-
     # 获取当前可交易的币种列表，用于过滤已下架或不可交易或传统资产的币种
     symbol_list = BinanceClient().get_market_info(symbol_type).get('symbol_list', [])
+
+    # 快路径：Arrow 快照（文件名内嵌 ts，天然校验 run_time）
+    arrow_dict = read_arrow_market_dict_for_run_time(bmac_data_path, symbol_type, run_time)
+    if arrow_dict is not None:
+        results = dict()
+        for _df in tqdm(arrow_dict.values(), desc=f'💿 {symbol_type} Arrow 快路径'):
+            # 使用 market_info 的 symbol_list 过滤不可交易的币种
+            if symbol_list and _df is not None and not _df.empty:
+                symbol = _df['symbol'].iloc[-1]
+                if symbol not in symbol_list:
+                    continue
+
+            symbol, df_candle = read_and_merge_bmac_data(conf, symbol_type, _df, run_time)
+            if df_candle is not None:
+                results[symbol] = df_candle
+        return results
+
+    # fallback：既有 pkl glob 路径（行为完全不变）
+    hour_offset = f'{run_time.minute}m'
+    file_list = get_file_path(bmac_data_path, hour_offset, as_path_type=True).rglob(f'{symbol_type}_dict_batch*.pkl')
 
     results = dict()
     for file_path in file_list:
