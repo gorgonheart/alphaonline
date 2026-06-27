@@ -39,7 +39,11 @@ def retry_wrapper(func, params=None, func_name='', retry_times=5, sleep_seconds=
         params = {}
     for _ in range(retry_times):
         try:
-            if 'timestamp' in params:
+            try:
+                _api_type = func.__closure__[0].cell_contents.api
+            except Exception:
+                _api_type = None
+            if _api_type not in (None, 'public') or 'timestamp' in params:
                 from core.binance.base_client import BinanceClient
                 params['timestamp'] = int(time.time() * 1000) - BinanceClient.diff_timestamp
             result = func(params=params)

@@ -96,6 +96,7 @@ class BacktestConfig:
         # 如果存在快照，表示是增量更新
         # 如果不存在快照，表示是全量更新
         self.has_snapshot = False
+        self.precompute_factor_configs: dict = conf.get('precompute_factor_configs', {})
 
     def __repr__(self):
         return f"""{'+' * 56}
@@ -286,6 +287,7 @@ class BacktestConfig:
             unified_time=config.simulator_config['unified_time'],  # 对齐 offset 和资金曲线的统一时间
             lookback_days=getattr(config, "lookback_days", 0),  # 回看多久的数据
             incremental_lookback_hours=getattr(config, "incremental_lookback_hours", 0),  # 增量计算时回退多少小时
+            precompute_factor_configs=getattr(config, 'precompute_factor_configs', {}),
         )
 
         # ** 策略配置 **

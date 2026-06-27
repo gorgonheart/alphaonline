@@ -566,5 +566,10 @@ leverage = shared_config["lever"]  # 杠杆数。我看哪个赌狗要把这里�
 black_list = shared_config["blacklist"]
 # 拉黑名单，永远不会交易。不喜欢的币、异常的币。例：LUNA-USDT, 这里与实盘不太一样，需要有'-'
 white_list = []  # 如果不为空，即只交易这些币，只在这些币当中进行选币。例：LUNA-USDT, 这里与实盘不太一样，需要有'-'
+precompute_factor_configs = {
+    '动量因子210401修正': [10248, 8568, 13608, 13608],
+    'ILLQStdBbi45208':   [2856, 1344, 1512, 672, 168],
+    'CciV3':             [1176, 10248, 10248, 5208],
+}
 # rebalance_mode =
 is_pure_long = False  # 纯多设置(https://bbs.quantclass.cn/thread/36230)

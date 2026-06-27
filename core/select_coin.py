@@ -103,7 +103,12 @@ def calc_factors_by_candle(candle_df, conf: BacktestConfig, factor_col_name_list
     :return: 包含所有因子的 dataframe(目前是包含k线数据的）
     """
     # 遍历每个因子，计算每个因子的数据
+
     factor_series_dict = {}
+    precompute_set = {
+        fn: set(ps)
+        for fn, ps in getattr(conf, 'precompute_factor_configs', {}).items()
+    }
     for factor_name, param_list in conf.factor_params_dict.items():
         factor = FactorHub.get_by_name(factor_name)  # 获取因子信息
         if factor.is_cross:
@@ -118,8 +123,20 @@ def calc_factors_by_candle(candle_df, conf: BacktestConfig, factor_col_name_list
         if len(factor_param_list) == 0:
             continue  # 当该因子不需要计算的时候直接返回
 
-        factor_series_dict.update(calc_factor_vals(candle_df, factor_name, factor_param_list))
-
+        declared = precompute_set.get(factor_name, set())
+        needed_cols = [f'{factor_name}_{p}' for p in factor_param_list]
+        use_precompute = (
+            bool(declared)
+            and all(p in declared for p in factor_param_list)
+            and all(col in candle_df.columns for col in needed_cols)
+        )
+        if use_precompute:
+            for col in needed_cols:
+                factor_series_dict[col] = candle_df[col].values
+        else:
+            factor_series_dict.update(calc_factor_vals(
+                candle_df, factor_name, factor_param_list,
+            ))
     # 保证多进程下列顺序稳定，避免 Polars concat 列名不一致
     ordered_factor_series = {}
     for col_name in factor_col_name_list:

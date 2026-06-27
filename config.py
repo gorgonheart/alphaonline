@@ -41,7 +41,7 @@ account_config = {}  # 实盘账户配置，需要在accounts下的文件中做�
 # ====================================================================================================
 strategy_name = ''  # 当前账户运行策略的名称。可以自己任意取
 min_kline_num = 1 # 最小 k 线数量限制
-get_kline_num = 14050  # 获取多少根K线。这里跟策略日频和小时频影响。日线策略，代表多少根日线k。小时策略，代表多少根小时k
+get_kline_num = 4050  # 获取多少根K线。这里跟策略日频和小时频影响。日线策略，代表多少根日线k。小时策略，代表多少根小时k
 strategy_config = {}  # 策略配置
 strategy_pool = []  # 策略池
 factor_col_limit = 72  # 单次因子计算数量，放这里主要与网页版配合
@@ -50,6 +50,7 @@ black_list = []  # 拉黑名单，永远不会交易。不喜欢的币、异常�
 white_list = []  # 如果不为空，即只交易这些币，只在这些币当中进行选币。例：LUNA-USDT, 这里与实盘不太一样，需要有'-'
 # rebalance_mode =  # 换仓模式控制
 lookback_days = 0  # 回看实盘数据天数，放这里主要与网页版配合
+precompute_factor_configs = {}  # 预计算因子配置，在账户配置文件中设置
 
 # ====================================================================================================
 # ** 模拟器细节配置 **
@@ -90,7 +91,7 @@ if trading_account:
 
     allowed_attrs = (
         'account_config', 'strategy_name', 'strategy_config', 'strategy_pool', 'leverage', 'black_list', 'white_list',
-        'rebalance_mode', 'get_kline_num', 'min_kline_num')
+        'rebalance_mode', 'get_kline_num', 'get_kline_num_spot', 'min_kline_num', 'precompute_factor_configs')
     if account_config_path.is_file():
         spec = spec_from_file_location("account_config", account_config_path)
         account_module = module_from_spec(spec)
