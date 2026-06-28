@@ -117,6 +117,28 @@ def read_bmac_exginfo(symbol_type: str) -> pd.DataFrame:
     return pd.read_pickle(source_path)
 
 
+# ===============================================================================================================
+# merge op 级计时：read_and_merge_bmac_data 被逐 symbol 调用上千次，单次打日志会刷屏。
+# 用模块级累加器把每个 op 的耗时跨所有调用累加，由 load_bmac_data 在循环前重置、循环后汇总成一行。
+# 纯诊断用途，perf_counter 累加成本可忽略。
+# ===============================================================================================================
+_merge_profile: dict[str, float] = {}
+
+
+def _reset_merge_profile():
+    _merge_profile.clear()
+
+
+def _acc_merge(op: str, t0: float):
+    _merge_profile[op] = _merge_profile.get(op, 0.0) + (time.perf_counter() - t0)
+
+
+def _format_merge_profile() -> str:
+    if not _merge_profile:
+        return '(空)'
+    return ' | '.join(f'{k}={v:.2f}s' for k, v in sorted(_merge_profile.items(), key=lambda x: -x[1]))
+
+
 def align_spot_swap_mapping(df, column_name, n):
     """
     处理spot和swap的映射关系
@@ -142,13 +164,51 @@ def align_spot_swap_mapping(df, column_name, n):
     return df
 
 
-def read_and_merge_bmac_data(conf: BacktestConfig, symbol_type: str, df: pd.DataFrame, run_time):
+def align_spot_swap_mapping_fast(df, column_name, n):
+    """align_spot_swap_mapping 的向量化等价实现（去掉 groupby.cumcount）。
+
+    语义与原版逐行一致（见 tests/test_align_fast_equivalence.py，原版为 oracle）：
+    在 column_name 的「空→非空」边界切组，对每组的前 n 个「有效行」
+    （symbol_swap != ''）把 column_name 置空；symbol_swap=='' 的行不参与计数也不被置空。
+    仅 Arrow 快路径调用；pkl fallback 仍用原版 align_spot_swap_mapping。
+    """
+    col = df[column_name].to_numpy()
+    swap = df['symbol_swap'].to_numpy()
+
+    col_ne = col != ''
+    prev_eq = np.empty(col.size, dtype=bool)
+    prev_eq[0] = False  # 原版 shift() 首行为 NaN，.eq('') 为 False
+    prev_eq[1:] = col[:-1] == ''
+    group = np.cumsum(col_ne & prev_eq)  # 与原版 is_new_group.cumsum() 一致
+
+    valid = swap != ''
+    grp_seq = np.full(col.size, np.nan)
+    if valid.any():
+        g_valid = group[valid]
+        seq = np.arange(g_valid.size)
+        is_start = np.empty(g_valid.size, dtype=bool)
+        is_start[0] = True
+        is_start[1:] = g_valid[1:] != g_valid[:-1]
+        baseline = np.maximum.accumulate(np.where(is_start, seq, 0))
+        grp_seq[valid] = seq - baseline  # 每组内有效行的 cumcount
+
+    blank_mask = grp_seq < n  # NaN < n → False，与原版（NaN grp_seq 不置空）一致
+    df.loc[blank_mask, column_name] = ''
+    return df
+
+
+def read_and_merge_bmac_data(conf: BacktestConfig, symbol_type: str, df: pd.DataFrame, run_time,
+                             align_fn=align_spot_swap_mapping):
     """
     读取k线数据，并且合并三方数据
     :param conf:  账户配置
     :param symbol_type: 币种类型
     :param df:          k线数据
     :param run_time:   实盘运行时间
+    :param align_fn:   spot/swap 映射对齐实现。默认原版 align_spot_swap_mapping；
+                       Arrow 快路径传向量化的 align_spot_swap_mapping_fast（两者经
+                       tests/test_align_fast_equivalence.py 证明逐行等价）。pkl
+                       fallback 不传，保留原版作为 oracle 参照。
     :return:
     """
     if df is None or df.empty:
@@ -164,29 +224,41 @@ def read_and_merge_bmac_data(conf: BacktestConfig, symbol_type: str, df: pd.Data
         return symbol, None
 
     # TODO: 优化数据结构，节省掉这里的排序和去重操作
+    t0 = time.perf_counter()
     df.drop_duplicates(subset=['candle_begin_time'], keep='last', inplace=True)  # 去重保留最新的数据
+    _acc_merge('dedup', t0)
+    t0 = time.perf_counter()
     df.sort_values('candle_begin_time', inplace=True)  # 通过candle_begin_time排序
-    df.dropna(subset=['symbol'], inplace=True)
+    _acc_merge('sort', t0)
+    # 生产者 add_additional_cols 以标量 df['symbol'] = symbol 覆盖每行（含 fill_gaps 缺口行），
+    # symbol 列恒非空（已对 Arrow 实测 1066 symbol 全 0 NaN）。原 dropna(subset=['symbol']) 是纯空扫。
 
+    t0 = time.perf_counter()
     df['first_candle_time'] = df['first_candle_time'].dt.tz_localize(None)
     df['last_candle_time'] = df['last_candle_time'].dt.tz_localize(None)
     df['candle_begin_time'] = df['candle_begin_time'].dt.tz_localize(None)
     df = df[df['candle_begin_time'] + pd.Timedelta(hours=utc_offset) < run_time]  # 根据run_time过滤一下时间
+    _acc_merge('tz+filter', t0)
 
     # 不能踢掉历史数据不够的情况
     if df.empty or df.shape[0] < conf.min_kline_num:
         return symbol, None
 
     # 需要处理对于重复上下架的币种
-    df = align_spot_swap_mapping(df, f"symbol_{'spot' if symbol_type == 'swap' else 'swap'}", conf.min_kline_num)
+    t0 = time.perf_counter()
+    df = align_fn(df, f"symbol_{'spot' if symbol_type == 'swap' else 'swap'}", conf.min_kline_num)
+    _acc_merge('align', t0)
 
+    t0 = time.perf_counter()
     df = df[-conf.get_kline_num():]  # 根据config配置，控制内存中币种的数据，可以节约内存，加快计算速度
 
     df['symbol_swap'].fillna(value='', inplace=True)
     df['symbol_spot'].fillna(value='', inplace=True)
 
     # 重置索引并且返回
-    return symbol, df.reset_index(drop=True)
+    out = symbol, df.reset_index(drop=True)
+    _acc_merge('slice+fill+reset', t0)
+    return out
 
 
 def load_bmac_data(symbol_type, run_time, conf: BacktestConfig):
@@ -198,11 +270,18 @@ def load_bmac_data(symbol_type, run_time, conf: BacktestConfig):
     :return:
     """
     # 获取当前可交易的币种列表，用于过滤已下架或不可交易或传统资产的币种
+    t_mkt = time.time()
     symbol_list = BinanceClient().get_market_info(symbol_type).get('symbol_list', [])
+    logger.debug(f'⏱️ {symbol_type} get_market_info（网络）耗时 {time.time() - t_mkt:.3f}s')
 
     # 快路径：Arrow 快照（文件名内嵌 ts，天然校验 run_time）
+    t_fetch = time.time()
     arrow_dict = read_arrow_market_dict_for_run_time(bmac_data_path, symbol_type, run_time)
     if arrow_dict is not None:
+        logger.debug(f'⏱️ {symbol_type} Arrow 快路径命中：mmap 读取 {len(arrow_dict)} symbol '
+                     f'耗时 {time.time() - t_fetch:.3f}s')
+        t_merge = time.time()
+        _reset_merge_profile()
         results = dict()
         for _df in tqdm(arrow_dict.values(), desc=f'💿 {symbol_type} Arrow 快路径'):
             # 使用 market_info 的 symbol_list 过滤不可交易的币种
@@ -211,15 +290,22 @@ def load_bmac_data(symbol_type, run_time, conf: BacktestConfig):
                 if symbol not in symbol_list:
                     continue
 
-            symbol, df_candle = read_and_merge_bmac_data(conf, symbol_type, _df, run_time)
+            symbol, df_candle = read_and_merge_bmac_data(conf, symbol_type, _df, run_time,
+                                                         align_fn=align_spot_swap_mapping_fast)
             if df_candle is not None:
                 results[symbol] = df_candle
+        logger.debug(f'⏱️ {symbol_type} 逐 symbol merge 耗时 {time.time() - t_merge:.3f}s，'
+                     f'有效 {len(results)} symbol')
+        logger.debug(f'⏱️ {symbol_type} merge op 拆分：{_format_merge_profile()}')
         return results
 
     # fallback：既有 pkl glob 路径（行为完全不变）
+    logger.debug(f'⏱️ {symbol_type} Arrow 未命中，走 pkl fallback')
     hour_offset = f'{run_time.minute}m'
     file_list = get_file_path(bmac_data_path, hour_offset, as_path_type=True).rglob(f'{symbol_type}_dict_batch*.pkl')
 
+    t_pkl = time.time()
+    _reset_merge_profile()
     results = dict()
     for file_path in file_list:
         data_dict = pd.read_pickle(file_path)
@@ -235,6 +321,9 @@ def load_bmac_data(symbol_type, run_time, conf: BacktestConfig):
             if df_candle is not None:
                 results[symbol] = df_candle
 
+    logger.debug(f'⏱️ {symbol_type} pkl fallback 读取+merge 耗时 {time.time() - t_pkl:.3f}s，'
+                 f'有效 {len(results)} symbol')
+    logger.debug(f'⏱️ {symbol_type} merge op 拆分：{_format_merge_profile()}')
     return results
 
 

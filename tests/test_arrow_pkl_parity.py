@@ -1,5 +1,10 @@
-"""真实 30m 数据：Arrow 快路径 vs pkl 路径，经 read_and_merge_bmac_data 后逐 symbol/列/行对账。"""
+"""真实 30m 数据：Arrow 快路径 vs pkl 路径，经 read_and_merge_bmac_data 后逐 symbol/列/行对账。
+
+Arrow 侧走向量化 align（align_spot_swap_mapping_fast），pkl 侧走原版 align，
+故本测试同时验证：(1) 两条读取路径数据一致；(2) fast align 在真实数据上与原版逐行等价。
+ts 动态发现最新快照（快照每轮轮换，不可写死）。"""
 import glob
+import re
 from datetime import datetime
 from pathlib import Path
 from unittest import mock
@@ -8,15 +13,24 @@ import pandas as pd
 import pytest
 
 from core.utils.arrow_reader import read_arrow_market_dict
-from core.utils.datatools import read_and_merge_bmac_data
+from core.utils.datatools import (read_and_merge_bmac_data, align_spot_swap_mapping,
+                                   align_spot_swap_mapping_fast)
 
 ARROW_30M = Path(r'd:/alpha/data/preprocess_1h_resample/30m')
-TS = 1782563400
-RUN_TIME = datetime.fromtimestamp(TS)
 
-pytestmark = pytest.mark.skipif(
-    not (ARROW_30M / f'swap_dict_{TS}.arrow').exists(),
-    reason='需要真实 30m arrow 数据')
+
+def _latest_ts():
+    tss = []
+    for p in glob.glob(str(ARROW_30M / 'swap_dict_*.arrow')):
+        m = re.search(r'swap_dict_(\d+)\.arrow$', Path(p).name)
+        if m:
+            tss.append(int(m.group(1)))
+    return max(tss) if tss else None
+
+
+TS = _latest_ts()
+
+pytestmark = pytest.mark.skipif(TS is None, reason='需要真实 30m arrow 数据')
 
 
 def _conf():
@@ -38,21 +52,23 @@ def _pkl_dict(symbol_type):
 @pytest.mark.parametrize('symbol_type', ['swap', 'spot'])
 def test_arrow_pkl_merge_parity(symbol_type):
     conf = _conf()
+    run_time = datetime.fromtimestamp(TS)
     arrow_dict = read_arrow_market_dict(ARROW_30M / f'{symbol_type}_dict_{TS}.arrow')
     pkl_dict = _pkl_dict(symbol_type)
 
-    def merge_all(d):
+    def merge_all(d, align_fn):
         out = {}
         for _df in d.values():
             if _df is None or _df.empty:
                 continue
-            sym, m = read_and_merge_bmac_data(conf, symbol_type, _df.copy(), RUN_TIME)
+            sym, m = read_and_merge_bmac_data(conf, symbol_type, _df.copy(), run_time, align_fn=align_fn)
             if m is not None:
                 out[sym] = m
         return out
 
-    arrow_out = merge_all(arrow_dict)
-    pkl_out = merge_all(pkl_dict)
+    # Arrow 侧用 fast align（与生产路径一致），pkl 侧用原版 align（oracle）
+    arrow_out = merge_all(arrow_dict, align_spot_swap_mapping_fast)
+    pkl_out = merge_all(pkl_dict, align_spot_swap_mapping)
 
     assert set(arrow_out.keys()) == set(pkl_out.keys()), \
         f'symbol 集合不一致: arrow-pkl={set(arrow_out)-set(pkl_out)}, pkl-arrow={set(pkl_out)-set(arrow_out)}'

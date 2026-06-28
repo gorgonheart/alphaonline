@@ -274,6 +274,7 @@ def load_realtime_data(conf: BacktestConfig, run_time):
     all_symbol_list = set()
     # chunk 机制先硬编码处理一下
     if not {'swap', 'mix'}.isdisjoint(conf.select_scope_set) or not {'swap'}.isdisjoint(conf.order_first_set):
+        t_swap = time.time()
         symbol_swap_candle_data = load_bmac_data('swap', run_time, conf)
         symbol_swap_candle_data = {
             k: v for k, v in symbol_swap_candle_data.items()
@@ -282,8 +283,10 @@ def load_realtime_data(conf: BacktestConfig, run_time):
         all_candle_df_list = all_candle_df_list + list(del_insufficient_data(symbol_swap_candle_data).values())
         all_symbol_list = all_symbol_list | set(symbol_swap_candle_data.keys())
         del symbol_swap_candle_data
+        logger.debug(f'⏱️ swap 数据加载总耗时 {time.time() - t_swap:.3f}s')
 
     if not {'spot', 'mix'}.isdisjoint(conf.select_scope_set):
+        t_spot = time.time()
         symbol_spot_candle_data = load_bmac_data('spot', run_time, conf)
         symbol_spot_candle_data = {
             k: v for k, v in symbol_spot_candle_data.items()
@@ -292,9 +295,12 @@ def load_realtime_data(conf: BacktestConfig, run_time):
         all_candle_df_list = all_candle_df_list + list(del_insufficient_data(symbol_spot_candle_data).values())
         all_symbol_list = all_symbol_list | set(symbol_spot_candle_data.keys())
         del symbol_spot_candle_data
+        logger.debug(f'⏱️ spot 数据加载总耗时 {time.time() - t_spot:.3f}s')
 
+    t_write = time.time()
     pkl_path = get_file_path('data', 'cache', 'all_candle_df_list.pkl')
     pd.to_pickle(all_candle_df_list, pkl_path)
+    logger.debug(f'⏱️ 写 all_candle_df_list.pkl（{len(all_candle_df_list)} frame）耗时 {time.time() - t_write:.3f}s')
 
     del all_candle_df_list
 
