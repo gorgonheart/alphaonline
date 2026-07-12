@@ -104,3 +104,13 @@ def test_固定回撤阈值触发币数占比开仓门槛_parity(tmp_path):
     df = _breadth_frame()
     _run_parity(mod, (24, -0.2, 0.5), '固定回撤阈值触发币数占比开仓门槛_(24, -0.2, 0.5)',
                 df, tmp_path)
+
+
+def test_both_sections_detected_by_dispatch():
+    """calc_cross_sections 用 hasattr(factor,'signal_polars') 决定走 Polars 快路径。
+    两个 section 现在都应被识别，避免因缺实现整账户退回 pandas 慢路径。"""
+    from core.utils.factor_hub import FactorHub
+    for name in ['动态回撤阈值', '固定回撤阈值触发币数占比开仓门槛',
+                 'TopKTo2K', 'RankBias']:
+        factor = FactorHub.get_by_name(name)
+        assert hasattr(factor, 'signal_polars'), f'{name} 缺少 signal_polars'
