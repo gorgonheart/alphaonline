@@ -68,3 +68,39 @@ def test_动态回撤阈值_parity(tmp_path):
     mod = _load_section('动态回撤阈值')
     df = _zscore_frame()
     _run_parity(mod, 24, '动态回撤阈值_24', df, tmp_path)
+
+
+def _breadth_frame():
+    """两个截面，含现货域/交易域过滤 + 触发数占比门槛边界。
+    max_pct=0.5：t0 domain 池=4，max_count=ceil(4*0.5)=2；触发 2 只 <=2 → 命中。
+    t1 domain 池=4，触发 3 只 >2 → 全 0。含 is_spot=1 与空 symbol 行验证被剔除。"""
+    rows = []
+    # (time, symbol, dd, 是否交易, is_spot, symbol_spot, symbol_swap)
+    t0 = '2024-01-01 00:00:00'
+    rows += [
+        (t0, 'A', -0.30, 1, 0, 'A-SPOT', 'A-SWAP'),   # 触发 (<-0.2)
+        (t0, 'B', -0.25, 1, 0, 'B-SPOT', 'B-SWAP'),   # 触发
+        (t0, 'C', -0.10, 1, 0, 'C-SPOT', 'C-SWAP'),   # domain 内，不触发
+        (t0, 'D', -0.05, 1, 0, 'D-SPOT', 'D-SWAP'),   # domain 内，不触发
+        (t0, 'E', -0.99, 1, 1, 'E-SPOT', 'E-SWAP'),   # is_spot=1，被剔除
+        (t0, 'F', -0.99, 1, 0, '', ''),               # 空 symbol，被剔除
+    ]
+    t1 = '2024-01-01 00:30:00'
+    rows += [
+        (t1, 'A', -0.30, 1, 0, 'A-SPOT', 'A-SWAP'),   # 触发
+        (t1, 'B', -0.25, 1, 0, 'B-SPOT', 'B-SWAP'),   # 触发
+        (t1, 'C', -0.28, 1, 0, 'C-SPOT', 'C-SWAP'),   # 触发 → 共3只>2 → 全0
+        (t1, 'D', -0.05, 1, 0, 'D-SPOT', 'D-SWAP'),   # domain 内，不触发
+    ]
+    df = pd.DataFrame(rows, columns=[
+        'candle_begin_time', 'symbol', '当前回撤_24',
+        '是否交易', 'is_spot', 'symbol_spot', 'symbol_swap'])
+    df['candle_begin_time'] = pd.to_datetime(df['candle_begin_time'])
+    return df
+
+
+def test_固定回撤阈值触发币数占比开仓门槛_parity(tmp_path):
+    mod = _load_section('固定回撤阈值触发币数占比开仓门槛')
+    df = _breadth_frame()
+    _run_parity(mod, (24, -0.2, 0.5), '固定回撤阈值触发币数占比开仓门槛_(24, -0.2, 0.5)',
+                df, tmp_path)
