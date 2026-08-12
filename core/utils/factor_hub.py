@@ -56,7 +56,13 @@ class FactorHub:
     def get_by_name(factor_name) -> DummyFactor:
         import locale
         # 防止部分操作系统，无法识别中文名的策略或者因子
-        locale.setlocale(locale.LC_ALL, 'en_US.UTF-8')
+        # 不同 OS / Python 版本 / 镜像对 locale 名字支持不同，按优先级容错尝试
+        for _loc in ('en_US.UTF-8', 'English_United States.1252', 'en-US', ''):
+            try:
+                locale.setlocale(locale.LC_ALL, _loc)
+                break
+            except locale.Error:
+                continue
 
         if factor_name in FactorHub._factor_cache:
             return FactorHub._factor_cache[factor_name]

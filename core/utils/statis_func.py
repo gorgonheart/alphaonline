@@ -12,6 +12,7 @@ Author: 邢不行
 import os
 import traceback
 from datetime import datetime, timedelta
+from pathlib import Path
 
 import dataframe_image as dfi
 import numpy as np
@@ -87,15 +88,17 @@ def calc_spot_position(spot_position, account_name, spot_last_price):
             lambda x: f'{x * 100:.2f}%' if str(x) != 'nan' else x)  # 最后将数据转成百分比
 
         # =修改列名
-        rename_cols = {'方向': 'side', '持仓额': 'pos_u', '持仓均价': 'avg_price', '当前价格': 'cur_price'}
+        rename_cols = {'方向': 'side', '当前持仓量': 'pos_amount', '持仓额': 'pos_u', '持仓均价': 'avg_price', '当前价格': 'cur_price'}
         spot_send_df.rename(columns=rename_cols, inplace=True)
 
         # =修改格式并整理
-        spot_send_df = spot_send_df[['symbol', 'side', 'change', 'pos_u', 'pnl_u', 'avg_price', 'cur_price']]
+        spot_send_df = spot_send_df[['symbol', 'side', 'change', 'pos_u', 'pnl_u', 'avg_price', 'cur_price', 'pos_amount']]
+        spot_send_df['pos_u'] = spot_send_df['pos_u'].fillna(value=spot_send_df['cur_price'] * spot_send_df['pos_amount'])
         spot_send_df['pos_u'] = spot_send_df['pos_u'].map(lambda x: round(x, 2))
         spot_send_df['pnl_u'] = spot_send_df['pnl_u'].map(lambda x: round(x, 2))
         spot_send_df['avg_price'] = spot_send_df['avg_price'].map(lambda x: round(x, 4))
         spot_send_df['cur_price'] = spot_send_df['cur_price'].map(lambda x: round(x, 4))
+        spot_send_df['pos_amount'] = spot_send_df['pos_amount'].map(lambda x: round(x, 4))
         spot_send_df.set_index('symbol', inplace=True)
 
     return spot_send_df
@@ -122,9 +125,9 @@ def calc_swap_position(swap_position):
         swap_send_df['change'] = (swap_send_df['当前标记价格'] / swap_send_df['均价'] - 1) * swap_send_df[
             'side']  # 计算涨跌幅
         swap_send_df['pos_u'] = swap_send_df['当前持仓量'] * swap_send_df['当前标记价格']  # 计算持仓额
-        swap_send_df.rename(columns={'均价': 'avg_price', '持仓盈亏': 'pnl_u', '当前标记价格': 'cur_price'},
+        swap_send_df.rename(columns={'均价': 'avg_price', '当前持仓量': 'pos_amount', '持仓盈亏': 'pnl_u', '当前标记价格': 'cur_price'},
                             inplace=True)  # 修改列名
-        swap_send_df = swap_send_df[['side', 'change', 'pos_u', 'pnl_u', 'avg_price', 'cur_price']]
+        swap_send_df = swap_send_df[['side', 'change', 'pos_u', 'pnl_u', 'avg_price', 'cur_price', 'pos_amount']]
         swap_send_df.sort_values(['side', 'change'], ascending=[True, False], inplace=True)  # 以涨跌幅排序
         swap_send_df['change'] = swap_send_df['change'].transform(
             lambda x: f'{x * 100:.2f}%' if str(x) != 'nan' else x)  # 最后将数据转成百分比
@@ -134,6 +137,7 @@ def calc_swap_position(swap_position):
         swap_send_df['pnl_u'] = swap_send_df['pnl_u'].map(lambda x: round(x, 2))
         swap_send_df['avg_price'] = swap_send_df['avg_price'].map(lambda x: round(x, 4))
         swap_send_df['cur_price'] = swap_send_df['cur_price'].map(lambda x: round(x, 4))
+        swap_send_df['pos_amount'] = swap_send_df['pos_amount'].map(lambda x: round(x, 4))
 
     return swap_send_df
 
@@ -427,64 +431,12 @@ def calc_position_pnl(current_pos, historical_pos, spot_last_price, pos_type='sp
 
         # 价格涨跌幅 - 只有当历史数据存在且历史价格和当前价格都不为0时才计算
         if historical_exists and historical_price != 0 and current_price != 0:
-            # 重新计算原始价格变化（不依赖历史数据中可能已调整的change字段）
             raw_price_change = (current_price / historical_price - 1)
-            
-            # 根据持仓方向调整价格变化显示（从持仓者角度看盈亏）
-            if historical_side == 1:  # 多头持仓：价格上涨为正，下跌为负
-                price_change = raw_price_change
-            elif historical_side == -1:  # 空头持仓：价格下跌为正（盈利），上涨为负（亏损）
-                price_change = -raw_price_change  # 空头价格上涨显示为负数（亏损）
-            else:
-                price_change = raw_price_change  # side为0的情况，保持原始价格变化
-            
         else:
             raw_price_change = None
-            price_change = None  # 无法计算价格变化
 
-        # 总盈亏（实际的盈亏金额）
-        # 修复：正确计算空头盈亏 = (开仓价格 - 当前价格) × 持仓数量
-        if historical_side == -1:  # 空头持仓
-            if historical_pos_u != 0:
-                # 从历史数据获取开仓成本
-                avg_price = 0
-                if historical_exists and not historical_pos_copy.empty:
-                    hist_row = historical_pos_copy[historical_pos_copy['symbol'] == symbol]
-                    if not hist_row.empty and 'avg_price' in hist_row.columns:
-                        avg_price = hist_row.iloc[0]['avg_price']
-                
-                if avg_price != 0:
-                    historical_position_amount = abs(historical_pos_u) / avg_price
-                    
-                    if current_pos_u != 0 and current_price != 0:
-                        # 仍有持仓：计算mark-to-market盈亏
-                        current_position_amount = abs(current_pos_u) / current_price
-                        
-                        # 平仓部分的盈亏
-                        closed_amount = historical_position_amount - current_position_amount
-                        closed_pnl = (avg_price - current_price) * closed_amount if closed_amount > 0 else 0
-                        
-                        # 剩余持仓的mark-to-market盈亏
-                        remaining_pnl = (avg_price - current_price) * current_position_amount
-                        
-                        total_pnl = closed_pnl + remaining_pnl
-                    else:
-                        # 完全平仓：使用历史时点的市场价格作为平仓价格
-                        close_price = historical_price if historical_price != 0 else avg_price
-                        total_pnl = (avg_price - close_price) * historical_position_amount
-                        
-                else:
-                    # 无法获取开仓成本，使用旧逻辑
-                    total_pnl = abs(historical_pos_u) - abs(current_pos_u)
-            else:
-                total_pnl = 0
-        else:
-            # 多头持仓或无方向：正常计算
-            total_pnl = current_pos_u - historical_pos_u
-        
-        # 持仓盈亏计算（假设持仓量不变，仅价格变化带来的盈亏）
+        # 持仓盈亏（窗口期价格变化对历史仓位的 mark-to-market 影响）
         if historical_pos_u != 0 and raw_price_change is not None:
-            # 使用原始价格变化计算价格影响的盈亏金额
             if historical_side == 1:  # 多头：价格上涨盈利，下跌亏损
                 position_pnl = abs(historical_pos_u) * raw_price_change
             elif historical_side == -1:  # 空头：价格下跌盈利，上涨亏损
@@ -494,8 +446,10 @@ def calc_position_pnl(current_pos, historical_pos, spot_last_price, pos_type='sp
         else:
             position_pnl = 0
 
-        # 交易盈亏（扣除价格变化影响后，纯粹由交易操作带来的盈亏）
-        trade_pnl = total_pnl - position_pnl
+        # 没有成交流水，无法可靠拆出交易盈亏
+        trade_pnl = 0
+        # 窗口期持仓盈亏等于价格变化带来的 mark-to-market 影响
+        total_pnl = position_pnl
 
         pnl_info.update({
             f'historical_pos_u': round(historical_pos_u, 2),
@@ -521,18 +475,31 @@ def calc_position_pnl(current_pos, historical_pos, spot_last_price, pos_type='sp
     return pnl_df
 
 
-def calculate_and_send_pnl_report(account_config: AccountConfig, spot_position, swap_position, spot_last_price):
+def calculate_and_send_pnl_report(account_config: AccountConfig, spot_position, swap_position, spot_last_price, me_conf=None):
     """
     计算并发送持仓盈亏报告
     :param account_config: 账户配置
     :param spot_position: 现货持仓
     :param swap_position: 合约持仓
     :param spot_last_price: 现货最新价格
+    :param me_conf: MultiEquityBacktestConfig，可选，用于为每个币种附加所属策略信息
     """
     account_name = account_config.name
-    
+
+    # 获取策略映射（可选）
+    spot_strategy_map, swap_strategy_map = {}, {}
+    if me_conf is not None:
+        try:
+            spot_strategy_map, swap_strategy_map = build_symbol_strategy_columns(me_conf, max_strategy_display=3)
+        except BaseException:
+            print('[盈亏报告] 获取策略映射失败:')
+            print(traceback.format_exc())
+
     # 获取账户总净值
     total_equity = account_config.swap_equity + account_config.spot_equity
+
+    # swap 闭仓币种 current_price 需要从合约价字典里查，不能复用 spot_last_price
+    swap_last_price = account_config.bn.get_swap_ticker_price_series()
 
     # 获取当前持仓
     current_spot_pos = calc_spot_position(spot_position, account_name, spot_last_price)
@@ -543,14 +510,14 @@ def calculate_and_send_pnl_report(account_config: AccountConfig, spot_position, 
     hist_swap_1h = get_historical_position(account_name, 1, 'swap')
 
     spot_pnl_1h = calc_position_pnl(current_spot_pos, hist_spot_1h, spot_last_price, 'spot', total_equity)
-    swap_pnl_1h = calc_position_pnl(current_swap_pos, hist_swap_1h, spot_last_price, 'swap', total_equity)
+    swap_pnl_1h = calc_position_pnl(current_swap_pos, hist_swap_1h, swap_last_price, 'swap', total_equity)
 
     # 计算24小时盈亏
     hist_spot_24h = get_historical_position(account_name, 24, 'spot')
     hist_swap_24h = get_historical_position(account_name, 24, 'swap')
 
     spot_pnl_24h = calc_position_pnl(current_spot_pos, hist_spot_24h, spot_last_price, 'spot', total_equity)
-    swap_pnl_24h = calc_position_pnl(current_swap_pos, hist_swap_24h, spot_last_price, 'swap', total_equity)
+    swap_pnl_24h = calc_position_pnl(current_swap_pos, hist_swap_24h, swap_last_price, 'swap', total_equity)
 
     # 合并现货和合约盈亏数据
     all_pnl_1h = pd.concat([spot_pnl_1h, swap_pnl_1h], ignore_index=True) if not spot_pnl_1h.empty or not swap_pnl_1h.empty else pd.DataFrame()
@@ -560,7 +527,7 @@ def calculate_and_send_pnl_report(account_config: AccountConfig, spot_position, 
     pnl_msg = f"【持仓盈亏报告】\n"
     pnl_msg += f"账户: {account_name}\n"
     pnl_msg += f"时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
-    pnl_msg += f"PS: 对于开/平仓的币种统计可能存在一些误差，后续会优化\n\n"
+    pnl_msg += f"PS: 统计期间中途价格波动，与账户净值差额略有偏差\n\n"
 
     # 生成1小时TOP5盈亏信息
     if not all_pnl_1h.empty:
@@ -587,9 +554,12 @@ def calculate_and_send_pnl_report(account_config: AccountConfig, spot_position, 
                     else:
                         price_change_str = f"{row['price_change']:.2f}%"
                     type_name = "现货" if row['type'] == 'spot' else "合约"
-                    pnl_msg += f"  {row['symbol']}({type_name}): +{row['total_pnl']:.2f} U ({price_change_str})\n"
+                    strategy_map = spot_strategy_map if row['type'] == 'spot' else swap_strategy_map
+                    strategy_str = strategy_map.get(row['symbol'], '')
+                    strategy_suffix = f" [策略: {strategy_str}]" if strategy_str else ''
+                    pnl_msg += f"  {row['symbol']}({type_name}): +{row['total_pnl']:.2f} U ({price_change_str}){strategy_suffix}\n"
                 pnl_msg += "\n"
-            
+
             # 亏损TOP5
             if not loss_top5_1h.empty:
                 pnl_msg += f"📉 亏损TOP5:\n"
@@ -600,7 +570,10 @@ def calculate_and_send_pnl_report(account_config: AccountConfig, spot_position, 
                     else:
                         price_change_str = f"{row['price_change']:.2f}%"
                     type_name = "现货" if row['type'] == 'spot' else "合约"
-                    pnl_msg += f"  {row['symbol']}({type_name}): {row['total_pnl']:.2f} U ({price_change_str})\n"
+                    strategy_map = spot_strategy_map if row['type'] == 'spot' else swap_strategy_map
+                    strategy_str = strategy_map.get(row['symbol'], '')
+                    strategy_suffix = f" [策略: {strategy_str}]" if strategy_str else ''
+                    pnl_msg += f"  {row['symbol']}({type_name}): {row['total_pnl']:.2f} U ({price_change_str}){strategy_suffix}\n"
                 pnl_msg += "\n"
 
     # 生成24小时TOP5盈亏信息
@@ -628,9 +601,12 @@ def calculate_and_send_pnl_report(account_config: AccountConfig, spot_position, 
                     else:
                         price_change_str = f"{row['price_change']:.2f}%"
                     type_name = "现货" if row['type'] == 'spot' else "合约"
-                    pnl_msg += f"  {row['symbol']}({type_name}): +{row['total_pnl']:.2f} U ({price_change_str})\n"
+                    strategy_map = spot_strategy_map if row['type'] == 'spot' else swap_strategy_map
+                    strategy_str = strategy_map.get(row['symbol'], '')
+                    strategy_suffix = f" [策略: {strategy_str}]" if strategy_str else ''
+                    pnl_msg += f"  {row['symbol']}({type_name}): +{row['total_pnl']:.2f} U ({price_change_str}){strategy_suffix}\n"
                 pnl_msg += "\n"
-            
+
             # 亏损TOP5
             if not loss_top5_24h.empty:
                 pnl_msg += f"📉 亏损TOP5:\n"
@@ -641,7 +617,10 @@ def calculate_and_send_pnl_report(account_config: AccountConfig, spot_position, 
                     else:
                         price_change_str = f"{row['price_change']:.2f}%"
                     type_name = "现货" if row['type'] == 'spot' else "合约"
-                    pnl_msg += f"  {row['symbol']}({type_name}): {row['total_pnl']:.2f} U ({price_change_str})\n"
+                    strategy_map = spot_strategy_map if row['type'] == 'spot' else swap_strategy_map
+                    strategy_str = strategy_map.get(row['symbol'], '')
+                    strategy_suffix = f" [策略: {strategy_str}]" if strategy_str else ''
+                    pnl_msg += f"  {row['symbol']}({type_name}): {row['total_pnl']:.2f} U ({price_change_str}){strategy_suffix}\n"
                 pnl_msg += "\n"
 
     # 发送报告信息
@@ -723,3 +702,236 @@ def send_img_for_dataframe(dataframe, wechat_webhook_url):
     except BaseException as e:
         print(traceback.format_exc())
         print('转换图片出现错误', e)
+
+
+def build_symbol_strategy_columns(me_conf, max_strategy_display=5):
+    """
+    遍历 me_conf.factory.config_list，逐个读取每个 BacktestConfig 的
+    最新持仓周期选币结果.pkl，构建 symbol → "父策略名(L), 父策略名(S)" 映射。
+    用于在持仓图片中追加 "strategy" 列。
+
+    :param me_conf: MultiEquityBacktestConfig，提供 factory.config_list 与 factory.result_folder
+    :param max_strategy_display: 最多显示多个策略名称，超过显示省略
+    :return: (spot_map, swap_map) 两个 dict；未命中的 symbol 不在返回值中，由调用方决定显示
+    """
+    def _format(items):
+        items = list(items)
+        if len(items) <= max_strategy_display:
+            return ', '.join(items)
+        head = ', '.join(items[:max_strategy_display])
+        return f"{head} (+{len(items) - max_strategy_display} more)"
+
+    active_idx_set = None
+    try:
+        ratios_df = pd.read_csv(me_conf.factory.result_folder / '仓位比例.csv', index_col=0)
+        last_row = ratios_df.iloc[-1]
+        active_idx_set = {
+            i for i in range(len(me_conf.factory.config_list))
+            if abs(float(last_row.get(str(i), 0))) > 1e-12
+        }
+    except BaseException:
+        print('[策略名称列] 读取 仓位比例.csv 失败，按全部 conf 活跃处理:')
+        print(traceback.format_exc())
+
+    spot_parts = []
+    swap_parts = []
+    for idx, conf in enumerate(me_conf.factory.config_list):
+        if active_idx_set is not None and idx not in active_idx_set:
+            continue
+        p = conf.get_result_folder() / '最新持仓周期选币结果.pkl'
+        if not p.exists():
+            continue
+        try:
+            df_i = pd.read_pickle(p)
+        except BaseException:
+            print(f'[策略名称列] 读取 {p} 失败:')
+            print(traceback.format_exc())
+            continue
+        if df_i.empty:
+            continue
+        df_i = df_i.copy()
+        df_i['symbol_spot'] = df_i['symbol_spot'].astype(object).fillna('').astype(str)
+        df_i['symbol_swap'] = df_i['symbol_swap'].astype(object).fillna('').astype(str)
+        df_i['parent_dir'] = np.char.add(conf.name, np.where(df_i['方向'] == 1, '(L)', '(S)'))
+
+        spot_part = df_i.loc[df_i['symbol_spot'] != '', ['symbol_spot', 'parent_dir']]
+        if not spot_part.empty:
+            spot_parts.append(spot_part)
+        swap_part = df_i.loc[df_i['symbol_swap'] != '', ['symbol_swap', 'parent_dir']]
+        if not swap_part.empty:
+            swap_parts.append(swap_part)
+
+    if spot_parts:
+        spot_df = pd.concat(spot_parts, ignore_index=True).drop_duplicates()
+        spot_df = spot_df.sort_values(['symbol_spot', 'parent_dir'])
+        spot_map = spot_df.groupby('symbol_spot')['parent_dir'].apply(_format).to_dict()
+    else:
+        spot_map = {}
+
+    if swap_parts:
+        swap_df = pd.concat(swap_parts, ignore_index=True).drop_duplicates()
+        swap_df = swap_df.sort_values(['symbol_swap', 'parent_dir'])
+        swap_map = swap_df.groupby('symbol_swap')['parent_dir'].apply(_format).to_dict()
+    else:
+        swap_map = {}
+
+    return spot_map, swap_map
+
+
+# ====================================================================================================
+# 最近 1h 成交额统计
+# ====================================================================================================
+
+def format_volume_message(spot_qv: float, swap_qv: float) -> str:
+    """
+    将 spot/swap 成交额格式化为推送消息行。
+
+    :param spot_qv: 现货成交额 (USDT)
+    :param swap_qv: 合约成交额 (USDT)
+    :return: 形如 '最近1h成交额:12345.80 (spot:8000.12, swap:4345.68)'
+    """
+    total = spot_qv + swap_qv
+    return f'最近1h成交额:{total:.2f} (spot:{spot_qv:.2f}, swap:{swap_qv:.2f})'
+
+
+_RECORD_COLUMNS = [
+    'run_time', 'exec_time', 'account_name', 'symbol_type', 'symbol',
+    'side', 'trade_mode', 'orig_qty', 'executed_qty', 'quote_qty',
+    'avg_price', 'order_status', 'client_order_id',
+]
+
+
+def build_order_records(success_orders, orders_df, symbol_type, run_time, account_name):
+    """
+    将交易所成交回执列表归一化为 13 字段 DataFrame。
+
+    spot/swap 字段名差异：
+      - spot: cummulativeQuoteQty / transactTime
+      - swap: cumQuote / updateTime + avgPrice
+
+    无效记录（空 dict / 缺关键字段 / 未成交）会被跳过。
+    """
+    rows = []
+    for order_res in success_orders:
+        if not order_res or not isinstance(order_res, dict):
+            continue
+        symbol = order_res.get('symbol')
+        if not symbol:
+            continue
+        status = order_res.get('status')
+        if status not in ('FILLED', 'PARTIALLY_FILLED'):
+            continue
+
+        if symbol_type == 'spot':
+            quote_qty_raw = order_res.get('cummulativeQuoteQty')
+            exec_time_raw = order_res.get('transactTime')
+            avg_price_raw = None
+        else:
+            quote_qty_raw = order_res.get('cumQuote')
+            exec_time_raw = order_res.get('updateTime')
+            avg_price_raw = order_res.get('avgPrice')
+
+        if quote_qty_raw is None:
+            continue
+
+        executed_qty = float(order_res.get('executedQty', 0) or 0)
+        quote_qty = float(quote_qty_raw)
+        orig_qty = float(order_res.get('origQty', 0) or 0)
+
+        if avg_price_raw is not None and float(avg_price_raw) > 0:
+            avg_price = float(avg_price_raw)
+        elif executed_qty > 0:
+            avg_price = quote_qty / executed_qty
+        else:
+            avg_price = 0.0
+
+        if exec_time_raw is None:
+            exec_time = pd.NaT
+        else:
+            exec_time = pd.to_datetime(int(exec_time_raw), unit='ms')
+
+        if symbol in orders_df.index:
+            trade_mode = orders_df.loc[symbol].get('交易模式', '')
+            if isinstance(trade_mode, pd.Series):
+                trade_mode = trade_mode.iloc[0]
+        else:
+            trade_mode = ''
+
+        rows.append({
+            'run_time': run_time,
+            'exec_time': exec_time,
+            'account_name': account_name,
+            'symbol_type': symbol_type,
+            'symbol': symbol,
+            'side': order_res.get('side', ''),
+            'trade_mode': trade_mode,
+            'orig_qty': orig_qty,
+            'executed_qty': executed_qty,
+            'quote_qty': quote_qty,
+            'avg_price': avg_price,
+            'order_status': status,
+            'client_order_id': order_res.get('clientOrderId', ''),
+        })
+
+    return pd.DataFrame(rows, columns=_RECORD_COLUMNS)
+
+
+def save_order_records(success_spot_df, success_swap_df, run_time, account_name):
+    """
+    将 spot/swap 成交记录追加到 data/{account}/订单记录/order_history_{YYYYMM}.csv
+
+    - 编码 gbk，与现有 equity.csv 一致
+    - 文件不存在则建表头；存在则 append 不写表头
+    - 任何 IO/编码异常都不上抛，只打 warning 日志，避免阻断主流程
+    """
+    try:
+        frames = [df for df in (success_spot_df, success_swap_df) if df is not None and not df.empty]
+        if not frames:
+            return
+        merged = pd.concat(frames, axis=0, ignore_index=True)
+        if merged.empty:
+            return
+
+        merged['run_time'] = pd.to_datetime(merged['run_time']).dt.strftime('%Y-%m-%d %H:%M:%S')
+
+        target_dir = data_path / account_name / '订单记录'
+        target_dir.mkdir(parents=True, exist_ok=True)
+        file_name = f'order_history_{run_time.strftime("%Y%m")}.csv'
+        target_path = target_dir / file_name
+
+        write_header = not target_path.exists()
+        merged.to_csv(target_path, mode='a', header=write_header, index=False, encoding='gbk')
+    except Exception as e:
+        traceback.print_exc()
+        print(f'[订单记录] save_order_records 失败：{e}（不阻断主流程）')
+
+
+def compute_recent_volume(account_name, run_time):
+    """
+    从订单记录 csv 中按 (account_name, run_time) 精确过滤，求 spot/swap 成交额。
+
+    :return: (spot_qv, swap_qv) tuple[float, float]，文件缺失或无匹配返回 (0.0, 0.0)
+    """
+    try:
+        file_path = data_path / account_name / '订单记录' / f'order_history_{run_time.strftime("%Y%m")}.csv'
+        if not file_path.exists():
+            return 0.0, 0.0
+
+        df = pd.read_csv(file_path, encoding='gbk', parse_dates=['run_time'])
+        if df.empty:
+            return 0.0, 0.0
+
+        df['run_time'] = pd.to_datetime(df['run_time'], format='mixed', errors='coerce')
+
+        mask = (df['account_name'] == account_name) & (df['run_time'] == run_time)
+        if not mask.any():
+            return 0.0, 0.0
+
+        sub = df.loc[mask]
+        spot_qv = float(sub.loc[sub['symbol_type'] == 'spot', 'quote_qty'].sum())
+        swap_qv = float(sub.loc[sub['symbol_type'] == 'swap', 'quote_qty'].sum())
+        return spot_qv, swap_qv
+    except Exception as e:
+        traceback.print_exc()
+        print(f'[订单记录] compute_recent_volume 失败：{e}（返回 0, 0）')
+        return 0.0, 0.0

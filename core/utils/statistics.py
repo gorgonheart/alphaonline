@@ -39,9 +39,10 @@ from core.model.backtest_config import MultiEquityBacktestConfig
 from core.utils.path_kit import get_file_path, get_folder_path
 from core.utils.functions import del_hist_files, refresh_diff_time, ignore_error
 from core.utils.statis_func import calc_swap_position, calc_spot_position, save_send_pos_info, \
-    calculate_and_send_pnl_report, send_img_for_dataframe
+    calculate_and_send_pnl_report, send_img_for_dataframe, build_symbol_strategy_columns, \
+    compute_recent_volume, format_volume_message
 from core.utils.dingding import send_wechat_work_msg, send_wechat_work_img
-from config import error_webhook_url, exchange_basic_config, utc_offset, strategy_pool
+from config import error_webhook_url, exchange_basic_config, utc_offset
 
 warnings.filterwarnings('ignore')
 pd.set_option('display.max_rows', 1000)
@@ -588,13 +589,15 @@ def save_order_info(order_info, stats_info, run_time, account_name):
         stats_info.to_csv(dir_path, encoding='gbk', index=False)
 
 
-def send_position_result(account_config: AccountConfig, spot_position, swap_position, spot_last_price):
+def send_position_result(account_config: AccountConfig, spot_position, swap_position, spot_last_price,
+                         me_conf=None):
     """
     发送现货、合约持仓信息
     :param account_config: 账户配置
     :param spot_position: 现货持仓
     :param swap_position: 合约持仓
     :param spot_last_price: 现货最新价格
+    :param me_conf: MultiEquityBacktestConfig，可选，用于追加 "strategy" 列
     :return:
               side  change    pos_u   pnl_u  avg_price  cur_price
     symbol
@@ -608,6 +611,14 @@ def send_position_result(account_config: AccountConfig, spot_position, swap_posi
     utc_now_timestamp = int(datetime.utcnow().timestamp()) * 1000
     save_send_pos_info(utc_now_timestamp, send_spot_df, account_config.name, pos_type='spot')
     save_send_pos_info(utc_now_timestamp, send_swap_df, account_config.name, pos_type='swap')
+
+    # 如果传入了 me_conf，则尝试从 select_coin 数据中追加 "strategy" 列
+    if me_conf is not None:
+        spot_map, swap_map = build_symbol_strategy_columns(me_conf)
+        if spot_map and not send_spot_df.empty:
+            send_spot_df['strategy'] = send_spot_df.index.map(spot_map).fillna('未匹配')
+        if swap_map and not send_swap_df.empty:
+            send_swap_df['strategy'] = send_swap_df.index.map(swap_map).fillna('未匹配')
 
     for data in [send_spot_df, send_swap_df]:
         if not data.empty:
@@ -727,8 +738,6 @@ def draw_equity_and_send_pic(me_conf, equity_df, transfer_df, title, account_con
             sub_stg_file = conf.get_result_folder() / '资金曲线_再择时.csv'
             if not sub_stg_file.exists():
                 sub_stg_file = conf.get_result_folder() / '资金曲线.csv'
-            if not sub_stg_file.exists():
-                continue
             sub_stg_equity = pd.read_csv(sub_stg_file, parse_dates=['candle_begin_time'], index_col=0)
             sub_stg_equity['candle_begin_time'] = sub_stg_equity['candle_begin_time'].dt.tz_localize(None) + time_diff
             sub_stg_eqs[conf.name] = sub_stg_equity
@@ -762,7 +771,7 @@ def draw_equity_and_send_pic(me_conf, equity_df, transfer_df, title, account_con
     set_annotate(ax1, equity_df['color'].iloc[-1], equity_df['time'].to_numpy() , equity_df['net'].to_numpy())
 
     # 主资金曲线的代理图例
-    proxy_line_equity = mtlines.Line2D([0], [0], color='#fb9300', label='Equity', linewidth=2)
+    proxy_line_equity = mtlines.Line2D([0], [0], color='#fb9300', label=f'{account_config.name}-Equity', linewidth=2)
     legend_handles = [proxy_line_equity]  # 初始化图例句柄列表
 
     position_df = me_conf.factory.result_folder / '仓位比例.csv'
@@ -905,7 +914,7 @@ def draw_equity_and_send_pic(me_conf, equity_df, transfer_df, title, account_con
 
 
 def save_and_send_equity_info(account_config: AccountConfig, me_conf, spot_position, swap_position, spot_equity, account_equity, spot_usdt,
-                              seed_coin_spot_equity):
+                              seed_coin_spot_equity, run_time=None):
     """
     保存、发送账户信息
     :param account_config: 账户配置对象
@@ -916,6 +925,7 @@ def save_and_send_equity_info(account_config: AccountConfig, me_conf, spot_posit
     :param account_equity: 账户净值
     :param spot_usdt: 现货的u
     :param seed_coin_spot_equity: 种子现货价值
+    :param run_time: 运行时间
     :return:
     """
     # =创建需要存储equity的df
@@ -1032,6 +1042,11 @@ def save_and_send_equity_info(account_config: AccountConfig, me_conf, spot_posit
     equity_msg += f'杠杆：{account_config.leverage:.2f}\n'  # 记录杠杆倍数
     equity_msg += f'账户的UniMMR：{account_config.bn.get_unimmr():.2f}\n'  # 记录Unimmr
 
+    # 注入最近 1h 成交额
+    if run_time is not None:
+        spot_qv, swap_qv = compute_recent_volume(account_config.name, run_time)
+        equity_msg += format_volume_message(spot_qv, swap_qv) + '\n'
+
     # 保存净值文件
     equity_df.to_csv(equity_file_path, encoding='gbk', index=False)
 
@@ -1082,16 +1097,15 @@ def format_timedelta(td):
 
 
 def format_timing_signal(signal):
-    match signal:
-        case 1:
-            return 'LONG'
-        case -1:
-            return 'SHORT'
-        case 0:
-            return 'EMPTY'
-        case _:
-            print('no known signal : ', signal)
-            return 'NO KNOWN'
+    if not isinstance(signal, int):
+        return str(signal)
+
+    if signal > 0:
+        return 'LONG'
+    elif signal < 0:
+        return 'SHORT'
+    else:
+        return 'EMPTY'
 
 
 def send_fixed_ratio_info(me_conf: MultiEquityBacktestConfig, account_info: AccountConfig):
@@ -1287,8 +1301,15 @@ def run():
             position_df.index.name = 'time'
             last_pos = position_df.iloc[-1]
             content = ''
+            strategy_list = me_conf.factory.config_list
+            strategy_list_length = len(strategy_list)
             for idx in last_pos.index.to_list():
-                content += f"{strategy_pool[int(idx)].get('name', f'策略{idx}')}: {round(last_pos[idx] * 100, 4)}%\n"
+                idx_int = int(idx)
+                if idx_int < strategy_list_length:
+                    stg_name = strategy_list[idx_int].name
+                else:
+                    stg_name = f'策略{idx_int}'
+                content += f"{stg_name}: {round(last_pos[idx_int] * 100, 4)}%\n"
             rotation_msg = f"【子策略状态】\n\n{content}\n"
             send_wechat_work_msg(rotation_msg, account_info.wechat_webhook_url)
 
@@ -1296,7 +1317,7 @@ def run():
         send_pos_strategy_info(me_conf, account_info)
 
         # ===生成账户净值信息
-        equity_msg = save_and_send_equity_info(account_info, me_conf, spot_position, swap_position, spot_equity, account_equity, spot_usdt, seed_coin_spot_equity)
+        equity_msg = save_and_send_equity_info(account_info, me_conf, spot_position, swap_position, spot_equity, account_equity, spot_usdt, seed_coin_spot_equity, run_time=run_time)
         # =发送账户净值信息
         send_wechat_work_msg(equity_msg, account_info.wechat_webhook_url)
 
@@ -1311,7 +1332,7 @@ def run():
             try:
                 filename = run_time.strftime("%Y%m%d_%H") + ".csv"
                 select_symbol_list_path = get_file_path(data_path, account_name, '账户换仓信息', filename)
-                select_symbol = pd.read_csv(select_symbol_list_path, encoding='gbk')
+                select_symbol = pd.read_csv(select_symbol_list_path)
                 select_symbol_list = select_symbol.loc[select_symbol['symbol_type'] == 'spot', 'symbol'].tolist()
                 all_spot_order_info = get_all_order_info(
                     account_info, sorted(select_symbol_list), run_time, default_time, spot_last_price)
@@ -1351,13 +1372,14 @@ def run():
                 del buyer, seller, stats_info, order_msg, bs_msg
 
         # ===发送各币种持仓信息
-        send_position_result(account_info, spot_position, swap_position, spot_last_price)
+        send_position_result(account_info, spot_position, swap_position, spot_last_price,
+                             me_conf=me_conf)
 
         # =====计算并发送持仓盈亏报告
-#        try:
-#            calculate_and_send_pnl_report(account_info, spot_position, swap_position, spot_last_price)
-#        except Exception as e:
-#            print(f"计算持仓盈亏失败: {traceback.format_exc()}")
+        try:
+            calculate_and_send_pnl_report(account_info, spot_position, swap_position, spot_last_price, me_conf=me_conf)
+        except Exception as e:
+            print(f"计算持仓盈亏失败: {traceback.format_exc()}")
 
         # 休息一会儿，避免超权重
         time.sleep(60)

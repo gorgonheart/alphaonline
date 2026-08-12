@@ -5,8 +5,8 @@ from shared_account_config import shared_config
 
 account_config = {
     # 交易所API配置
-    'apiKey': '2WUPLl4HKDboiIoocvUkzO6gggQsIFGEIuz22eyGvKDoB940hZo89Fce686H77an',
-    'secret': 'lupx5jT6z6id5J3W5XXa7Iaf4XODUZ1rOSAcqqpIgqYgg7TOZrl3HPHAREIjJWjw',
+    'apiKey': 'XAOT3Bhg65NGAbfLUvATpeHKIxgjtZftJwQVuHbubNiG66ONBHxyeVyhDWR1XEyj',
+    'secret': 'qjYUEWeBoNRIXce4daBQKCWbxBgkhPhCMtLp2eyyfDNiQ8IfKRjHWoRr1Uoijm50',
     # ++++ 统一账户功能 ++++
     # 可以在 `传统的非统一账户` 和 `统一账户`模式 之间选择。任何模式下，原有功能都保留
     # 支持账户类型：统一账户，普通账户
@@ -32,15 +32,15 @@ account_config = {
 
     # ++++ 分钟偏移功能 ++++
     # 支持任意时间开始的小时级别K线
-    "hour_offset": '30m',  # 分钟偏移设置，可以自由设置时间，配置必须是kline脚本中interval的倍数。默认：0m，表示不偏移。15m，表示每个小时偏移15m下单。
+    "hour_offset": '40m',  # 分钟偏移设置，可以自由设置时间，配置必须是kline脚本中interval的倍数。默认：0m，表示不偏移。15m，表示每个小时偏移15m下单。
 
     # 现货下单最小金额限制，适当增加可以减少部分reb。
     # 默认10，不建议小于10，这会让你的下单报错，10是交易所的限制。
-    'order_spot_money_limit': 10,
+    'order_spot_money_limit': 100,
 
     # 合约下单最小金额限制，适当增加可以减少部分reb。
     # 默认5，不建议小于5，这会让你的下单报错，5是交易所的限制。
-    'order_swap_money_limit': 5,
+    'order_swap_money_limit': 10,
 
     # ++++ 下单时动态拆单功能 ++++
     "max_one_order_amount": 300,  # 最大拆单金额。
@@ -53,11 +53,12 @@ account_config = {
     # ++++ 小额资产自动兑换BNB功能 ++++
     # 当且仅当 `if_use_bnb_burn` 为 True 时生效
     "if_transfer_bnb": False,  # 是否开启小额资产兑换BNB功能。仅现货模式下生效
+    'base_margin': {'USDT': 0.967, 'USDC': 0.033},
 
     # ++++ 企业微信机器人功能 ++++
     # 创建企业微信机器人 参考帖子: https://bbs.quantclass.cn/thread/10975
     # 配置案例  https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxxxxxxxxxxxxxxxxxx
-    "wechat_webhook_url": 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=75824025-fd4f-4e59-8216-1a743c651387',
+    "wechat_webhook_url": 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=7b30daf4-689b-4d61-9940-7e78584a6205',
 
 }
 
@@ -65,7 +66,6 @@ account_config = {
 # ** 策略细节配置 **
 # 案例策略，需要自己探索，不保证可用
 # ====================================================================================================
-
 
 strategy_config = {
     'name': 'RotationStrategy_long',  # *必填。使用什么策略，这里是轮动策略
@@ -80,7 +80,7 @@ strategy_config = {
 
         ],
 #        'cap_ratios': shared_config["shared_cap_ratios_ga"]
-        'cap_ratios': [0.5,0.5,0.55,0.3,0.53,0.27,0.27,0.27,0.27,0.075,0.27]
+        'cap_ratios': [0.5,0.5,0.55,0.3,0.53,0.27,0.27,0.27,0.27,0.075,0.27,0.1]
 
     },
     # 'symbol_ratio_limit' :{
@@ -560,7 +560,51 @@ strategy_pool = [
         ],
         # # 配置再择时之后，可以使用 re_timing.py 进行再择时的资金曲线模拟
         # re_timing={'name': 'Bolling2', 'params': [334]}  # 可选，配置再择时策略
-    )           
+    ),
+    dict(
+        name='回撤阈值空头',
+        strategy_list=[
+            {
+                "strategy": "Strategy_截面因子",
+                "offset_list": [4, 14],
+                "hold_period": "24H",
+                "market": "swap_swap",
+                "cap_weight": 0.5 / 2,
+                "long_cap_weight": 0,
+                "short_cap_weight": 1,
+                "long_select_coin_num": 0,
+                "short_select_coin_num": 999,
+                "factor_list": [
+                    ('HoursSinceSpotAndSwap', True, 1, 1),
+                ],
+                "filter_list": [
+                    ('HoursSinceSpotAndSwap', 1, 'val:>0'),
+                    ('固定回撤阈值触发币数占比开仓门槛', (x, -0.20, 0.04), 'val:==1'),
+                ],
+                "use_custom_func": False,
+            } for x in [39, 93]
+        ] + [
+            {
+                "strategy": "Strategy_动态回撤阈值",
+                "offset_list": [11, 13],
+                "hold_period": "24H",
+                "market": "swap_swap",
+                "cap_weight": 0.5 / 4,
+                "long_cap_weight": 0,
+                "short_cap_weight": 1,
+                "long_select_coin_num": 0,
+                "short_select_coin_num": 999,
+                "factor_list": [
+                    ('HoursSinceSpotAndSwap', True, 1, 1),
+                ],
+                "filter_list": [
+                    ('HoursSinceSpotAndSwap', 1, 'val:>0'),
+                    ('动态回撤阈值', x, f'val:<{y}'),
+                ],
+                "use_custom_func": False,
+            } for x in [53, 109] for y in [-3, -4]
+        ],
+    ),           
 ]  # 策略
 leverage = shared_config["lever"]  # 杠杆数。我看哪个赌狗要把这里改成大于1的。高杠杆如梦幻泡影。不要想着一夜暴富，脚踏实地赚自己该赚的钱。
 black_list = shared_config["blacklist"]

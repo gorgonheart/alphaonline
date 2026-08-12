@@ -320,6 +320,17 @@ class BacktestConfig:
                 config_name = self.name
             return get_folder_path('data', 'snapshot', strategy_name, config_name, as_path_type=True)
 
+    def assign_ee_state_dir(self):
+        """把本配置的 snapshot 目录写到每个子策略的 ee_state_dir 上，进出场模式据此存取持仓状态。
+        要等 iter_round/name 定稿后再调用，路径里才带账户前缀(data/snapshot/<账户>/<组合>)，否则多账户同名策略会互相覆盖。
+        取目录出错时置 None，子策略就当本地回测处理(不存状态)，不影响配置加载。"""
+        try:
+            d = str(self.get_snapshot_folder())
+        except Exception:
+            d = None
+        for stg in self.strategy_list:
+            stg.ee_state_dir = d
+
     def get_strategy_config_sheet(self, with_factors=True) -> dict:
         factor_dict = {}
         for stg in self.strategy_list:
@@ -429,6 +440,9 @@ class BacktestConfigFactory:
         self.select_scope_set = self.select_scope_set | config.select_scope_set
         self.order_first_set = self.order_first_set | config.order_first_set
         self.black_list = self.black_list | set(config.black_list)
+        # 这里 iter_round/name 已经定稿，重新赋一次 ee_state_dir，路径才带上账户前缀。
+        # load_strategy_config 那时 iter_round 还是 0，算出来的路径少了账户前缀，多账户同名策略会撞在一起。
+        config.assign_ee_state_dir()
 
     def get_candidates_by_factors(self, strategy_dict, param_name, target_factors, val_index) -> List[tuple]:
         """

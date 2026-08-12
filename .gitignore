@@ -10,3 +10,8 @@ alphacpp*.pyd
 alphacpp*.so
 build/
 *.egg-info/
+
+# vendor reference cores (对照用，不纳入版本控制)
+2.1.1core/
+2.2.1core/
+都江堰中性策略精心随机_26_v3/

@@ -812,10 +812,14 @@ def select_coins_by_strategy(factor_lf: pl.LazyFrame, stg_conf: StrategyConfig) 
     short_lf = short_lf.filter(pl.col('symbol_swap') != '')
     logger.debug(f'[{stg_conf.name}] 前置过滤耗时：{time.time() - s:.2f}s')
 
-    # 4.4 根据选币因子进行选币
+    # 4.4 选币：按 select_mode 分支
     s = time.time()
-    result_lf = select_long_and_short_coin(stg_conf, long_lf, short_lf)
-    logger.debug(f'[{stg_conf.name}] 多空选币耗时：{time.time() - s:.2f}s')
+    if stg_conf.select_mode == 'entry_exit':
+        result_lf = stg_conf.run_entry_exit_selection_polars_lazy(long_lf, short_lf)
+        logger.debug(f'[{stg_conf.name}] 进出场选币耗时：{time.time() - s:.2f}s')
+    else:
+        result_lf = select_long_and_short_coin(stg_conf, long_lf, short_lf)
+        logger.debug(f'[{stg_conf.name}] 多空选币耗时：{time.time() - s:.2f}s')
 
     # 4.5 后置过滤筛选
     if stg_conf.use_custom_func:
@@ -913,112 +917,6 @@ def process_strategy_thread(stg_conf: StrategyConfig, result_folder: Path, is_si
 
     cal_offset_base_seconds = 3600 * 24 if stg_conf.is_day_period else 3600
     reference_date = pl.lit(pd.to_datetime(unified_time))
-    result_df = result_df.with_columns([
-        ((pl.col('candle_begin_time') - reference_date).dt.total_seconds() / cal_offset_base_seconds)
-        .mod(stg_conf.period_num)
-        .cast(pl.Int8)
-        .alias('_offset_temp')
-    ])
-    result_df = result_df.with_columns([
-        ((pl.col('_offset_temp') + 1 + stg_conf.period_num) % stg_conf.period_num)
-        .cast(pl.Int8)
-        .alias('offset')
-    ])
-    result_df = result_df.drop('_offset_temp')
-    result_df = result_df.filter(pl.col('offset').is_in(stg_conf.offset_list))
-
-    if result_df.is_empty():
-        pd.DataFrame(columns=SELECT_RES_COLS).to_pickle(stg_select_result)
-        logger.setLevel(logging.DEBUG)
-        return
-
-    result_df = result_df.with_columns([
-        pl.col('方向').cast(pl.Int8),
-        pl.col('offset').cast(pl.Int8),
-    ])
-
-    result_df = result_df.with_columns([
-        pl.lit(strategy_name).alias('strategy'),
-        pl.lit(stg_conf.cap_weight).cast(pl.Float64).alias('cap_weight'),
-    ])
-
-    result_df = result_df.with_columns([
-        (pl.col('target_alloc_ratio') * pl.col('cap_weight') / len(stg_conf.offset_list) * pl.col('方向'))
-        .cast(pl.Float64)
-        .alias('target_alloc_ratio')
-    ])
-
-    result_df = result_df.with_columns([
-        pl.lit(order_first).alias('order_first')
-    ])
-
-    result_df = result_df.with_columns([
-        pl.col('symbol_spot').cast(pl.Categorical),
-        pl.col('symbol_swap').cast(pl.Categorical),
-        pl.col('strategy').cast(pl.Categorical),
-        pl.col('order_first').cast(pl.Categorical),
-    ])
-
-    result_df.select(SELECT_RES_COLS).to_pandas().to_pickle(stg_select_result)
-
-    logger.debug(f'[{strategy_name}] 耗时: {(time.time() - s):.2f}s')
-    gc.collect()
-    logger.setLevel(logging.DEBUG)
-
-
-def process_strategy(stg_conf: StrategyConfig, result_folder: Path, is_silent=False, unified_time='2017-01-01'):
-    """
-    单策略处理函数（独立加载数据，用于多进程回退场景）
-    """
-    import logging
-    if is_silent:
-        logger.setLevel(logging.WARNING)
-    s = time.time()
-    strategy_name = stg_conf.name
-    logger.debug(f'[{stg_conf.name}] 开始选币...')
-
-    factor_df = pl.read_parquet(get_file_path(*ALL_KLINE_PATH_TUPLE))
-    for factor_col_name in stg_conf.factor_columns:
-        factor_path = get_file_path('data', 'cache', f'factor_{factor_col_name}.parquet')
-        factor_col_df = pl.read_parquet(factor_path)
-        factor_df = pl.concat([factor_df, factor_col_df], how='horizontal')
-
-    factor_df = factor_df.filter(pl.col('是否交易') == 1)
-
-    select_scope = stg_conf.select_scope
-    order_first = stg_conf.order_first
-    if select_scope == 'spot':
-        condition = pl.col('is_spot') == 1
-    elif select_scope == 'swap':
-        condition = pl.col('is_spot') == 0
-    else:  # mix 混合
-        both_not_null = (pl.col('symbol_spot') != '') & (pl.col('symbol_swap') != '')
-        order_first_symbol = pl.col('is_spot') == (1 if order_first == 'spot' else 0)
-        condition = ~both_not_null | order_first_symbol
-    factor_df = factor_df.filter(condition)
-
-    factor_df = factor_df.drop_nulls(subset=stg_conf.factor_columns)
-    factor_df = factor_df.drop_nulls(subset=['symbol'])
-
-    factor_df = factor_df.sort(['candle_begin_time', 'symbol'])
-
-    logger.debug(f'[{stg_conf.name}] 选币数据准备完成，消耗时间：{time.time() - s:.2f}s')
-
-    factor_lf = factor_df.lazy()
-    del factor_df
-
-    result_lf = select_coins_by_strategy(factor_lf, stg_conf)
-    result_df = result_lf.collect(engine="streaming" if use_streaming else "auto")
-
-    stg_select_result = result_folder / f'{stg_conf.get_fullname(as_folder_name=True)}.pkl'
-
-    if result_df.is_empty():
-        pd.DataFrame(columns=SELECT_RES_COLS).to_pickle(stg_select_result)
-        return
-
-    cal_offset_base_seconds = 3600 * 24 if stg_conf.is_day_period else 3600
-    reference_date = pl.lit(pd.to_datetime(unified_time))
-
     result_df = result_df.with_columns([
         ((pl.col('candle_begin_time') - reference_date).dt.total_seconds() / cal_offset_base_seconds)
         .mod(stg_conf.period_num)
@@ -1406,7 +1304,11 @@ def agg_multi_strategy_ratio(conf: BacktestConfig, df_select: pd.DataFrame, max_
         key=lambda x: x if not pd.isnull(x) else pd.Timestamp.max
     )
     if pd.isna(start_date):
-        start_date = max_candle_time - pd.to_timedelta(conf.max_hold_period)
+        # 防止选币为空时 fallback 窗口小于 incremental_lookback_hours 导致下游 concat 出现时间空洞
+        start_date = max_candle_time - max(
+            pd.to_timedelta(conf.max_hold_period),
+            pd.Timedelta(hours=conf.incremental_lookback_hours),
+        )
 
     candle_begin_times = pd.date_range(start_date, max_candle_time, freq=conf.hold_period_type, inclusive='both')
 
@@ -1531,7 +1433,11 @@ def agg_multi_strategy_ratio_v2(conf: BacktestConfig, df_select: pd.DataFrame, m
 
     start_date = work_df['candle_begin_time'].min() if not work_df.empty else pd.NaT
     if pd.isna(start_date):
-        start_date = max_candle_time - pd.to_timedelta(conf.max_hold_period)
+        # 防止选币为空时 fallback 窗口小于 incremental_lookback_hours 导致下游 concat 出现时间空洞
+        start_date = max_candle_time - max(
+            pd.to_timedelta(conf.max_hold_period),
+            pd.Timedelta(hours=conf.incremental_lookback_hours),
+        )
 
     # 与当前框架原生聚合保持一致：
     # 小时策略输出小时级时间轴，日频策略输出日级时间轴，避免 v2 产物与主逻辑索引语义不一致。

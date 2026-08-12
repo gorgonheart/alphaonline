@@ -992,16 +992,15 @@ def format_timedelta(td):
 
 
 def format_timing_signal(signal):
-    match signal:
-        case 1:
-            return 'LONG'
-        case -1:
-            return 'SHORT'
-        case 0:
-            return 'EMPTY'
-        case _:
-            print('no known signal : ', signal)
-            return 'NO KNOWN'
+    if not isinstance(signal, int):
+        return str(signal)
+
+    if signal > 0:
+        return 'LONG'
+    elif signal < 0:
+        return 'SHORT'
+    else:
+        return 'EMPTY'
 
 
 def send_fixed_ratio_info(me_conf: MultiEquityBacktestConfig, account_info: AccountConfig):
@@ -1111,6 +1110,61 @@ def send_rotation_info(me_conf: MultiEquityBacktestConfig, account_info: Account
         send_img_for_dataframe(pd.DataFrame(all_rotation_status_list), account_info.wechat_webhook_url)
 
 
+def send_simulate_select_coin_info(me_conf: MultiEquityBacktestConfig, account_info: AccountConfig):
+    """
+    发送模拟盘当前选币明细：每个 symbol 一行（strategy/type/direction/symbol/ratio）。
+    数据源：各子策略结果目录下的 df_spot_ratio.pkl / df_swap_ratio.pkl 的最后一行。
+    """
+    EPS = 1e-9
+    rows = []
+
+    for conf in me_conf.factory.config_list:
+        conf_rows_before = len(rows)
+        result_folder = conf.get_result_folder()
+
+        for trade_type, fname in [('spot', 'df_spot_ratio.pkl'),
+                                  ('swap', 'df_swap_ratio.pkl')]:
+            pkl_path = result_folder / fname
+            if not pkl_path.exists():
+                continue
+            df_ratio = pd.read_pickle(pkl_path)
+            if df_ratio.empty:
+                continue
+            last_row = df_ratio.iloc[-1]
+
+            entries = []
+            for symbol, ratio in last_row.items():
+                if abs(ratio) <= EPS:
+                    continue
+                entries.append((symbol, ratio))
+            entries.sort(key=lambda x: (0 if x[1] > 0 else 1, x[0]))
+
+            for symbol, ratio in entries:
+                direction = 'long' if ratio > 0 else 'short'
+                rows.append({
+                    'strategy': conf.name,
+                    'type': trade_type,
+                    'direction': direction,
+                    'symbol': symbol,
+                    'ratio': f'{ratio * 100:.2f}%',
+                })
+
+        if len(rows) == conf_rows_before:
+            rows.append({
+                'strategy': conf.name,
+                'type': '-',
+                'direction': '-',
+                'symbol': '(empty)',
+                'ratio': '-',
+            })
+
+    if not rows:
+        return
+
+    df = pd.DataFrame(rows, columns=['strategy', 'type', 'direction', 'symbol', 'ratio'])
+    send_img_for_dataframe(df, account_info.wechat_webhook_url)
+
+
 def send_pos_strategy_info(me_conf: MultiEquityBacktestConfig, account_info: AccountConfig):
     if me_conf.strategy.name == 'FixedRatioStrategy':
         send_fixed_ratio_info(me_conf, account_info)
@@ -1177,13 +1231,23 @@ def run():
             position_df.index.name = 'time'
             last_pos = position_df.iloc[-1]
             content = ''
+            strategy_list = me_conf.factory.config_list
+            strategy_list_length = len(strategy_list)
             for idx in last_pos.index.to_list():
-                content += f"{strategy_pool[int(idx)].get('name', f'策略{idx}')}: {round(last_pos[idx] * 100, 4)}%\n"
+                idx_int = int(idx)
+                if idx_int < strategy_list_length:
+                    stg_name = strategy_list[idx_int].name
+                else:
+                    stg_name = f'策略{idx_int}'
+                content += f"{stg_name}: {round(last_pos[idx_int] * 100, 4)}%\n"
             rotation_msg = f"【子策略状态】\n\n{content}\n"
             send_wechat_work_msg(rotation_msg, account_info.wechat_webhook_url)
 
         # 发送仓位管理统计数据
         send_pos_strategy_info(me_conf, account_info)
+
+        # 发送当前选币明细
+        send_simulate_select_coin_info(me_conf, account_info)
 
         # ===生成账户净值信息
         equity_msg = save_and_send_equity_info(account_info, me_conf, None, None, None, None, None)

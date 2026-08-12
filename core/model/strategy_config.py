@@ -18,7 +18,9 @@ from typing import List, Tuple
 import numpy as np
 import pandas as pd
 import polars as pl
+from numba import njit
 
+from core.utils import ee_continuation
 from core.utils.factor_hub import FactorHub
 from core.utils.log_kit import logger
 from core.utils.strategy_hub import DummyStrategy, PositionStrategyHub
@@ -228,16 +230,19 @@ def calc_factor_common(df, factor_list: List[FactorConfig]):
     return factor_val
 
 
-def calc_factor_expr_polars(factor_list: List[FactorConfig]) -> pl.Expr:
+def calc_factor_expr_polars(factor_list: List[FactorConfig], reverse: bool = False) -> pl.Expr:
     """
     构建因子排名加权和表达式 (Polars 版本)
+
+    reverse=True 时翻转每个因子的排序方向（用于 entry_exit 短边：选与长边相反的一端）。
+    打分始终是为正的加权 min-rank（恒 >=1），不会破坏 numba 引擎 "score<0=缺席" 的约定。
     """
     rank_exprs = []
     for factor_config in factor_list:
         if factor_config.weight == 0:
             continue
         col_name = f'{factor_config.name}_{str(factor_config.param)}'
-        descending = not factor_config.is_sort_asc
+        descending = (not factor_config.is_sort_asc) != reverse
         rank_expr = (
             pl.col(col_name)
             .rank(method='min', descending=descending)
@@ -276,9 +281,14 @@ def filter_common(df, filter_list):
     return condition
 
 
-def filter_common_polars(filter_list) -> pl.Expr:
+def filter_common_polars(filter_list, rank_method='average', empty_value=True) -> pl.Expr:
     """
     根据过滤配置构建过滤条件 (Polars 版本)
+
+    rank_method: rank/pct 的排名方式，默认 'average'（框架老行为）；
+                 entry_exit 进出场模式传 'min'，对齐老截面因子的排名口径。
+    empty_value: filter_list 为空时返回的常量。默认 True（无过滤=全保留）；
+                 进出场模式的出场条件为空列表时需传 False（无出场=不出场）。
     """
     conditions = []
 
@@ -288,11 +298,11 @@ def filter_common_polars(filter_list) -> pl.Expr:
 
         match filter_config.method.how:
             case 'rank':
-                rank_expr = pl.col(col_name).rank(method='average', descending=descending).over('candle_begin_time')
+                rank_expr = pl.col(col_name).rank(method=rank_method, descending=descending).over('candle_begin_time')
                 cond = filter_expr_by_range(rank_expr, filter_config.method.range)
                 conditions.append(cond)
             case 'pct':
-                rank_expr = pl.col(col_name).rank(method='average', descending=descending).over('candle_begin_time')
+                rank_expr = pl.col(col_name).rank(method=rank_method, descending=descending).over('candle_begin_time')
                 count_expr = pl.len().over('candle_begin_time').cast(pl.Float64)
                 pct_expr = rank_expr.cast(pl.Float64) / count_expr
                 cond = filter_expr_by_range(pct_expr, filter_config.method.range)
@@ -304,13 +314,203 @@ def filter_common_polars(filter_list) -> pl.Expr:
                 raise ValueError(f'不支持的过滤方式：{filter_config.method.how}')
 
     if not conditions:
-        return pl.lit(True)
+        return pl.lit(empty_value)
 
     combined = conditions[0]
     for cond in conditions[1:]:
         combined = combined & cond
 
     return combined
+
+
+@njit
+def compute_entry_exit_numba(times, symbol_ids, scores, in_mask, out_mask,
+                             target_counts, n_symbols, fill_lag,
+                             exit_cooldown=0, max_hold_hours=0):
+    """进出场选币引擎：逐截面 出场→补位。times 升序、同时间相邻；score 越小越优先(升序排名)。
+    held 跨截面携带：① 持仓中触发 out_mask 或满 max_hold_hours 强制出场 ② 从 in_mask 非持仓按
+    fill_lag 期前 score 补到 target，fill_lag>0 时滞后期缺席的币(score<0)排除；首截面冷启动按当期 score。
+    入场门 in_mask 与补位排名同口径：fill_lag>0 时也取 fill_lag 期前的 in_mask 判定（避免“补位看
+    滞后排名、入场门看当期”造成的时间错位）；冷启动按当期 in_mask。
+    exit_cooldown>0：出场后拉黑该币 exit_cooldown 期(出场当期+随后期内不可补回)，0=当期可立即补回。
+    max_hold_hours>0：单笔连续持有满该期数后强制出场，0=不限制。返回 0/1。"""
+    n_rows = len(times)
+    result = np.zeros(n_rows, dtype=np.int32)
+    held = np.zeros(n_symbols, dtype=np.int8)
+    keep = np.zeros(n_symbols, dtype=np.int8)
+    exited = np.zeros(n_symbols, dtype=np.int8)
+    hold_hours = np.zeros(n_symbols, dtype=np.int32)
+    blacklist_remaining = np.zeros(n_symbols, dtype=np.int32)
+    cand_idx = np.empty(n_symbols, dtype=np.int64)
+    cand_score = np.empty(n_symbols, dtype=np.float64)
+
+    buf_size = fill_lag if fill_lag > 0 else 1
+    rank_buf = np.full((buf_size, n_symbols), -1.0, dtype=np.float64)
+    in_buf = np.zeros((buf_size, n_symbols), dtype=np.int8)   # 入场门掩码环形缓冲（与 rank_buf 同口径滞后）
+    buf_ptr = 0
+    gi = 0
+
+    start = 0
+    for i in range(n_rows + 1):
+        if i == n_rows or (i > 0 and times[i] != times[start]):
+            end = i
+            target = target_counts[start]
+
+            for j in range(start, end):
+                sid = symbol_ids[j]
+                keep[sid] = 0
+                exited[sid] = 0
+
+            # ① 出场 / 留存（出场条件 或 满 max_hold_hours 强制出场；出场则拉黑 exit_cooldown 期、hold_hours 清零）
+            keep_count = 0
+            for j in range(start, end):
+                sid = symbol_ids[j]
+                if held[sid] == 1:
+                    next_hh = hold_hours[sid] + 1
+                    force_exit = max_hold_hours > 0 and next_hh > max_hold_hours
+                    if out_mask[j] == 1 or force_exit:
+                        exited[sid] = 1
+                        blacklist_remaining[sid] = exit_cooldown
+                        hold_hours[sid] = 0
+                    else:
+                        keep[sid] = 1
+                        result[j] = 1
+                        hold_hours[sid] = next_hh
+                        keep_count += 1
+
+            # ② 补位（无入场门=in_mask 全 True；fill_lag>0 用滞后排名+滞后入场门并排除缺席；
+            #    exit_cooldown>0 时跳过本期刚出场/仍在拉黑期的币）
+            need = target - keep_count
+            if need > 0:
+                m = 0
+                use_lag = fill_lag > 0 and gi > 0
+                for j in range(start, end):
+                    sid = symbol_ids[j]
+                    if keep[sid] == 1:
+                        continue
+                    if exited[sid] == 1 and exit_cooldown > 0:
+                        continue
+                    if blacklist_remaining[sid] > 0:
+                        continue
+                    if use_lag:
+                        fr = rank_buf[buf_ptr, sid]
+                        if fr < 0:
+                            continue
+                        if in_buf[buf_ptr, sid] != 1:   # 入场门也用 fill_lag 期前的判定，与补位排名同口径
+                            continue
+                    else:
+                        if in_mask[j] != 1:             # 冷启动/无滞后：用当期入场门
+                            continue
+                        fr = scores[j]
+                    cand_idx[m] = j
+                    cand_score[m] = fr
+                    m += 1
+                if m > 0:
+                    order = np.argsort(cand_score[:m])
+                    take = need if need < m else m
+                    for k in range(take):
+                        j = cand_idx[order[k]]
+                        sid = symbol_ids[j]
+                        result[j] = 1
+                        keep[sid] = 1
+                        hold_hours[sid] = 1
+
+            # 重建 held（缺席的持仓币自动丢弃）
+            held[:] = 0
+            for j in range(start, end):
+                sid = symbol_ids[j]
+                if keep[sid] == 1:
+                    held[sid] = 1
+
+            # 写入本期 score / 入场门 到环形缓冲（缺席的币 score=-1、入场门=0）
+            if fill_lag > 0:
+                for a in range(n_symbols):
+                    rank_buf[buf_ptr, a] = -1.0
+                    in_buf[buf_ptr, a] = 0
+                for j in range(start, end):
+                    rank_buf[buf_ptr, symbol_ids[j]] = scores[j]
+                    in_buf[buf_ptr, symbol_ids[j]] = in_mask[j]
+                buf_ptr = (buf_ptr + 1) % buf_size
+
+            # 期末：拉黑计数 -1（必须在补位之后，确保出场当期仍被拉黑）
+            for a in range(n_symbols):
+                if blacklist_remaining[a] > 0:
+                    blacklist_remaining[a] -= 1
+
+            gi += 1
+            start = i
+
+    return result
+
+
+def _entry_exit_target_expr(coin_num) -> pl.Expr:
+    """把 select_coin_num 转成逐期目标持仓数表达式。entry_exit 用"目标持仓数"模型：
+    int=绝对数，float(0~1)=占比(floor 后至少 1)。不支持 tuple 区间选币（区间/阈值请用 entry_list/exit_list 表达）。
+    短边 'long_nums' 由调用方单独处理，不会进入本函数。"""
+    if isinstance(coin_num, (tuple, list)):
+        raise ValueError(f'entry_exit 选币模式不支持 tuple 区间选币数 {coin_num}；'
+                         f'请用 int(绝对数)/float(占比)，短边可用 "long_nums"')
+    num = float(coin_num)
+    if 0 < num < 1:
+        return (pl.len().over('candle_begin_time').cast(pl.Float64) * num).floor().cast(pl.Int64).clip(lower_bound=1)
+    return pl.lit(int(num))
+
+
+def _compute_holdings(df: pl.DataFrame, fill_lag: int,
+                      exit_cooldown: int = 0, max_hold_hours: int = 0) -> np.ndarray:
+    """把已带 _ee_score/_ee_in/_ee_out/_ee_target 的截面 df 交给 numba 引擎，返回逐行 0/1 选中数组。"""
+    syms = df['symbol'].to_list()
+    sym_to_id = {s: idx for idx, s in enumerate(sorted(set(syms)))}
+    symbol_ids = np.array([sym_to_id[s] for s in syms], dtype=np.int64)
+    times = df['candle_begin_time'].rank(method='dense').cast(pl.Int64).to_numpy()
+    return compute_entry_exit_numba(
+        times, symbol_ids,
+        df['_ee_score'].cast(pl.Float64).to_numpy(),
+        df['_ee_in'].to_numpy().astype(np.int8),
+        df['_ee_out'].to_numpy().astype(np.int8),
+        df['_ee_target'].cast(pl.Int64).to_numpy(),
+        len(sym_to_id), int(fill_lag or 0), int(exit_cooldown or 0), int(max_hold_hours or 0),
+    )
+
+
+def _run_entry_exit_one_side(lf: pl.LazyFrame, factor_list, entry_list, exit_list,
+                             target_expr: pl.Expr, fill_lag, exit_cooldown, max_hold_hours,
+                             descending: bool, direction: int,
+                             state_path=None, cfg_fp=None, meta=None,
+                             n_floor=0, cap_cs=0) -> pl.LazyFrame:
+    """单侧进出场引擎：逐截面 出场→留存→从非持仓按 fill_lag 期前 min-rank 补位到目标持仓数。
+
+    descending=True（短边）时翻转排名方向取另一端（打分仍为正的加权 min-rank，不取负），
+    对标标准 calc_select_factor_rank(ascending=False)。排名一律 method='min'（与老截面因子一致）。
+    注：单因子（如 VolumeMaxBias）短边与长边严格相反端；多因子且边界跨因子并列时 tie-break
+    以加权 reverse-rank 为准（与标准 rank<=N 含并列略有差异，属 entry_exit 定额取数的固有设计）。
+
+    state_path 为 None（回测/异常）：从空仓全量算、不存盘（输出整段）。
+    state_path 有值（实盘续算）：委托 ee_continuation.run_continuation（自包含累积缓存，byte-exact 见该模块）。
+    """
+    if not any(f.weight != 0 for f in factor_list):
+        raise ValueError('entry_exit 选币模式需要在 factor_list 配置补位排序因子')
+
+    # ① 把打分 / 进出场掩码 / 目标持仓数 写成截面内部列（min-rank 口径，打分恒为正）
+    scored = lf.with_columns([
+        calc_factor_expr_polars(factor_list, reverse=descending).alias('_ee_score'),
+        filter_common_polars(entry_list, rank_method='min', empty_value=True).cast(pl.Int8).alias('_ee_in'),
+        filter_common_polars(exit_list, rank_method='min', empty_value=False).cast(pl.Int8).alias('_ee_out'),
+        target_expr.cast(pl.Int64).alias('_ee_target'),
+    ]).sort('candle_begin_time')
+    df = scored.collect()
+
+    # ② 实盘续算：有缓存目录 -> 委托 ee_continuation 的自包含累积缓存（空窗保护/累积/裁剪/重放/落盘都在那里）
+    if state_path is not None:
+        return ee_continuation.run_continuation(df, fill_lag, exit_cooldown, max_hold_hours, direction,
+                                                state_path, cfg_fp, meta, n_floor, cap_cs)
+
+    # ③ 回测/异常：从空仓全量算，选中行 + 方向 + 等权(每侧 1/N)。此段与 dev2 _run_entry_exit_one_side 逐字节一致
+    holdings = _compute_holdings(df, fill_lag, exit_cooldown, max_hold_hours)
+    return df.with_columns(pl.Series('_ee_sel', holdings)).filter(pl.col('_ee_sel') == 1).with_columns([
+        pl.lit(direction).alias('方向'),
+        (pl.lit(1.0) / pl.len().over('candle_begin_time')).alias('target_alloc_ratio'),
+    ]).lazy()
 
 
 @dataclass
@@ -382,6 +582,25 @@ class StrategyConfig:
     long_filter_list_post: List[FilterFactorConfig] = ()  # 多头后置过滤因子
     short_filter_list_post: List[FilterFactorConfig] = ()  # 空头后置过滤因子
 
+    select_mode: str = 'standard'              # 'standard'(老) | 'entry_exit'(新)
+    # 进出场目标持仓数复用 long/short_select_coin_num（int=绝对数, float=占比, 短边支持 'long_nums'）
+    fill_lag: int = 0                          # 补位滞后期数(长边&共享默认; 0=当期排名)
+    short_fill_lag: int | None = None          # 短边补位滞后; None=回退 fill_lag
+    exit_cooldown: int = 0                      # 出场冷却期数(长边&共享默认; 0=当期可立即补回, N=拉黑N期)
+    short_exit_cooldown: int | None = None      # 短边出场冷却; None=回退 exit_cooldown
+    max_hold_hours: int = 0                     # 单笔最长持仓期数(长边&共享默认; 0=不限制)
+    short_max_hold_hours: int | None = None     # 短边最长持仓; None=回退 max_hold_hours
+    entry_list: List[tuple] = ()               # 进场条件(raw, 长短共享默认输入)
+    exit_list: List[tuple] = ()                # 出场条件(raw, 长短共享默认输入)
+    long_entry_list: List[FilterFactorConfig] = ()    # 进场(解析后, 引擎读取)
+    short_entry_list: List[FilterFactorConfig] = ()
+    long_exit_list: List[FilterFactorConfig] = ()     # 出场(解析后, 引擎读取)
+    short_exit_list: List[FilterFactorConfig] = ()
+
+    # 进出场续算的持仓状态存这个目录(=本组合的 snapshot 目录)，运行期由 BacktestConfig 赋值，None 表示不存(回测)。
+    # init=False 不作为构造入参；compare/repr 排除，不影响相等判断和打印。
+    ee_state_dir: str | None = field(default=None, init=False, compare=False, repr=False)
+
     use_custom_func: bool = True  # 是否使用自定义函数
 
     cap_weight: float = 1  # 策略权重
@@ -431,13 +650,19 @@ class StrategyConfig:
             # 策略过滤因子最终在df中的列名
             factor_columns.add(filter_factor.col_name)  # 添加到当前策略缓存信息中
 
+        for filter_factor in set(self.long_entry_list + self.short_entry_list +
+                                 self.long_exit_list + self.short_exit_list):
+            factor_columns.add(filter_factor.col_name)
+
         return list(factor_columns)
 
     @cached_property
     def all_factors(self) -> set:
         return (set(self.long_factor_list + self.short_factor_list) |
                 set(self.long_filter_list + self.short_filter_list) |
-                set(self.long_filter_list_post + self.short_filter_list_post))
+                set(self.long_filter_list_post + self.short_filter_list_post) |
+                set(self.long_entry_list + self.short_entry_list +
+                    self.long_exit_list + self.short_exit_list))
 
     @classmethod
     def init(cls, index: int, file: DummyStrategy = None, **config):
@@ -519,6 +744,29 @@ class StrategyConfig:
             if _factor_list:
                 config['long_filter_list_post'].extend([FilterFactorConfig.init(item) for item in _factor_list])
                 config['short_filter_list_post'].extend([FilterFactorConfig.init(item) for item in _factor_list])
+
+        # 初始化进出场模式字段
+        config['select_mode'] = config.get('select_mode', 'standard')
+        config['fill_lag'] = config.get('fill_lag', 0)
+        config['short_fill_lag'] = config.get('short_fill_lag', None)
+        config['exit_cooldown'] = config.get('exit_cooldown', 0)
+        config['short_exit_cooldown'] = config.get('short_exit_cooldown', None)
+        config['max_hold_hours'] = config.get('max_hold_hours', 0)
+        config['short_max_hold_hours'] = config.get('short_max_hold_hours', None)
+        for _k in ('exit_cooldown', 'short_exit_cooldown', 'max_hold_hours', 'short_max_hold_hours'):
+            if config[_k] is not None and config[_k] < 0:
+                raise ValueError(f'{_k} 不能为负数，当前为 {config[_k]}')
+        # 进/出场条件：entry_list/exit_list 为长短共享默认，long/short_* 可单独覆盖（复刻框架 filter_list 模式）
+        ein = config.get('entry_list', [])
+        if 'long_entry_list' in config or 'short_entry_list' in config:
+            ein = []
+        config['long_entry_list'] = [FilterFactorConfig.init(i) for i in config.get('long_entry_list', ein)]
+        config['short_entry_list'] = [FilterFactorConfig.init(i) for i in config.get('short_entry_list', ein)]
+        eout = config.get('exit_list', [])
+        if 'long_exit_list' in config or 'short_exit_list' in config:
+            eout = []
+        config['long_exit_list'] = [FilterFactorConfig.init(i) for i in config.get('long_exit_list', eout)]
+        config['short_exit_list'] = [FilterFactorConfig.init(i) for i in config.get('short_exit_list', eout)]
 
         # 多空分离因子字段
         if config['long_factor_list'] != config['short_factor_list']:
@@ -649,7 +897,7 @@ class StrategyConfig:
 
         return pd.DataFrame(new_cols, index=df.index)
 
-    def before_filter(self, df, **kwargs) -> (pd.DataFrame, pd.DataFrame):
+    def before_filter(self, df, **kwargs) -> Tuple[pd.DataFrame, pd.DataFrame]:
         raise NotImplementedError
 
     def filter_before_select(self, df):
@@ -721,6 +969,81 @@ class StrategyConfig:
         short_condition = (pl.col('方向') == -1) & short_filter_expr
 
         return lf.filter(long_condition | short_condition)
+
+    def run_entry_exit_selection_polars_lazy(self, long_lf: pl.LazyFrame,
+                                             short_lf: pl.LazyFrame) -> pl.LazyFrame:
+        """进出场选币模式（长短双边）。long_lf/short_lf 已是 mix scope 过滤后的截面（同老逻辑宇宙）。
+
+        复现老 `VolumeMaxBias_进出场阈值分离`：逐截面 出场→留存→从非持仓按 fill_lag 期前 min-rank 补位到目标持仓数；
+        无入场门时从全部非持仓补位。与标准 select_long_and_short_coin 同语义：按 long/short_cap_weight 分别跑两侧
+        并 concat，输出 方向(±1)/target_alloc_ratio(每侧 1/N)，交由 select_coins_by_strategy 继续做后置过滤与多空权重调整。
+        目标持仓数复用 long/short_select_coin_num；现货去重已由上游 market scope 过滤完成，本方法不处理。
+        """
+        parts = []
+        long_part = None
+        if self.long_cap_weight > 0:
+            long_part = _run_entry_exit_one_side(
+                long_lf, self.long_factor_list, self.long_entry_list, self.long_exit_list,
+                _entry_exit_target_expr(self.long_select_coin_num), self.fill_lag,
+                self.exit_cooldown, self.max_hold_hours, descending=False, direction=1,
+                **self._ee_cont_kwargs('long', self.fill_lag, self.exit_cooldown, self.max_hold_hours,
+                                       self.long_select_coin_num, self.long_factor_list,
+                                       self.long_entry_list, self.long_exit_list,
+                                       self.long_filter_list, self.long_filter_list_post))
+            parts.append(long_part)
+
+        if self.short_cap_weight > 0:
+            short_input, short_target = self._entry_exit_short_target(short_lf, long_part)
+            short_lag = self.short_fill_lag if self.short_fill_lag is not None else self.fill_lag
+            short_exit_cd = self.short_exit_cooldown if self.short_exit_cooldown is not None else self.exit_cooldown
+            short_max_hold = self.short_max_hold_hours if self.short_max_hold_hours is not None else self.max_hold_hours
+            parts.append(_run_entry_exit_one_side(
+                short_input, self.short_factor_list, self.short_entry_list, self.short_exit_list,
+                short_target, short_lag, short_exit_cd, short_max_hold, descending=True, direction=-1,
+                **self._ee_cont_kwargs('short', short_lag, short_exit_cd, short_max_hold,
+                                       self.short_select_coin_num, self.short_factor_list,
+                                       self.short_entry_list, self.short_exit_list,
+                                       self.short_filter_list, self.short_filter_list_post)))
+
+        if not parts:
+            raise ValueError('entry_exit: long_cap_weight 与 short_cap_weight 不能同时为 0')
+        return pl.concat(parts, how='diagonal')
+
+    def _ee_cont_kwargs(self, side, fill_lag, exit_cooldown, max_hold_hours, select_coin_num,
+                        factor_list, entry_list, exit_list, filter_list, filter_list_post) -> dict:
+        """实盘续算要透传给 _run_entry_exit_one_side 的参数（状态文件路径/参数指纹/meta/兜底N/30天cap）。
+        ee_state_dir 为 None（回测/异常）时返回空 dict，_run_entry_exit_one_side 即走冷路径（从空仓全量算、不存盘），
+        此时本侧调用与 dev2 回测逐字节一致。
+
+        cap_cs：续算缓存最多保留 30 天(EE_RETENTION_CAP_DAYS)的截面数；n_floor：兜底下限 N=max(fill_lag,ceil(hp小时))+24
+        （正常恒满足，<N 即数据异常，ee_continuation 内 raise）。缓存自包含，与 lookback_days/df 窗口无关。"""
+        if self.ee_state_dir is None:
+            return {}
+        hp_hours = max(1, int(np.ceil(pd.to_timedelta(self.hold_period.lower()).total_seconds() / 3600)))
+        fullname = self.get_fullname(as_folder_name=True)
+        return dict(
+            state_path=ee_continuation.ee_state_path(self.ee_state_dir, fullname, side),
+            cfg_fp=ee_continuation.ee_cfg_fingerprint(side, fill_lag, exit_cooldown, max_hold_hours,
+                                                      select_coin_num, factor_list, entry_list, exit_list),
+            meta=ee_continuation.ee_build_meta(self.name, fullname, side, factor_list, entry_list, exit_list,
+                                               filter_list, filter_list_post, fill_lag, exit_cooldown,
+                                               max_hold_hours, select_coin_num, self.hold_period),
+            n_floor=max(int(fill_lag or 0), hp_hours) + 24,
+            cap_cs=int(np.ceil(ee_continuation.EE_RETENTION_CAP_DAYS * 24 / hp_hours)),
+        )
+
+    def _entry_exit_short_target(self, short_lf: pl.LazyFrame, long_part):
+        """解析短边目标持仓数，返回 (short_input_lf, target_expr)。
+        short_select_coin_num=='long_nums' 时短边逐期目标=当期多头数量（来自已算出的 long_part，join 进 short_lf）；
+        否则按 int/float 解析。'long_nums' 仅在 long_cap_weight>0 时到达此处（init 已处理 long_cap_weight==0 的替换）。"""
+        if self.short_select_coin_num == 'long_nums':
+            if long_part is None:
+                raise ValueError("short_select_coin_num='long_nums' 需要 long_cap_weight>0")
+            long_counts = long_part.group_by('candle_begin_time').agg(pl.len().alias('_ee_long_count'))
+            short_lf = short_lf.join(long_counts, on='candle_begin_time', how='left').with_columns(
+                pl.col('_ee_long_count').fill_null(0))
+            return short_lf, pl.col('_ee_long_count')
+        return short_lf, _entry_exit_target_expr(self.short_select_coin_num)
 
     # noinspection PyMethodMayBeStatic,PyUnusedLocal
     def after_merge_index(self, candle_df, symbol, factor_dict, data_dict) -> Tuple[pd.DataFrame, dict, dict]:
