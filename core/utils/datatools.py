@@ -267,7 +267,17 @@ def read_and_merge_bmac_data(conf: BacktestConfig, symbol_type: str, df: pd.Data
         missing = [p for p in params if f'{name}_{p}' not in df.columns]
         if missing:
             df = df.assign(**calc_factor_vals(df, name, missing))
-    df = df[-conf.get_kline_num():]  # 根据config配置，控制内存中币种的数据，可以节约内存，加快计算速度
+    required_start = getattr(conf, 'required_history_start', None)
+    if isinstance(required_start, (str, pd.Timestamp)):
+        # Stateful research children need the fixed initialization interval.
+        # Preserve all retained PKL history; an Arrow tail cannot initialize it.
+        origin = pd.Timestamp(required_start)
+        listed = df['first_candle_time'].min()
+        earliest_required = max(origin, listed)
+        if df['candle_begin_time'].min() > earliest_required:
+            raise ValueError(f'{symbol}: retained history does not cover {earliest_required}')
+    else:
+        df = df[-conf.get_kline_num():]  # Existing accounts retain their window.
 
     df['symbol_swap'].fillna(value='', inplace=True)
     df['symbol_spot'].fillna(value='', inplace=True)
@@ -293,7 +303,9 @@ def load_bmac_data(symbol_type, run_time, conf: BacktestConfig):
 
     # 快路径：Arrow 快照（文件名内嵌 ts，天然校验 run_time）
     t_fetch = time.time()
-    arrow_dict = read_arrow_market_dict_for_run_time(bmac_data_path, symbol_type, run_time)
+    required_start = getattr(conf, 'required_history_start', None)
+    fixed_history = isinstance(required_start, (str, pd.Timestamp))
+    arrow_dict = None if fixed_history else read_arrow_market_dict_for_run_time(bmac_data_path, symbol_type, run_time)
     required_columns = {f'{name}_{p}' for name, params in _full_history_factors(conf).items() for p in params}
     if arrow_dict is not None and required_columns and any(
             frame is not None and not frame.empty and not required_columns.issubset(frame.columns)
@@ -347,6 +359,8 @@ def load_bmac_data(symbol_type, run_time, conf: BacktestConfig):
     logger.debug(f'⏱️ {symbol_type} pkl fallback 读取+merge 耗时 {time.time() - t_pkl:.3f}s，'
                  f'有效 {len(results)} symbol')
     logger.debug(f'⏱️ {symbol_type} merge op 拆分：{_format_merge_profile()}')
+    if fixed_history and not results:
+        raise ValueError(f'{symbol_type}: fixed-history strategy requires complete PKL inputs')
     return results
 
 

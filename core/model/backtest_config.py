@@ -97,6 +97,9 @@ class BacktestConfig:
         # 如果不存在快照，表示是全量更新
         self.has_snapshot = False
         self.precompute_factor_configs: dict = conf.get('precompute_factor_configs', {})
+        self.required_history_start = conf.get('required_history_start')
+        if self.required_history_start is not None:
+            pd.Timestamp(self.required_history_start)  # Validate explicit UTC-naive origin.
 
     def __repr__(self):
         return f"""{'+' * 56}
@@ -289,6 +292,7 @@ class BacktestConfig:
             lookback_days=getattr(config, "lookback_days", 0),  # 回看多久的数据
             incremental_lookback_hours=getattr(config, "incremental_lookback_hours", 0),  # 增量计算时回退多少小时
             precompute_factor_configs=getattr(config, 'precompute_factor_configs', {}),
+            required_history_start=getattr(config, 'required_history_start', None),
         )
 
         # ** 策略配置 **

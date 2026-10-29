@@ -17,6 +17,7 @@ import pandas as pd
 from config import runtime_folder
 from core.model.account_config import AccountConfig
 from core.utils.log_kit import logger
+from tools.robust40.budget import execution_budget
 
 warnings.filterwarnings('ignore')
 # pandas相关的显示设置，基础课程都有介绍
@@ -33,7 +34,7 @@ def get_lot_sizes(min_qty_dict, symbols):
     :param symbols:  币种列表
     :return:
     """
-    lot_sizes = 0.1 ** pd.Series(min_qty_dict)
+    lot_sizes = 0.1 ** pd.Series(min_qty_dict, dtype=float)
     lot_sizes = lot_sizes.reindex(symbols)
     return lot_sizes
 
@@ -79,17 +80,11 @@ def calc_target_position(account_config: AccountConfig, is_debug=False):
     pos_calc = account_config.rebalance_mode.create(spot_lot_sizes.to_numpy(), swap_lot_sizes.to_numpy())
 
     # 计算杠杆后权益
-    leverage = account_config.leverage
-    all_equity = (account_config.spot_equity + account_config.swap_equity) / 1.001  # 扣除掉部分手续费
+    all_equity, leverage, equity_leveraged = execution_budget(
+        account_config.spot_equity + account_config.swap_equity, account_config.leverage,
+        account_config.buy_bnb_value, bool(spot_symbols), bool(swap_symbols), target_swap_ratio.sum(),
+        getattr(account_config, 'target_equity_mode', 'live_reserve'))
     logger.info(f'杠杆前权益: {all_equity:.2f} USDT')
-    # 没有合约 或 合约整体处理多头，根据资金配置，预留部分资金
-    if spot_symbols and (not swap_symbols or target_swap_ratio.sum() >= 0):
-        # 购买 bnb 抵扣手续费总资金比例的高于 0.1%，降低 5% 资金
-        if account_config.buy_bnb_value / all_equity > 0.001:
-            leverage = leverage * 0.95
-        else:  # 购买 bnb 抵扣手续费总资金比例的低于 0.1%，降低 3% 资金
-            leverage = leverage * 0.97
-    equity_leveraged = all_equity * leverage
     logger.info(f'杠杆倍数: {leverage:.2f}')
     logger.info(f'杠杆后权益: {equity_leveraged:.2f} USDT')
 
@@ -110,6 +105,13 @@ def calc_target_position(account_config: AccountConfig, is_debug=False):
     # 扩展目标持仓权重 Series index 为全部有效币种，无权重的用 0 填充
     target_spot_ratio = target_spot_ratio.reindex(spot_symbols).fillna(0)
     target_swap_ratio = target_swap_ratio.reindex(swap_symbols).fillna(0)
+
+    if getattr(account_config, 'target_equity_mode', 'live_reserve') == 'research':
+        for prices, held, target in ((spot_price, current_spot_lots, target_spot_ratio),
+                                     (swap_price, current_swap_lots, target_swap_ratio)):
+            active = held.ne(0) | target.ne(0)
+            if (active & (~np.isfinite(prices) | prices.le(0))).any():
+                raise ValueError('Missing active instrument price for research execution')
 
     # 计算现货和合约目标手数
     target_lots_spot, target_lots_swap = pos_calc.calc_lots(equity_leveraged, spot_price.to_numpy(),

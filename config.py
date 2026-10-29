@@ -92,7 +92,8 @@ if trading_account:
 
     allowed_attrs = (
         'account_config', 'strategy_name', 'strategy_config', 'strategy_pool', 'leverage', 'black_list', 'white_list',
-        'rebalance_mode', 'get_kline_num', 'get_kline_num_spot', 'min_kline_num', 'precompute_factor_configs')
+        'rebalance_mode', 'get_kline_num', 'get_kline_num_spot', 'min_kline_num', 'precompute_factor_configs',
+        'simulator_config', 'required_history_start')
     if account_config_path.is_file():
         spec = spec_from_file_location("account_config", account_config_path)
         account_module = module_from_spec(spec)

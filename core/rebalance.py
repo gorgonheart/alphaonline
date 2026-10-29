@@ -12,6 +12,9 @@ Author: 邢不行
 import numba as nb
 import numpy as np
 
+# Explicit optional mode; old modes and child simulators keep their defaults.
+from tools.robust40.rebalance import RebRobust40
+
 # 纯多模式仅使用 97% 的资金
 LONG_ONLY_EQUITY_RATIO = 0.97
 

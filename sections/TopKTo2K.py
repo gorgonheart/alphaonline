@@ -14,7 +14,7 @@ import pandas as pd
 import polars as pl
 
 
-def signal(*args):
+def _historical_pandas_signal(*args):
     df = args[0]
 
     params = args[1]  # params = (n, base_factor, base_window)
@@ -73,6 +73,14 @@ def signal(*args):
     ]
     df.drop(columns=[c for c in tmp if c in df.columns], inplace=True)
 
+    return df
+
+
+def signal(*args):
+    """Both entry points use the research 2.1 exit boundary and market grouping."""
+    df, params, factor_name = args[:3]
+    result = signal_polars(pl.from_pandas(df).lazy(), params, factor_name).collect()
+    df[factor_name] = result.get_column(factor_name).to_numpy()
     return df
 
 

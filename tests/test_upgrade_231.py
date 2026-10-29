@@ -146,6 +146,8 @@ def test_trading_pipeline_routes_time_and_preserves_dry_run(tmp_path, monkeypatc
     account.proceed_spot_order.return_value = ([], pd.DataFrame())
     account.proceed_swap_order.return_value = ([], pd.DataFrame())
     me = Mock()
+    from core.model.strategy_config import PosStrategyConfig
+    me.strategy = PosStrategyConfig('legacy', '1H')
     ratio = pd.DataFrame({'BTCUSDT': [0.5]}, index=pd.to_datetime(['2026-10-14']))
     me.agg_pos_ratio.return_value = (ratio, ratio)
     me.apply_position_limits.return_value = (ratio, ratio)

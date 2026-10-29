@@ -1,5 +1,13 @@
 # alpha / alphaonline 统一开发说明
 
+## 2026-10-29 MODEL_ROBUST40 v1 独立偏移版本
+
+用户明确选择移植 MODEL_ROBUST40、各分钟独立计算和重建基准。新实现位于 `codex/live-offset-parity`，main 仍保留 e6fc3bd 旧基线。详见 [MODEL_ROBUST40 接口、结果与上线条件](MODEL_ROBUST40.md)。20m/40m/55m 已各自重建父权重、季度模型及 S5 delta，并以三目录正式回测入口复用原 14 子策略缓存验证。8,013 根组合曲线最大差 6.55e-11；最近 2,000 根通过实际实盘聚合接口的目标差为 0，末根目标手数完全一致；三偏移 240h 断点续算与全量一致。
+
+新增可选 prepare_live/transform_targets 接口、RebRobust40、research 权益口径、账户 simulator_config 覆盖和 required_history_start 完整 PKL 输入模式。旧账户默认不变，Tail-Only 未实现。S3 固定初始化日期使 5000 根滚动窗口不足，新账户示例明确最低历史；历史/配置/时钟不匹配会停止。状态在账户独立持久目录，保留待执行订单；示例位于 examples，未写入活动 accounts。TopKTo2K pandas 的退出阈值与既有 Polars/研究统一为 2.1；VolumeMaxBias 空截面补零列，增量 merge 保留。
+
+验证：alpha311 全仓 305 passed / 4 skipped（缺真实 30m Arrow）/ 100 warnings，80.53 秒。没有部署、生产写入或下单。尚需生产同源原始行情→14 子策略重算对账、20/40m 供数及真实执行条件验收；不能将同输入目标一致表述为实际成交一致。完整历史读取、约 344MB/偏移状态及日切模型刷新增加资源成本，不采用此前毫秒级收益估计。
+
 ## 2026-10-29 本地基线整理与偏移一致性审查
 
 用户最终指定以本地 **2026-10-22 之前的版本**整理主干。保留 10 月 14 日 2.3.1 升级/因子修正、10 月 16 日 LOCAL 可选接口及 10 月 19 日统计图例；移除 10 月 29 日新增的 Robust4H 三个模块和 tools 包入口。完整草稿保存在 `codex/robust4h-draft-20261029`（5098bb7），不作为主干已实现功能。没有覆盖账户配置、模型或生产数据，也没有部署/重启。
