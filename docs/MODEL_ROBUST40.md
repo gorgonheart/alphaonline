@@ -4,6 +4,8 @@
 
 基线 main=e6fc3bd，开发分支 codex/live-offset-parity，旧草稿 codex/robust4h-draft-20261029=5098bb7。没有部署或生产写入。
 
+2026-10-30 接入更新：本地三个活动 `accounts/{20,40,55}m_robust_4h.py` 已从旧草稿迁移为 MODEL；保留原文件名和凭据，使用各自独立状态路径。自动补 BNB 按用户要求继续开启（11U），其资金影响需纳入实盘账户对账。此后的“示例未写入活动账户”描述属于初次交付状态，活动接入与初始化验证见 DEVELOPMENT.md 的对应记录。服务器未部署。
+
 ## 已实现范围
 
 - 条件 beta、八个专家视图、九个虚拟账户、周度 robust_tail、季度 MODEL、每日评分与 S5 专属减仓。

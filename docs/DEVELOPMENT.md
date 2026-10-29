@@ -1,5 +1,13 @@
 # alpha / alphaonline 统一开发说明
 
+## 2026-10-30 活动 20/40/55m MODEL 账户接入
+
+修复 startup 扫描 accounts 时找不到 HybridRobust4HStrategy：此前三个活动账户仍为旧草稿，只有 examples 已移植。现将 accounts/{20,40,55}m_robust_4h.py 的父策略、14 子策略、预计算声明、子策略 simulator_config、固定历史起点迁移到对应 MODEL 示例，杠杆 1；组合 RebRobust40 放入 account_config 内部，删除模块级 RebRobust4H，子策略保持 RebAlways。每分钟使用自己的 bootstrap 和 data/robust40_state/<账户名>.pkl，不再有 ACCOUNT_NAME 占位符。
+
+按用户最新要求保留自动补 BNB 原设置：if_use_bnb_burn=True、buy_bnb_value=11、if_transfer_bnb=False。订单门槛同步 MODEL 基准为现货 10/合约 5，组合死区 40%、执行 cap 2.45。凭据、通知、拆单、账户类型等其他字段保持原 AST 值；原配置本地备份 research/account_model_migration_before，不把凭据文件纳入提交。补 BNB 会改变实盘可用资金，既有同输入目标一致结论不等于包含补币资金变化的账户曲线一致。
+
+实际 init_system 逐个加载三个账户（网络禁止、init_exchange 替换为空实现）通过，父策略、14 子策略、调仓模式、偏移、bootstrap、BNB 设置均符合预期；日志 research/active_model_init.log。配置/运行时回归 23 passed / 50 skipped / 5 warnings（research/active_model_final.log）；50 项为当前 accounts 中已不存在的五个旧账户相关检查，未将缺失文件视为通过。未启动 startup、未下单、未删除生产缓存。生产完整历史、同源子策略重算与 bootstrap 重叠检查仍需后续验收。
+
 ## 2026-10-30 共享 section 统一修正
 
 用户要求取消 MODEL 专用因子设置，修正直接作用于所有策略。TopKTo2K 的公开 pandas 入口复用原 Polars 计算，统一 2.1 倍退出边界及 symbol/is_spot 分组；旧私有 pandas 实现只保留为历史参照，不由框架调用。VolumeMaxBias_进出场阈值分离官方 在全量初始化补零、空截面生成结果列；增量模式不提前建列，避免历史 merge 生成 _x/_y。删除两个 Robust40 专用 section、MODEL 示例/生成器别名及研究定义别名转换。所有策略继续引用原因子名，core 未增加改动。

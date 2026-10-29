@@ -16,13 +16,16 @@ ACCOUNTS = ['5m-onheart0607.py', '15m-nheart0701.py', '20m_heart0723.py',
 
 
 def public_assignment(path, name):
+    if path.parent.name == 'accounts' and not path.exists():
+        pytest.skip('Local account is not present: '+path.name)
     tree = ast.parse(path.read_text(encoding='utf-8-sig'))
     node = next(n for n in tree.body if isinstance(n, ast.Assign) and
                 isinstance(n.targets[0], ast.Name) and n.targets[0].id == name)
     # Only strategy definitions and explicitly allowed account fields are read.
     if name == 'account_config':
         allowed = {'hour_offset', 'buy_bnb_value', 'leverage', 'rebalance_mode',
-                   'order_spot_money_limit', 'order_swap_money_limit'}
+                   'order_spot_money_limit', 'order_swap_money_limit',
+                   'if_use_bnb_burn', 'if_transfer_bnb'}
         return {k.value: ast.literal_eval(v) for k, v in zip(node.value.keys, node.value.values)
                 if isinstance(k, ast.Constant) and k.value in allowed}
     assert name in {'strategy_config', 'strategy_pool'}
@@ -152,11 +155,25 @@ def test_shared_implementation_unchanged_from_main(path):
     assert ast.dump(ast.parse((ROOT/path).read_text(encoding='utf-8-sig'))) == ast.dump(ast.parse(baseline_source(path)))
 
 
-def test_existing_robust4h_draft_was_already_missing_its_strategy():
-    draft = ROOT/'accounts/20m_robust_4h.py'
-    if not draft.exists():pytest.skip('No local Robust4H draft')
-    name = public_assignment(draft, 'strategy_config')['name']
-    assert name == 'HybridRobust4HStrategy'
-    assert not (ROOT/'positions'/(name+'.py')).exists()
-    original = subprocess.run(['git','cat-file','-e','main:positions/'+name+'.py'],cwd=ROOT,capture_output=True)
-    assert original.returncode != 0
+@pytest.mark.parametrize('minute', [20, 40, 55])
+def test_active_model_accounts_are_migrated(minute):
+    source = ROOT/'accounts'/f'{minute}m_robust_4h.py'
+    if not source.exists():pytest.skip('Local account is not present')
+    strategy = public_assignment(source, 'strategy_config')
+    reference = public_assignment(ROOT/'examples/model_robust40'/f'MODEL_ROBUST40_V1_{minute}m.py', 'strategy_config')
+    runtime = strategy['params']['runtime']
+    assert strategy['name'] == 'ModelRobust40Strategy'
+    assert runtime['minute'] == minute
+    assert Path(runtime['bootstrap_path']).is_file()
+    assert runtime['state_path'] == f'data/robust40_state/{source.stem}.pkl'
+    reference['params']['runtime']['state_path'] = runtime['state_path']
+    assert strategy == reference
+    assert public_assignment(source, 'strategy_pool') == public_assignment(
+        ROOT/'examples/model_robust40'/f'MODEL_ROBUST40_V1_{minute}m.py', 'strategy_pool')
+    account = public_assignment(source, 'account_config')
+    assert account['rebalance_mode'] == dict(mode='RebRobust40', params=dict(min_order_usdt_ratio=.4, execution_cap=2.45))
+    assert account['order_spot_money_limit'] == 10 and account['order_swap_money_limit'] == 5
+    assert account['if_use_bnb_burn'] is True and account['buy_bnb_value'] == 11
+    assert account['if_transfer_bnb'] is False
+    tree = ast.parse(source.read_text(encoding='utf-8-sig'))
+    assert not any(isinstance(n, ast.Assign) and any(isinstance(t, ast.Name) and t.id == 'rebalance_mode' for t in n.targets) for n in tree.body)
