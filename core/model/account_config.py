@@ -20,9 +20,11 @@ import pandas as pd
 from core.binance.base_client import BinanceClient
 from core.binance.portfolio_margin_client import PortfolioMarginClient
 from core.binance.standard_client import StandardClient
+from core.okx.base_client import OkxClient
+from core.okx.portfolio_margin_client import OkxPortfolioMarginClient
 from core.model.account_type import AccountType
 from core.model.rebalance_mode import RebalanceMode
-from core.trade import split_order_twap, split_order_balanced
+from core.trade import split_order_twap, split_order_balanced, mark_gtc_orders
 from core.utils.commons import apply_precision
 from core.utils.dingding import send_wechat_work_msg
 from core.utils.log_kit import logger
@@ -45,6 +47,7 @@ class AccountConfig:
             "if_transfer_bnb": False,  # 是否开启小额资产兑换BNB功能。仅现货模式下生效
             "get_kline_num": 999,  # 获取多少根K线。这里跟策略日频和小时频影响。日线策略，代表999根日线k。小时策略，代表999根小时k
             "max_one_order_amount": 100,  # 最大拆单金额。
+            "maker_ratio": 0,  # 现货/合约的加仓、减仓、调仓使用 GTC 的目标资金比例；建仓、清仓始终 IOC
             "twap_interval": 2,  # 下单间隔
             "hour_offset": '0m',  # 分钟偏移设置，可以自由设置时间，配置必须是kline脚本中interval的倍数。默认：0m，表示不偏移。15m，表示每个小时偏移15m下单。
             "wechat_webhook_url": 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=',  # 企业微信机器人
@@ -57,14 +60,23 @@ class AccountConfig:
             "min_kline_num": 168,  # 最低要求b中有多少小时的k线。这里与回测一致。168：表示168小时
             "black_list": ['BTCUSDT', 'ETHUSDT', 'BTSUSDT'],  # 黑名单。不参与交易的币种
             "white_list": [],  # 白名单。只参与交易的币种
+            "filter_bstocks": True,  # 是否自动拉黑 bStocks（股票代币），默认开启
             "is_pure_long": False,  # 纯多设置(https://bbs.quantclass.cn/thread/36230)
         """
 
         self.name: str = name  # 账户名称，建议用英文，不要带有特殊符号
 
+        # 交易所名称（支持 binance 和 okx，默认 binance）
+        self.exchange_name: str = str(config.get("exchange_name", "binance")).lower()
+
         # 交易所API
         self.api_key: str = config.get("apiKey", "")
         self.secret: str = config.get("secret", "")
+
+        # OKX 特有配置
+        self.password: str = config.get("password", "")  # OKX 的 passphrase
+        self.demo: bool = config.get("demo", False)  # OKX 模拟盘
+        self.use_private_instruments: bool = config.get("use_private_instruments", True)
 
         # ======== 实盘功能配置 ========
         # 是否开启BNB燃烧，抵扣手续费
@@ -83,6 +95,11 @@ class AccountConfig:
         self.max_one_order_amount: int | float = (
                 config.get("max_one_order_amount", 100) * (1 + random.uniform(-0.2, 0.2))
         )
+
+        # 加仓、减仓、调仓中使用 GTC 的目标资金比例
+        self.maker_ratio: float = float(config.get("maker_ratio", 0))
+        if not 0 <= self.maker_ratio <= 1:
+            raise ValueError('maker_ratio 必须在 0 到 1 之间')
 
         # 纯多设置
         self.is_pure_long: bool = config.get("is_pure_long", False)
@@ -137,6 +154,8 @@ class AccountConfig:
         self.black_list: list = config.get("black_list", []) + self.load_delist()
         # 白名单，只参与交易的币种
         self.white_list: list = config.get("white_list", [])
+        # 是否自动拉黑 bStocks（股票代币），默认开启。关闭后不拉取名单，bStocks 过滤整体失效
+        self.filter_bstocks: bool = config.get("filter_bstocks", True)
         # ======== 需要和资金曲线回测部分，共享的变量 ========
 
         # ======== 实盘配置检查项 ========
@@ -161,8 +180,13 @@ class AccountConfig:
             logger.warning('检测到您配置了底仓币种【seed_coins】，系统自动拉黑这些币，避免策略选中影响底仓。')
             self.black_list = list(set(self.black_list + self.seed_coins))
 
+        # OKX 仅支持统一交易账户（现货与合约共享保证金），账户类型自动按统一账户处理
+        if self.exchange_name == 'okx' and self.account_type != AccountType.PORTFOLIO_MARGIN:
+            logger.warning(f'[{self.name}] OKX 仅支持统一交易账户，account_type 配置将按【统一账户】处理')
+            self.account_type = AccountType.PORTFOLIO_MARGIN
+
         # 初始化变量
-        self.bn: Optional[BinanceClient] = BinanceClient()
+        self.bn: Optional[BinanceClient | OkxClient] = OkxClient() if self.exchange_name == 'okx' else BinanceClient()
 
         self.swap_position: Optional[pd.DataFrame] = pd.DataFrame(columns=['symbol', 'symbol_type', '当前持仓量'])
         self.swap_equity: float = 0
@@ -183,10 +207,12 @@ class AccountConfig:
 + 获取行情k线数量: {self.get_kline_num}
 + 产生信号最小K线数量: {self.min_kline_num}
 + 单次下单最大金额(USDT): {self.max_one_order_amount}
++ GTC 目标资金比例: {self.maker_ratio:.2%}
 + 是否纯多: {self.is_pure_long}
 + 拆单间隔(秒): {self.twap_interval}
 + Hour Offset: {self.hour_offset}
 + 拉黑名单: {self.black_list}，只交易名单: {self.white_list}
++ 自动拉黑bStocks: {self.filter_bstocks}
 + 底仓设置: {self.seed_coins}
 + 联合保证金设置: {self.coin_margin}
 + 微信推送URL: {self.wechat_webhook_url}
@@ -211,6 +237,10 @@ class AccountConfig:
             return []
 
     def init_exchange(self, exchange_basic_config):
+        if self.exchange_name == 'okx':
+            self._init_okx_exchange()
+            return
+
         if self.api_key and self.secret:
             exchange_basic_config['apiKey'] = self.api_key
             exchange_basic_config['secret'] = self.secret
@@ -225,6 +255,7 @@ class AccountConfig:
                 coin_margin=self.coin_margin,
                 base_margin=self.base_margin,
                 contract_types=self.contract_types,
+                filter_bstocks=self.filter_bstocks,
             )
             match self.account_type:
                 case AccountType.STANDARD:
@@ -238,6 +269,28 @@ class AccountConfig:
             self.bn = client_type(**config_params)
         else:
             raise Exception("请先配置账号API信息")
+
+    def _init_okx_exchange(self):
+        """初始化 OKX 交易所客户端（统一交易账户）"""
+        if not (self.api_key and self.secret):
+            raise Exception("请先配置账号API信息")
+        if not self.password:
+            raise Exception("OKX 交易所需要配置 password（passphrase）")
+
+        config_params = dict(
+            apiKey=self.api_key,
+            secret=self.secret,
+            password=self.password,
+            demo=self.demo,
+            use_private_instruments=self.use_private_instruments,
+            spot_order_money_limit=self.order_spot_money_limit,
+            swap_order_money_limit=self.order_swap_money_limit,
+            wechat_webhook_url=self.wechat_webhook_url,
+            coin_margin=self.coin_margin,
+            base_margin=self.base_margin,
+            seed_coins=self.seed_coins,
+        )
+        self.bn = OkxPortfolioMarginClient(**config_params)
 
     @property
     def hour_offset_minute(self) -> int:
@@ -299,6 +352,9 @@ class AccountConfig:
                 swap_equity += round(spot_usdt - self.buy_bnb_value * 2 - 1, 1)  # 合约总净值加上掉划走USDT
 
             # ===补充BNB操作(用于抵扣手续费)
+            # 设置手续费燃烧
+            self.bn.set_fee_burn(self.if_use_bnb_burn)
+
             if self.if_use_bnb_burn:  # 判断是否开启BNB燃烧
                 # 购买bnb用于抵扣手续费燃烧
                 all_buy_bnb_value = self.bn.replenish_bnb(self.buy_bnb_value, self.use_spot)
@@ -453,36 +509,50 @@ class AccountConfig:
 
         return transfer_amount
 
-    def proceed_swap_order(self, orders_df: pd.DataFrame):
+    def proceed_swap_order(self, orders_df: pd.DataFrame, run_time):
         """
         处理合约下单
         :param orders_df:    下单数据
+        :param run_time:     本轮运行时间
+        :return: (success_list, final_failures_df) 成功回执 list[dict] + 重试后仍失败的订单 DataFrame
         """
-        # ===拆分订单
+        # ===拆分订单并统一规划本轮路由
         swap_order = orders_df[orders_df['symbol_type'] == 'swap'].copy()
         orders_df_list = split_order_balanced(swap_order, self.max_one_order_amount)
+        orders_df_list = mark_gtc_orders(orders_df_list, self.maker_ratio, run_time, self.name)
 
-        # ===遍历下单
-        for i in range(len(orders_df_list)):
-            # 逐批下单
-            self.bn.place_swap_orders_bulk2(orders_df_list[i])
-            # 下单间隔
+        success_all = []
+        final_failures_all = []
+        # 已标记的完整 batch 共用原 bulk2；其内部只对原始 IOC 执行外层第二轮。
+        for batch in orders_df_list:
+            batch_success, batch_failures = self.bn.place_swap_orders_bulk2(batch)
+            success_all.extend(batch_success or [])
+            final_failures_all.extend(batch_failures or [])
+
+            # 每个原始 batch 仍只等待一次，保持 TWAP 节奏
             logger.info(f'等待 {self.twap_interval}s 后继续下单')
             time.sleep(self.twap_interval)
 
-    def proceed_spot_order(self, orders_df, is_select_empty, is_only_sell=False):
+        final_failures_df = pd.DataFrame(final_failures_all) if final_failures_all else pd.DataFrame()
+        return success_all, final_failures_df
+
+    def proceed_spot_order(
+            self, orders_df, is_select_empty, is_only_sell=False,
+            run_time=None):
         """
         处理现货下单
         :param orders_df:    下单数据
         :param is_select_empty:     是否没有选币结果
         :param is_only_sell:    是否仅仅进行卖单交易
+        :param run_time:        本轮运行时间，用于稳定选择 GTC 订单
+        :return: (success_list, final_failures_df) 成功回执 list[dict] + 重试后仍失败的订单 DataFrame
         """
         # ===现货处理
         spot_order_df = orders_df[orders_df['symbol_type'] == 'spot'].copy()
 
         # 判断是否需要现货下单
         if spot_order_df.empty:  # 如果使用了现货数据实盘，则进行现货下单
-            return
+            return [], pd.DataFrame()
 
         # =拆分订单
         short_order = spot_order_df[spot_order_df['实际下单资金'] <= 0]
@@ -501,13 +571,24 @@ class AccountConfig:
                 # 转资金到现货账户
                 self.bn.transfer_u_from_swap_to_spot(apply_precision(transfer_amount, 1))  # 避免四舍五入的问题
 
+        orders_df_list = mark_gtc_orders(
+            orders_df_list, self.maker_ratio, run_time, self.name
+        )
+
+        success_all = []
+        final_failures_all = []
         # =现货遍历下单
         for i in range(len(orders_df_list)):
             # 逐批下单
-            self.bn.place_spot_orders_bulk2(orders_df_list[i])
+            batch_success, batch_failures = self.bn.place_spot_orders_bulk2(orders_df_list[i])
+            success_all.extend(batch_success or [])
+            final_failures_all.extend(batch_failures or [])
             # 下单间隔
             logger.info(f'等待 {self.twap_interval}s 后继续下单')
             time.sleep(self.twap_interval)
 
         # ===归集资产
         self.bn.collect_asset()
+
+        final_failures_df = pd.DataFrame(final_failures_all) if final_failures_all else pd.DataFrame()
+        return success_all, final_failures_df

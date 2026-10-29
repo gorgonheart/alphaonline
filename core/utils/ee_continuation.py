@@ -325,10 +325,14 @@ def run_continuation(scored: pl.DataFrame, fill_lag, exit_cooldown, max_hold_hou
 
     if state is not None:                                  # 续算：缓存 + 本轮新截面
         cache_inputs = _cast_inputs(pl.from_pandas(state['inputs']), new_inputs)
-        last_cached = pd.Timestamp(cache_inputs['candle_begin_time'].max())
-        fresh = new_inputs.filter(pl.col('candle_begin_time') > last_cached)
-        inputs = (pl.concat([cache_inputs, fresh], how='vertical').sort('candle_begin_time')
-                  if fresh.height else cache_inputs.sort('candle_begin_time'))
+        # 本轮批次(new_inputs = 实盘 df 窗口)对其覆盖区间是权威的：晚闭合K线/上游修数会在此被重算修正。
+        # 旧缓存只保留严格早于本轮批次起点(new_min)的历史(已沉淀、掉出窗口，不可变)；重叠区一律采用 new_inputs，
+        # 不再冻结首次写入时可能未闭合的脏值——否则有状态引擎里脏值会污染 held/hold_hours 向后永久传播、偏离回测。
+        # 与截面因子路径 concat_select_results 的 snapshot 合并(core/select_coin.py, min_select_time 语义)一致。
+        new_min = pd.Timestamp(new_inputs['candle_begin_time'].min())
+        immutable = cache_inputs.filter(pl.col('candle_begin_time') < new_min)
+        inputs = (pl.concat([immutable, new_inputs], how='vertical').sort('candle_begin_time')
+                  if immutable.height else new_inputs.sort('candle_begin_time'))
         seed = {'rows': state['seed_rows'], 'last_time': pd.Timestamp(state['seed_time'])}
         prev_we = pd.Timestamp(state['last_we'])
     else:                                                  # bootstrap：本轮全量 df 从空仓冷算

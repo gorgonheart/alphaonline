@@ -32,15 +32,19 @@ def init_system(env_account: str = None) -> tuple[AccountConfig, MultiEquityBack
 
     mef = init_mef_system(env_account)
 
+    from core.utils.exchange_hub import normalize_symbol_filter_list
+
     base_config = dict(
+        exchange_name=config.exchange_name,
         get_kline_num=config.data_config['get_kline_num'],
         # 以下配置和回测过程同步
         rebalance_mode=getattr(config, 'rebalance_mode', None),  # rebalance类型
         min_kline_num=config.data_config['min_kline_num'],
         leverage=config.leverage,
-        black_list=[item.replace('-', '') for item in config.black_list],  # 拉黑名单
-        white_list=[item.replace('-', '') for item in config.white_list],  # 只交易名单
+        black_list=normalize_symbol_filter_list(config.black_list),  # 拉黑名单
+        white_list=normalize_symbol_filter_list(config.white_list),  # 只交易名单
         is_pure_long=mef.is_pure_long,  # 纯多模式设置
+        use_private_instruments=config.is_simulate == 'none',  # 正式模式使用OKX账户实际可交易列表
     )
     config_dict = {**base_config, **config.account_config}
 

@@ -28,6 +28,7 @@ import math
 import os
 import time
 import traceback
+import uuid
 from datetime import datetime, timedelta
 
 import ccxt
@@ -62,16 +63,18 @@ class BinanceClient:
     market_info = {}  # 缓存市场信息，并且自动更新，全局共享
     common_exchange = ccxt.binance(exchange_basic_config)
 
-    def __init__(self, **config):
-        self.api_key: str = config.get('apiKey', '')
-        self.secret: str = config.get('secret', '')
+    bstocks_coins: set = set()  # bStocks（股票代币）基础币代码集合，类级共享，全局缓存
+    _bstocks_last_update: int = 0  # 上次成功刷新 bStocks 名单的时间戳
 
+    def __init__(self, **config):
         self.order_money_limit: dict = {
             'spot': config.get('spot_order_money_limit', 10),
             'swap': config.get('swap_order_money_limit', 5),
         }
 
         exchange_config = config.get('exchange_config', exchange_basic_config)
+        self.api_key = config.get('api_key', exchange_config.get('apiKey', ''))
+        self.secret = config.get('secret', exchange_config.get('secret', ''))
         self.exchange = ccxt.binance(self.decrypt(exchange_config.copy()))
         self.wechat_webhook_url: str = config.get('wechat_webhook_url', '')
 
@@ -84,6 +87,8 @@ class BinanceClient:
         self.base_coin_amount: dict = {base_coin: 0 for base_coin in self.base_margin.keys()}
 
         self.contract_types: tuple = config.get('contract_types', ('PERPETUAL',))
+
+        self.filter_bstocks: bool = config.get('filter_bstocks', True)  # 是否自动拉黑 bStocks（股票代币），默认开启
 
         self._swap_ticker_price = {}
         self._spot_ticker_price = {}
@@ -125,6 +130,49 @@ class BinanceClient:
         exchange_info = retry_wrapper(self.exchange.public_get_exchangeinfo, func_name='获取BN现货币种规则数据')
         return exchange_info['symbols']
 
+    @staticmethod
+    def _parse_bstocks_coins(coin_config_list) -> set:
+        """
+        从 sapi_get_capital_config_getall 返回的钱包币种配置中解析出 bStocks（股票代币）的基础币代码集合。
+        bStocks 代币的唯一可靠标识：name 字段 strip 后以 '(bStocks)' 结尾
+        """
+        result = set()
+        for item in coin_config_list or []:
+            name = str(item.get('name', '') or '').strip()
+            if name.endswith('(bStocks)'):
+                coin = item.get('coin')
+                if coin:
+                    result.add(coin)
+        return result
+
+    def fetch_bstocks_coins(self, expire_seconds=3600 * 12) -> set:
+        """
+        刷新并返回 bStocks（股票代币）基础币代码集合，全局类级缓存。
+        无 apikey 的 dummy client 不发请求，直接复用现有缓存；缓存未过期也不发请求。
+        刷新失败时保留旧缓存并返回，不抛出、不中断，时间戳不更新（下轮自动重试）。
+        账户配置 filter_bstocks=False 时不拉取名单并返回空集，bStocks 过滤整体关闭
+        """
+        if not self.filter_bstocks:
+            logger.debug('已配置 filter_bstocks=False，跳过 bStocks 名单刷新')
+            return set()
+
+        if not self.api_key:
+            return BinanceClient.bstocks_coins
+
+        if int(time.time()) - BinanceClient._bstocks_last_update < expire_seconds:
+            return BinanceClient.bstocks_coins
+
+        try:
+            coin_config_list = retry_wrapper(self.exchange.sapi_get_capital_config_getall, func_name='获取BN钱包币种配置')
+            BinanceClient.bstocks_coins = self._parse_bstocks_coins(coin_config_list)
+            BinanceClient._bstocks_last_update = int(time.time())
+            logger.debug(f'🔢 更新bStocks名单，共 {len(BinanceClient.bstocks_coins)} 个: {BinanceClient.bstocks_coins}')
+        except Exception as e:
+            logger.warning(f'bStocks 名单刷新失败，沿用旧缓存: {e}')
+            send_wechat_work_msg(f'bStocks 名单刷新失败，沿用旧缓存: {e}', error_webhook_url)
+
+        return BinanceClient.bstocks_coins
+
     # region 市场信息数据获取
     def fetch_market_info(self, symbol_type='swap', quote_symbol='USDT'):
         """
@@ -144,6 +192,7 @@ class BinanceClient:
             exchange_info_list = self._fetch_swap_exchange_info_list()
         else:  # 现货
             exchange_info_list = self._fetch_spot_exchange_info_list()
+            self.fetch_bstocks_coins()
 
         # ===获取币种列表
         symbol_list = []  # 如果是合约，只包含永续合约。如果是现货，包含所有数据
@@ -172,7 +221,7 @@ class BinanceClient:
 
             full_symbol_list.append(symbol)  # 添加到全量信息中
 
-            if (symbol_type == 'swap' and info['contractType'] not in self.contract_types) or info['baseAsset'] in stable_symbol:
+            if (symbol_type == 'swap' and info['contractType'] not in self.contract_types) or info['baseAsset'] in stable_symbol or info['baseAsset'] in BinanceClient.bstocks_coins:
                 pass  # 获取合约的时候，非永续的symbol会被排除
             else:
                 symbol_list.append(symbol)
@@ -534,6 +583,9 @@ class BinanceClient:
     def get_unimmr(self):
         raise NotImplementedError
 
+    def set_fee_burn(self, is_burn: bool = True):
+        raise NotImplementedError
+
     # ====================================================================================================
     # ** 交易函数 **
     # ====================================================================================================
@@ -678,13 +730,13 @@ class BinanceClient:
 
     def prepare_order_params_and_place_order(
             self, orders_df: pd.DataFrame, symbol_type: str,
-            slip_rate: float = 0.015, **kwargs) -> list:
+            slip_rate: float = 0.015, **kwargs):
         """
         根据策略产生的订单数据，构建每个币种的下单参数
         :param orders_df: 策略产生的订单信息
         :param symbol_type: 下单类型。spot/swap
         :param slip_rate: 滑点
-        :return: order_params_list 每个币种的下单参数
+        :return: (success_list, error_list)：成功（含部分成交）回执列表 + 失败/未成交订单行列表
         """
         orders_df.set_index('symbol', inplace=True)  # 重新设置index
 
@@ -695,6 +747,7 @@ class BinanceClient:
         min_notional = market_info['min_notional']
 
         order_error_list = []
+        order_success_list = []
         # 遍历symbol_order，构建每个币种的下单参数
         for symbol, row in orders_df.iterrows():
             # ===若当前币种没有最小下单精度、或最小价格精度，报错
@@ -703,22 +756,29 @@ class BinanceClient:
                 logger.error(f'当前币种{symbol}没有最小下单精度、或最小价格精度，币种信息异常')
                 continue
 
+            time_in_force = str(row.get('timeInForce', 'IOC')).upper()
+
             # ===计算下单量、方向、价格
             amount = row['拆单金额']
             # 计算下单方向、价格，并增加一定的滑点
             if amount > 0:
                 side = 'BUY'
-                price = symbol_ticker_price[symbol] * (1 + slip_rate)
+                book_price_key = 'bidPrice'
+                price_multiplier = 1 + slip_rate
             elif amount < 0:
                 side = 'SELL'
-                price = symbol_ticker_price[symbol] * (1 - slip_rate)
+                book_price_key = 'askPrice'
+                price_multiplier = 1 - slip_rate
             else:
                 logger.warning('下单金额为0，不进行下单')
                 continue
-            # 通过最小价格精度对下单价格进行四舍五入
+
+            if time_in_force == 'GTC':
+                price = float(self.fetch_book_ticker(symbol, symbol_type)[book_price_key])
+            else:
+                price = symbol_ticker_price[symbol] * price_multiplier
             price = round(price, price_precision[symbol])
 
-            # quantity = amount / price
             quantity = row['实际下单量']
             # 按照最小下单量对合约进行四舍五入，对现货就低不就高处理
             # 注意点：合约有reduceOnly参数可以超过你持有的持仓量，现货不行，只能卖的时候留一点点残渣
@@ -731,7 +791,7 @@ class BinanceClient:
                 continue
 
             # ===判断是否是清仓/减仓交易（仅缩减或平掉已有同向仓位，可使用 reduceOnly）
-            reduce_only = True if row['交易模式'] in ('清仓', '减仓') else False
+            reduce_only = row['交易模式'] in ('清仓', '减仓')
 
             # ===判断交易金额是否小于最小下单金额（一般是5元），小于的跳过
             if (quantity * price < min_notional.get(symbol, self.order_money_limit[symbol_type]) or
@@ -744,32 +804,49 @@ class BinanceClient:
             # ===构建下单参数
             price = f'{price:.{price_precision[symbol]}f}'  # 根据精度将价格转成str
             quantity = np.format_float_positional(quantity).rstrip('.')  # 解决科学计数法的问题
+            client_order_id = self.generate_client_order_id(time_in_force)
             order_params = {
                 'symbol': symbol,
                 'side': side,
                 'type': 'LIMIT',
                 'price': price,
                 'quantity': quantity,
-                'newClientOrderId': str(int(time.time())),
-                'timeInForce': 'IOC',
-                'reduceOnly': str(bool(reduce_only)),
-                'selfTradePreventionMode': 'EXPIRE_MAKER',  # BN 2024/12/10 限制，传 NONE 订单会被拒绝，这里使用默认值
+                'newClientOrderId': client_order_id,
+                'timeInForce': time_in_force,
+                'reduceOnly': str(bool(reduce_only)).lower(),
+                'selfTradePreventionMode': 'EXPIRE_MAKER',  # BN 2024/12/10 限制，传 NONE 订单会被拒绝
                 'newOrderRespType': 'FULL' if symbol_type == 'spot' else 'RESULT',
                 'timestamp': ''
             }
             # 直接下单
             if symbol_type == 'spot':
                 del order_params['reduceOnly']
-                order_error = self.place_spot_order(**order_params, **kwargs)
+                order_res = self.place_spot_order(**order_params, **kwargs)
             else:
-                order_error = self.place_swap_order(**order_params, **kwargs)
-            # 返回值为空，下单报错，存在未成交部分，都记录到失败订单中
-            if self._should_record_order_error(order_error):
-                if order_error and self._has_partial_fill(order_error):
-                    row['实际下单量'] = float(order_error['origQty']) - float(order_error['executedQty'])
+                order_res = self.place_swap_order(**order_params, **kwargs)
+
+            accepted_gtc = (
+                time_in_force == 'GTC'
+                and isinstance(order_res, dict)
+                and order_res.get('timeInForce') == 'GTC'
+                and bool(order_res.get('orderId'))
+                and str(order_res.get('status', '')).upper() != 'REJECTED'
+                and 'code' not in order_res
+                and 'msg' not in order_res
+            )
+            # GTC 已挂出即结束；仅最终降级为 IOC 后的未成交部分需要返回失败。
+            if not accepted_gtc and self._should_record_order_error(order_res):
+                if order_res and self._has_partial_fill(order_res):
+                    row['实际下单量'] = float(order_res['origQty']) - float(order_res['executedQty'])
                 order_error_list.append(row)
 
-        return order_error_list
+            if accepted_gtc or (
+                    order_res and isinstance(order_res, dict)
+                    and order_res.get('status') in ('FILLED', 'PARTIALLY_FILLED')):
+                order_res.setdefault('symbol_type', symbol_type)
+                order_success_list.append(order_res)
+
+        return order_success_list, order_error_list
 
     @staticmethod
     def _has_partial_fill(order_error):
@@ -826,26 +903,137 @@ class BinanceClient:
         return result_list
 
     def place_spot_orders_bulk2(self, orders_df, slip_rate=0.015):
+        """现货批量下单；原始 GTC 已含内部降级，不再执行外层第二轮。"""
         self.get_spot_ticker_price_series()
-        error_orders = self.prepare_order_params_and_place_order(orders_df, 'spot', slip_rate)
+        success_list, error_orders = self.prepare_order_params_and_place_order(
+            orders_df, 'spot', slip_rate
+        )
 
-        # 一批次下单结束，再重试一次
-        if error_orders:
-            error_orders = pd.DataFrame(error_orders)
-            error_orders.index.name = 'symbol'
-            error_orders = error_orders.reset_index()
-            self.prepare_order_params_and_place_order(error_orders, 'spot', slip_rate)
+        gtc_failures = [
+            order for order in error_orders
+            if str(order.get('timeInForce', 'IOC')).upper() == 'GTC'
+        ]
+        ioc_errors = [
+            order for order in error_orders
+            if str(order.get('timeInForce', 'IOC')).upper() != 'GTC'
+        ]
+        final_failures = list(gtc_failures)
+
+        # 原始 IOC 保持原有的一批次结束后再重试一次。
+        if ioc_errors:
+            retry_orders = pd.DataFrame(ioc_errors)
+            retry_orders.index.name = 'symbol'
+            retry_orders = retry_orders.reset_index()
+            retry_success, retry_failures = self.prepare_order_params_and_place_order(
+                retry_orders, 'spot', slip_rate
+            )
+            success_list.extend(retry_success)
+            final_failures.extend(retry_failures)
+
+        return success_list, final_failures
 
     def place_swap_orders_bulk2(self, orders_df, slip_rate=0.015):
+        """合约批量下单；原始 GTC 已含内部降级，不再执行外层第二轮。"""
         self.get_swap_ticker_price_series()
-        error_orders = self.prepare_order_params_and_place_order(orders_df, 'swap', slip_rate)
+        success_list, error_orders = self.prepare_order_params_and_place_order(
+            orders_df, 'swap', slip_rate
+        )
 
-        # 一批次下单结束，再重试一次
-        if error_orders:
-            error_orders = pd.DataFrame(error_orders)
-            error_orders.index.name = 'symbol'
-            error_orders = error_orders.reset_index()
-            self.prepare_order_params_and_place_order(error_orders, 'swap', slip_rate)
+        gtc_failures = [
+            order for order in error_orders
+            if str(order.get('timeInForce', 'IOC')).upper() == 'GTC'
+        ]
+        ioc_errors = [
+            order for order in error_orders
+            if str(order.get('timeInForce', 'IOC')).upper() != 'GTC'
+        ]
+        final_failures = list(gtc_failures)
+
+        # 原始 IOC 保持原有的一批次结束后再重试一次。
+        if ioc_errors:
+            retry_orders = pd.DataFrame(ioc_errors)
+            retry_orders.index.name = 'symbol'
+            retry_orders = retry_orders.reset_index()
+            retry_success, retry_failures = self.prepare_order_params_and_place_order(
+                retry_orders, 'swap', slip_rate
+            )
+            success_list.extend(retry_success)
+            final_failures.extend(retry_failures)
+
+        return success_list, final_failures
+
+    @staticmethod
+    def generate_client_order_id(time_in_force) -> str:
+        time_in_force = str(time_in_force).upper()
+        if time_in_force not in {'GTC', 'IOC'}:
+            raise ValueError(f'不支持的 timeInForce: {time_in_force}')
+        return f'{time_in_force}-run-{uuid.uuid4().hex[:20]}'
+
+    @staticmethod
+    def _is_matching_order_response(
+            order_res, expected_symbol, expected_client_order_id):
+        if not isinstance(order_res, dict) or 'code' in order_res or 'msg' in order_res:
+            return False
+        order_id = order_res.get('orderId')
+        return (
+            bool(order_id)
+            and str(order_id).strip() != '0'
+            and order_res.get('symbol', expected_symbol) == expected_symbol
+            and order_res.get('clientOrderId', expected_client_order_id) == expected_client_order_id
+            and str(order_res.get('status', '')).upper() != 'REJECTED'
+        )
+
+    @staticmethod
+    def _is_explicit_order_rejection(order_res) -> bool:
+        return isinstance(order_res, dict) and (
+            'code' in order_res
+            or 'msg' in order_res
+            or str(order_res.get('status', '')).upper() == 'REJECTED'
+        )
+
+    @staticmethod
+    def _is_deterministic_order_error(error) -> bool:
+        """CCXT 交易所业务错误表示请求已被明确拒绝；网络及未知错误仍可能已创建。"""
+        return isinstance(error, ccxt.ExchangeError) and not isinstance(error, ccxt.NetworkError)
+
+    @staticmethod
+    def _is_order_not_found(value) -> bool:
+        if isinstance(value, dict):
+            return str(value.get('code', '')) == '-2013'
+        return '-2013' in str(value)
+
+    def _adjusted_timestamp_ms(self) -> int:
+        return int(time.time() * 1000) - getattr(self, 'diff_timestamp', 0)
+
+    def _query_order_by_client_id_raw(
+            self, symbol, client_order_id, symbol_type):
+        query_func = (
+            self.exchange.private_get_order
+            if symbol_type == 'spot'
+            else self.exchange.fapiprivate_get_order
+        )
+        return query_func({
+            'symbol': symbol,
+            'origClientOrderId': client_order_id,
+            'timestamp': self._adjusted_timestamp_ms(),
+        })
+
+    def _query_ambiguous_order_once(self, params, symbol_type):
+        try:
+            order_res = self._query_order_by_client_id_raw(
+                params['symbol'], params['newClientOrderId'], symbol_type
+            )
+        except Exception as error:
+            if self._is_order_not_found(error):
+                return None
+            raise
+
+        if self._is_order_not_found(order_res) or self._is_explicit_order_rejection(order_res):
+            return None
+        if not self._is_matching_order_response(
+                order_res, params['symbol'], params['newClientOrderId']):
+            raise RuntimeError(f"{params['symbol']} 下单查询回执身份不匹配")
+        return order_res
 
     def place_spot_order(self, symbol, side, quantity, price=None, **kwargs) -> dict:
         divider(f'`{symbol}`现货下单 {side} {quantity}', '.')
@@ -890,12 +1078,13 @@ class BinanceClient:
     def place_swap_order(self, symbol, side, quantity, price=None, reduce_only=False, **kwargs) -> dict:
         divider(f'`{symbol}`U本位合约下单 {side} {quantity}', '.')
 
-        # 确定下单参数
+        reduce_only = kwargs.pop('reduceOnly', reduce_only)
         params = {
             'symbol': symbol,
             'side': side,
             'type': 'MARKET',
             'quantity': str(quantity),
+            'reduceOnly': str(reduce_only).lower(),
             **kwargs
         }
 
@@ -908,12 +1097,11 @@ class BinanceClient:
 
         try:
             logger.info(f'U本位合约下单参数：{params}')
-            # 下单
             order_res = self.retry_wrapper_for_order(
                 self.exchange.fapiprivate_post_order,
                 params=params,
                 func_name='U本位合约下单',
-                symbol_type='swap'
+                symbol_type='swap',
             )
             logger.ok(f'U本位合约下单完成，U本位合约下单信息结果：{order_res}')
         except Exception as e:
@@ -1167,70 +1355,128 @@ class BinanceClient:
         symbol = params['symbol']
         order_amount = float(params['quantity']) * float(params['price'])
 
-        symbol_ticker_price = self.get_swap_ticker_price_series() if symbol_type == 'swap' else self.get_spot_ticker_price_series()
-        if params['side'] == 'BUY':
-            price = symbol_ticker_price[symbol] * (1 + slip_rate * attempt)
+        if params['timeInForce'] == 'GTC':
+            book_ticker = self.fetch_book_ticker(symbol, symbol_type)
+            price_key = 'bidPrice' if params['side'] == 'BUY' else 'askPrice'
+            price = float(book_ticker[price_key])
         else:
-            price = symbol_ticker_price[symbol] * (1 - slip_rate * attempt)
+            symbol_ticker_price = (
+                self.get_swap_ticker_price_series()
+                if symbol_type == 'swap'
+                else self.get_spot_ticker_price_series()
+            )
+            if params['side'] == 'BUY':
+                price = symbol_ticker_price[symbol] * (1 + slip_rate * attempt)
+            else:
+                price = symbol_ticker_price[symbol] * (1 - slip_rate * attempt)
         price = round(price, price_precision[symbol])
 
         quantity = order_amount / price
         quantity = (
-            round(quantity, min_qty[params['symbol']])
-            if symbol_type == 'swap' else apply_precision(quantity, min_qty[params['symbol']])
+            round(quantity, min_qty[symbol])
+            if symbol_type == 'swap' else apply_precision(quantity, min_qty[symbol])
         )
 
-        params['quantity'] = np.format_float_positional(quantity).rstrip('.')  # 解决科学计数法的问题
-        params['price'] = f'{price:.{price_precision[symbol]}f}'  # 根据精度将价格转成str
+        params['quantity'] = np.format_float_positional(quantity).rstrip('.')
+        params['price'] = f'{price:.{price_precision[symbol]}f}'
 
-        # ===判断是否是清仓交易
-        reduce_only = params.get('reduce_only', False)
-
-        # ===判断交易金额是否小于最小下单金额（一般是5元），小于的跳过
+        reduce_only = str(params.get('reduceOnly', 'false')).lower() == 'true'
         if quantity * price < min_notional.get(symbol, self.order_money_limit[symbol_type]):
-            if not reduce_only or symbol_type == 'spot':  # 清仓状态不跳过
+            if not reduce_only or symbol_type == 'spot':
                 logger.warning(f'{symbol}交易金额是小于最小下单金额（一般合约是5元，现货是10元），跳过该笔交易')
                 logger.info(f'下单量：{quantity},价格：{price}')
                 return None
         return params
 
-    def retry_wrapper_for_order(self, func, params=None, func_name='', retry_times=5, symbol_type='swap', slip_rate=0.015):
+    def retry_wrapper_for_order(
+            self, func, params=None, func_name='', retry_times=5,
+            symbol_type='swap', slip_rate=0.015):
         """
-        需要在出错时不断重试的函数，例如和交易所交互，可以使用本函数调用。
-        :param func:            需要重试的函数名
-        :param params:          参数
-        :param func_name:       方法名称
-        :param retry_times:     重试次数
-        :param symbol_type:     币种类型
-        :param slip_rate:       滑点
-        :return:
+        下单失败时调整参数并重试；原始 GTC 的最后一次尝试降级为 IOC。
         """
         if params is None:
             params = {}
+        initial_time_in_force = params.get('timeInForce', 'IOC')
+        initial_gtc = initial_time_in_force == 'GTC'
+
         for attempt in range(retry_times):
             try:
                 params['timestamp'] = int(time.time() * 1000) - self.diff_timestamp
-                # 首次不刷新 ticker
                 if attempt >= 1:
+                    if initial_gtc:
+                        is_last_attempt = attempt == retry_times - 1
+                        params['timeInForce'] = 'IOC' if is_last_attempt else 'GTC'
+                        params['newClientOrderId'] = self.generate_client_order_id(
+                            params['timeInForce']
+                        )
                     logger.warning(f"调参前：币种:{params['symbol']},下单量:{params['quantity']}，价格:{params['price']}")
                     new_params = self.retry_order_param(params, symbol_type, slip_rate, attempt)
                     if new_params is None:
                         params['executedQty'] = params['origQty'] = params['quantity']
-                        logger.info(f"构建一个成交的返回，不让这个跳过订单再次重试")
+                        logger.info('构建一个成交的返回，不让这个跳过订单再次重试')
                         return params
                     params = new_params
                     logger.warning(f"调参后：币种:{params['symbol']},下单量:{params['quantity']}，价格:{params['price']}")
 
                 result = func(params=params)
-                if params['timeInForce'] == 'IOC':
-                    # 判断返回数据，如果没有完全成交/未成交，更新一下 params 继续重试
-                    if result['executedQty'] != result['origQty']:
-                        # 总下单量 - 已成交量
-                        params['quantity'] = float(result['origQty']) - float(result['executedQty'])
-                        logger.warning(f"下单量:{result['origQty']}, 成交量:{result['executedQty']}，未完全成交，更新下单量，准备重试。")
+                current_time_in_force = params['timeInForce']
+
+                if initial_gtc and not self._is_matching_order_response(
+                        result, params['symbol'], params['newClientOrderId']):
+                    if self._is_explicit_order_rejection(result):
                         continue
+                    try:
+                        result = self._query_ambiguous_order_once(
+                            params, symbol_type
+                        )
+                    except Exception as query_error:
+                        logger.warning(
+                            f"{params['symbol']} 下单结果仍不明确，停止重复 POST: {query_error}"
+                        )
+                        return {}
+                    if result is None:
+                        continue
+
+                if initial_gtc:
+                    result.setdefault('timeInForce', current_time_in_force)
+                    result.setdefault('symbol_type', symbol_type)
+                    if current_time_in_force == 'GTC':
+                        return result
+
+                if current_time_in_force == 'IOC':
+                    # IOC 未完全成交时仅重试剩余量；最后一次必须保留真实回执。
+                    if result['executedQty'] != result['origQty']:
+                        if attempt == retry_times - 1:
+                            result.setdefault('timeInForce', 'IOC')
+                            result.setdefault('symbol_type', symbol_type)
+                            return result
+                        params['quantity'] = float(result['origQty']) - float(result['executedQty'])
+                        params['newClientOrderId'] = self.generate_client_order_id('IOC')
+                        logger.warning(
+                            f"下单量:{result['origQty']}, 成交量:{result['executedQty']}，"
+                            f"未完全成交，更新下单量，准备重试。"
+                        )
+                        continue
+                result.setdefault('timeInForce', current_time_in_force)
+                result.setdefault('symbol_type', symbol_type)
                 return result
             except Exception as e:
+                if initial_gtc and not self._is_deterministic_order_error(e):
+                    try:
+                        queried_order = self._query_ambiguous_order_once(
+                            params, symbol_type
+                        )
+                    except Exception as query_error:
+                        logger.warning(
+                            f"{params['symbol']} 下单结果仍不明确，停止重复 POST: {query_error}"
+                        )
+                        return {}
+                    if queried_order is not None:
+                        queried_order.setdefault('timeInForce', params['timeInForce'])
+                        queried_order.setdefault('symbol_type', symbol_type)
+                        return queried_order
+                    # 查询明确不存在或已拒绝，继续沿用原错误处理并允许下一次 POST。
+
                 logger.error(f'{func_name} 报错')
                 logger.error(e)
                 logger.debug(params)
@@ -1250,6 +1496,10 @@ class BinanceClient:
                 elif '-4118' in msg:
                     logger.warning(f'{func_name} 统一账户 ReduceOnly订单被拒绝, 合约仓位已经平完')
                     # raise ValueError(func_name, '统一账户 ReduceOnly订单被拒绝, 合约仓位已经平完')
+                    break
+                elif '-4518' in msg:
+                    # Symbol is under position risk control, buy order can only works with reduce-only.
+                    logger.warning(f'{func_name} 币种被BN风控，只允许下减仓单，跳过加仓单和建仓单')
                     break
                 elif '-4400' in msg:
                     # Futures Trading Quantitative Rules violated, only reduceOnly order is allowed, please try again later.
@@ -1277,6 +1527,18 @@ class BinanceClient:
                 elif '-4028' in msg and 'valid' in msg:
                     logger.error(f'{func_name} 无效的杠杆')
                     break
+                elif '-1123' in msg:
+                    # binance {"code":-1123,"msg":"Symbol is in halt status, Can't trade on it."}
+                    logger.error(f'{func_name} 币种无法操作，直接跳过')
+                    break
+                elif '-5044' in msg:
+                    # binance {"code":-5044,"msg":"Trading is halted. The operation is not allowed."}
+                    logger.error(f'{func_name} 币种无法操作，直接跳过')
+                    break
+                elif '-1015' in msg and 'current limit is 300 orders per TEN_SECONDS' in msg:
+                    # binance 429 Too Many Requests {"code":-1015,"msg":"Too many new orders; current limit is 300 orders per TEN_SECONDS."}
+                    logger.warning(f'10s 下单超过300个订单，休息 1s 后再次尝试')
+                    time.sleep(1)
                 else:
                     logger.error(f'{e}，报错内容如下')
                     divider(f'ERR:{func_name}', sep='-')

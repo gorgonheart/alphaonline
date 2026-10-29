@@ -494,6 +494,16 @@ def calculate_and_send_pnl_report(account_config: AccountConfig, spot_position, 
         except BaseException:
             print('[盈亏报告] 获取策略映射失败:')
             print(traceback.format_exc())
+        # 兜底：用最近 24h 历史选币存档回填「当前持仓周期已轮出/平仓」的币种归属，
+        # 避免 hold_period=1h 每小时换币时，24h 盈亏里的旧币因不在当前周期选币中而显示空
+        try:
+            spot_bf, swap_bf = build_recent_strategy_backfill_map(account_name, hours=24, max_strategy_display=3)
+            # 当前周期映射优先级更高，覆盖历史兜底
+            spot_strategy_map = {**spot_bf, **spot_strategy_map}
+            swap_strategy_map = {**swap_bf, **swap_strategy_map}
+        except BaseException:
+            print('[盈亏报告] 回填24h历史选币归属失败:')
+            print(traceback.format_exc())
 
     # 获取账户总净值
     total_equity = account_config.swap_equity + account_config.spot_equity
@@ -704,6 +714,15 @@ def send_img_for_dataframe(dataframe, wechat_webhook_url):
         print('转换图片出现错误', e)
 
 
+def _join_strategy_names(items, max_display):
+    """将多个策略名拼接为展示串，超过 max_display 个时省略尾部并标注剩余数量。"""
+    items = list(items)
+    if len(items) <= max_display:
+        return ', '.join(items)
+    head = ', '.join(items[:max_display])
+    return f"{head} (+{len(items) - max_display} more)"
+
+
 def build_symbol_strategy_columns(me_conf, max_strategy_display=5):
     """
     遍历 me_conf.factory.config_list，逐个读取每个 BacktestConfig 的
@@ -715,11 +734,7 @@ def build_symbol_strategy_columns(me_conf, max_strategy_display=5):
     :return: (spot_map, swap_map) 两个 dict；未命中的 symbol 不在返回值中，由调用方决定显示
     """
     def _format(items):
-        items = list(items)
-        if len(items) <= max_strategy_display:
-            return ', '.join(items)
-        head = ', '.join(items[:max_strategy_display])
-        return f"{head} (+{len(items) - max_strategy_display} more)"
+        return _join_strategy_names(items, max_strategy_display)
 
     active_idx_set = None
     try:
@@ -778,6 +793,85 @@ def build_symbol_strategy_columns(me_conf, max_strategy_display=5):
     return spot_map, swap_map
 
 
+def build_recent_strategy_backfill_map(account_name, hours=24, max_strategy_display=5):
+    """
+    从最近 hours 小时的选币结果存档构建 symbol → "父策略名(L/S)" 映射，
+    用于回填「当前持仓周期已轮出/平仓、但近 hours 小时内持有过」的币种归属。
+
+    背景：当 hold_period=1h 每小时换币时，持仓盈亏报告的 24h 统计里会出现
+    当前周期选币结果中不存在的币种，build_symbol_strategy_columns 无法识别其
+    归属（显示空）。本函数从按小时归档的选币快照里回溯补齐。
+
+    数据来源：data/{account}/select_coin/{YYYY-MM-DD_HH}.pkl
+              （save_final_select_results 每小时写入，保留 72h）
+
+    仅识别带 parent_name 列的存档记录；更早格式的存档无此列、对应币种不回填
+    （存档仅保留 72h，会随时间自愈）。
+
+    :return: (spot_map, swap_map)，未命中的 symbol 不在返回值中
+    """
+    spot_map, swap_map = {}, {}
+    try:
+        dir_path = data_path / account_name / 'select_coin'
+        if not dir_path.exists():
+            return spot_map, swap_map
+
+        # 以整点为界向前取 hours 小时的存档文件
+        cutoff = (datetime.now() - timedelta(hours=hours)).replace(minute=0, second=0, microsecond=0)
+        parts = []
+        for f in dir_path.glob('*.pkl'):
+            try:
+                file_time = datetime.strptime(f.stem, '%Y-%m-%d_%H')
+            except ValueError:
+                continue
+            if file_time < cutoff:
+                continue
+            try:
+                df_i = pd.read_pickle(f)
+            except BaseException:
+                continue
+            if df_i.empty or 'parent_name' not in df_i.columns or '方向' not in df_i.columns:
+                continue
+            parts.append(df_i)
+
+        if not parts:
+            return spot_map, swap_map
+
+        df_all = pd.concat(parts, ignore_index=True, copy=False).copy()
+        df_all['parent_name'] = df_all['parent_name'].astype(object).fillna('').astype(str)
+        df_all = df_all[df_all['parent_name'] != '']
+        if df_all.empty:
+            return spot_map, swap_map
+
+        for col in ('symbol_spot', 'symbol_swap'):
+            if col in df_all.columns:
+                df_all[col] = df_all[col].astype(object).fillna('').astype(str)
+            else:
+                df_all[col] = ''
+
+        df_all['parent_dir'] = np.char.add(
+            df_all['parent_name'].to_numpy(dtype=str),
+            np.where(df_all['方向'] == 1, '(L)', '(S)'),
+        )
+
+        spot_part = df_all.loc[df_all['symbol_spot'] != '', ['symbol_spot', 'parent_dir']].drop_duplicates()
+        if not spot_part.empty:
+            spot_part = spot_part.sort_values(['symbol_spot', 'parent_dir'])
+            spot_map = spot_part.groupby('symbol_spot')['parent_dir'].apply(
+                lambda s: _join_strategy_names(s, max_strategy_display)).to_dict()
+
+        swap_part = df_all.loc[df_all['symbol_swap'] != '', ['symbol_swap', 'parent_dir']].drop_duplicates()
+        if not swap_part.empty:
+            swap_part = swap_part.sort_values(['symbol_swap', 'parent_dir'])
+            swap_map = swap_part.groupby('symbol_swap')['parent_dir'].apply(
+                lambda s: _join_strategy_names(s, max_strategy_display)).to_dict()
+    except BaseException:
+        print('[盈亏报告] 构建24h历史选币归属兜底映射失败:')
+        print(traceback.format_exc())
+
+    return spot_map, swap_map
+
+
 # ====================================================================================================
 # 最近 1h 成交额统计
 # ====================================================================================================
@@ -809,7 +903,12 @@ def build_order_records(success_orders, orders_df, symbol_type, run_time, accoun
       - spot: cummulativeQuoteQty / transactTime
       - swap: cumQuote / updateTime + avgPrice
 
-    无效记录（空 dict / 缺关键字段 / 未成交）会被跳过。
+    成交额 quote_qty 取值优先级：交易所回执 cumQuote/cummulativeQuoteQty →
+    avg_price * executed_qty → 挂单 price * executed_qty。
+    （Binance CM/UM 整合自 2026-06-30 起移除 U本位下单「即时响应」中的 cumQuote 字段，
+    故不再以 cumQuote 是否存在作为有效性判据，改用 executed_qty 是否 > 0。）
+
+    无效记录（空 dict / 缺关键字段 / 未成交 executed_qty<=0）会被跳过。
     """
     rows = []
     for order_res in success_orders:
@@ -831,19 +930,30 @@ def build_order_records(success_orders, orders_df, symbol_type, run_time, accoun
             exec_time_raw = order_res.get('updateTime')
             avg_price_raw = order_res.get('avgPrice')
 
-        if quote_qty_raw is None:
-            continue
-
         executed_qty = float(order_res.get('executedQty', 0) or 0)
-        quote_qty = float(quote_qty_raw)
         orig_qty = float(order_res.get('origQty', 0) or 0)
 
+        # 无实际成交量直接跳过。
+        # 注意：不再用 quote_qty_raw(cumQuote) 是否存在作判据——
+        # CM/UM 整合自 2026-06-30 起移除 U本位下单即时响应中的 cumQuote 字段。
+        if executed_qty <= 0:
+            continue
+
+        # 成交均价：优先回执 avgPrice，其次 cumQuote/executed_qty，最后退化为挂单 price
         if avg_price_raw is not None and float(avg_price_raw) > 0:
             avg_price = float(avg_price_raw)
-        elif executed_qty > 0:
-            avg_price = quote_qty / executed_qty
+        elif quote_qty_raw is not None and float(quote_qty_raw) > 0:
+            avg_price = float(quote_qty_raw) / executed_qty
         else:
-            avg_price = 0.0
+            avg_price = float(order_res.get('price', 0) or 0)
+
+        # 成交额：优先交易所回执 cumQuote/cummulativeQuoteQty（须 > 0）；
+        # cumQuote 缺失(普通账户，键为 None)或返回 0(统一账户/PM 即时回执 cumQuote、avgPrice
+        # 均为 '0.00000000') 时，用 avg_price * executed_qty 兜底，避免采信 0 导致成交额恒为 0
+        if quote_qty_raw is not None and float(quote_qty_raw) > 0:
+            quote_qty = float(quote_qty_raw)
+        else:
+            quote_qty = avg_price * executed_qty
 
         if exec_time_raw is None:
             exec_time = pd.NaT

@@ -387,7 +387,7 @@ def calc_factors(conf: BacktestConfig):
         # 并行写入（IO 密集型任务使用线程池）
         if write_tasks:
             with ThreadPoolExecutor(max_workers=job_num) as executor:
-                executor.map(write_factor_file_polars, write_tasks)
+                list(executor.map(write_factor_file_polars, write_tasks))
             del write_tasks
             gc.collect()
 
@@ -478,7 +478,9 @@ def calc_cross_sections_polars(conf: BacktestConfig):
     # 保留最小 k 线时间
     snapshot_time = get_snapshot_time(conf.name)
     if snapshot_time:
-        min_candle_time = pd.to_datetime(snapshot_time).replace(tzinfo=None) - max(pd.Timedelta(conf.max_hold_period), pd.Timedelta(days=conf.lookback_days))
+        min_candle_time = pd.to_datetime(snapshot_time).replace(tzinfo=None) - max(
+            pd.Timedelta(conf.max_hold_period), pd.Timedelta(days=conf.lookback_days),
+            pd.Timedelta(hours=conf.incremental_lookback_hours))
     else:
         min_candle_time = None
 
@@ -557,7 +559,7 @@ def calc_cross_sections_polars(conf: BacktestConfig):
         # 并行写入（I/O 密集型，线程池）
         if write_tasks:
             with ThreadPoolExecutor(max_workers=job_num) as executor:
-                executor.map(write_factor_file_polars, write_tasks)
+                list(executor.map(write_factor_file_polars, write_tasks))
 
         t_save = time.time()
         logger.debug(f'📊 截面因子 - 保存: {t_save - t_collect:.2f}s')
@@ -920,12 +922,12 @@ def process_strategy_thread(stg_conf: StrategyConfig, result_folder: Path, is_si
     result_df = result_df.with_columns([
         ((pl.col('candle_begin_time') - reference_date).dt.total_seconds() / cal_offset_base_seconds)
         .mod(stg_conf.period_num)
-        .cast(pl.Int8)
+        .cast(pl.Int16)
         .alias('_offset_temp')
     ])
     result_df = result_df.with_columns([
         ((pl.col('_offset_temp') + 1 + stg_conf.period_num) % stg_conf.period_num)
-        .cast(pl.Int8)
+        .cast(pl.Int16)
         .alias('offset')
     ])
     result_df = result_df.drop('_offset_temp')
@@ -938,7 +940,7 @@ def process_strategy_thread(stg_conf: StrategyConfig, result_folder: Path, is_si
 
     result_df = result_df.with_columns([
         pl.col('方向').cast(pl.Int8),
-        pl.col('offset').cast(pl.Int8),
+        pl.col('offset').cast(pl.Int16),
     ])
 
     result_df = result_df.with_columns([
@@ -1303,12 +1305,16 @@ def agg_multi_strategy_ratio(conf: BacktestConfig, df_select: pd.DataFrame, max_
         df_swap_select['candle_begin_time'].min(),
         key=lambda x: x if not pd.isnull(x) else pd.Timestamp.max
     )
+    fallback_start_date = max_candle_time - max(
+        pd.to_timedelta(conf.max_hold_period),
+        pd.Timedelta(hours=conf.incremental_lookback_hours),
+    )
+
     if pd.isna(start_date):
         # 防止选币为空时 fallback 窗口小于 incremental_lookback_hours 导致下游 concat 出现时间空洞
-        start_date = max_candle_time - max(
-            pd.to_timedelta(conf.max_hold_period),
-            pd.Timedelta(hours=conf.incremental_lookback_hours),
-        )
+        start_date = fallback_start_date
+    else:
+        start_date = min(start_date, fallback_start_date)
 
     candle_begin_times = pd.date_range(start_date, max_candle_time, freq=conf.hold_period_type, inclusive='both')
 
@@ -1432,12 +1438,16 @@ def agg_multi_strategy_ratio_v2(conf: BacktestConfig, df_select: pd.DataFrame, m
         work_df = work_df.iloc[0:0]
 
     start_date = work_df['candle_begin_time'].min() if not work_df.empty else pd.NaT
+    fallback_start_date = max_candle_time - max(
+        pd.to_timedelta(conf.max_hold_period),
+        pd.Timedelta(hours=conf.incremental_lookback_hours),
+    )
+
     if pd.isna(start_date):
         # 防止选币为空时 fallback 窗口小于 incremental_lookback_hours 导致下游 concat 出现时间空洞
-        start_date = max_candle_time - max(
-            pd.to_timedelta(conf.max_hold_period),
-            pd.Timedelta(hours=conf.incremental_lookback_hours),
-        )
+        start_date = fallback_start_date
+    else:
+        start_date = min(start_date, fallback_start_date)
 
     # 与当前框架原生聚合保持一致：
     # 小时策略输出小时级时间轴，日频策略输出日级时间轴，避免 v2 产物与主逻辑索引语义不一致。

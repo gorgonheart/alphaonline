@@ -12,6 +12,7 @@ def _fake_conf():
     conf = mock.Mock()
     conf.black_list = []
     conf.white_list = []
+    conf.precompute_factor_configs = {}
     conf.min_kline_num = 1
     conf.get_kline_num.return_value = 4050
     return conf
@@ -22,7 +23,7 @@ def test_falls_back_to_pkl_when_no_arrow(tmp_path, monkeypatch):
     monkeypatch.setattr(dt, 'bmac_data_path', tmp_path)
     rt = datetime(2026, 6, 27, 20, 30)
     (tmp_path / '30m').mkdir()
-    with mock.patch.object(dt, 'BinanceClient') as mc:
+    with mock.patch.object(dt, 'get_dummy_client') as mc:
         mc.return_value.get_market_info.return_value = {'symbol_list': []}
         with mock.patch.object(dt, 'read_arrow_market_dict_for_run_time', return_value=None) as m_arrow:
             result = dt.load_bmac_data('swap', rt, _fake_conf())
@@ -40,7 +41,7 @@ def test_uses_arrow_when_present(monkeypatch):
     })
     with mock.patch.object(dt, 'read_arrow_market_dict_for_run_time',
                            return_value={'ZZZUSDT': fake_df}) as m_arrow:
-        with mock.patch.object(dt, 'BinanceClient') as mc:
+        with mock.patch.object(dt, 'get_dummy_client') as mc:
             mc.return_value.get_market_info.return_value = {'symbol_list': ['ZZZUSDT']}
             result = dt.load_bmac_data('swap', rt, _fake_conf())
     m_arrow.assert_called_once()

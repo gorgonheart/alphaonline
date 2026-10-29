@@ -20,7 +20,7 @@ from core.model.backtest_config import MultiEquityBacktestConfig, BacktestConfig
 from core.position import calc_target_position
 from core.utils.datatools import snapshot_bmac_exginfo
 from core.utils.functions import refresh_diff_time, save_symbol_order, save_final_select_results, save_position_results, \
-    save_performance_df_csv
+    save_performance_df_csv, save_order_history
 from core.utils.log_kit import logger, divider
 from core.utils.path_kit import get_folder_path
 from core.utils.runtime_data import save_runtime_data_archive
@@ -170,17 +170,27 @@ def run_by_account(acct_conf: AccountConfig, me_conf: MultiEquityBacktestConfig,
     if is_simulate == 'dry_run':
         logger.warning('🔵 [干跑模式] 跳过实际下单，仅记录下单信息')
     else:
-        acct_conf.proceed_spot_order(symbol_order, df_spot_ratio.empty, is_only_sell=True)
-        acct_conf.proceed_swap_order(symbol_order)
-        acct_conf.proceed_spot_order(symbol_order, df_spot_ratio.empty, is_only_sell=False)
+        spot_sell_success, spot_sell_failures = acct_conf.proceed_spot_order(
+            symbol_order, df_spot_ratio.empty, is_only_sell=True,
+            run_time=run_time
+        )
+        swap_success, swap_failures = acct_conf.proceed_swap_order(symbol_order, run_time)
+        spot_buy_success, spot_buy_failures = acct_conf.proceed_spot_order(
+            symbol_order, df_spot_ratio.empty, is_only_sell=False,
+            run_time=run_time
+        )
+        save_order_history(symbol_order, run_time, acct_conf.name,
+                           spot_sell_success + spot_buy_success, swap_success)
 
     # ====================================================================================================
     # 9. 资金归集
     # ====================================================================================================
-    acct_conf.bn.collect_asset()
+    if is_simulate != 'dry_run':
+        acct_conf.bn.collect_asset()
 
     # 基础稳定币调整
-    acct_conf.bn.adjust_base_margin()
+    if is_simulate != 'dry_run':
+        acct_conf.bn.adjust_base_margin()
 
     # ====================================================================================================
     # 10. 记录下单数据

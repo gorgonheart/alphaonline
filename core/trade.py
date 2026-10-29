@@ -9,10 +9,136 @@
 
 Author: 邢不行
 """
+import hashlib
 import random
 import math
 import numpy as np
 import pandas as pd
+
+
+GTC_ELIGIBLE_MODES = {'加仓', '减仓', '调仓'}
+
+
+def _normalized_run_time(run_time) -> str:
+    if run_time is None:
+        return ''
+    timestamp = pd.Timestamp(run_time)
+    if not isinstance(timestamp, pd.Timestamp):
+        return str(timestamp)
+    if timestamp.tzinfo is not None:
+        timestamp = timestamp.tz_convert('UTC')
+    return timestamp.isoformat()
+
+
+def mark_gtc_orders(
+        batches: list[pd.DataFrame], maker_ratio: float, run_time, account_name: str
+) -> list[pd.DataFrame]:
+    """按整轮 BUY/SELL 预算标记 GTC 路由，不修改输入批次。"""
+    if not 0 <= maker_ratio <= 1:
+        raise ValueError('maker_ratio 必须在 0 到 1 之间')
+
+    marked_batches = []
+    for batch in batches:
+        marked_batch = batch.copy()
+        marked_batch['timeInForce'] = 'IOC'
+        marked_batches.append(marked_batch)
+
+    groups = {}
+    eligible_notional = {'BUY': 0., 'SELL': 0.}
+    for batch_index, batch in enumerate(marked_batches):
+        for row_position in range(len(batch)):
+            row = batch.iloc[row_position]
+            amount = float(row['拆单金额'])
+            side = 'BUY' if amount > 0 else 'SELL'
+            eligible = (
+                row.get('symbol_type') in {'spot', 'swap'}
+                and row.get('交易模式') in GTC_ELIGIBLE_MODES
+                and amount != 0
+            )
+            if eligible:
+                eligible_notional[side] += abs(amount)
+
+            group_id = row.get('配对组ID', row_position)
+            groups.setdefault((batch_index, group_id), []).append({
+                'batch_index': batch_index,
+                'row_position': row_position,
+                'symbol': row['symbol'],
+                'side': side,
+                'notional': abs(amount),
+                'eligible': eligible,
+            })
+
+    paired_candidates = []
+    singleton_candidates = []
+    for rows in groups.values():
+        sides = {row['side'] for row in rows if row['notional'] > 0}
+        symbols = {row['symbol'] for row in rows}
+        if (all(row['eligible'] for row in rows)
+                and sides == {'BUY', 'SELL'}
+                and len(symbols) == len(rows)):
+            paired_candidates.append({
+                'rows': rows,
+                'symbols': symbols,
+                'BUY': sum(row['notional'] for row in rows if row['side'] == 'BUY'),
+                'SELL': sum(row['notional'] for row in rows if row['side'] == 'SELL'),
+            })
+        else:
+            singleton_candidates.extend(row for row in rows if row['eligible'])
+
+    # 先稳定排序再用局部随机数洗牌，避免偏向前几个批次且不污染拆单随机状态
+    candidate_key = lambda candidate: tuple(
+        (row['batch_index'], row['row_position'], row['symbol'])
+        for row in candidate['rows']
+    )
+    paired_candidates.sort(key=candidate_key)
+    singleton_candidates.sort(
+        key=lambda row: (row['batch_index'], row['row_position'], row['symbol'])
+    )
+    seed_text = f'{account_name}\0{_normalized_run_time(run_time)}'
+    rng = random.Random(int.from_bytes(hashlib.sha256(seed_text.encode()).digest()))
+    rng.shuffle(paired_candidates)
+    rng.shuffle(singleton_candidates)
+
+    budget = {
+        side: eligible_notional[side] * maker_ratio
+        for side in ('BUY', 'SELL')
+    }
+    selected = {'BUY': 0., 'SELL': 0.}
+    used_gtc_symbols = set()
+
+    # 配对组优先：只有整组加入后能缩小 BUY+SELL 总预算差时才选择
+    for candidate in paired_candidates:
+        if not candidate['symbols'].isdisjoint(used_gtc_symbols):
+            continue
+        current_diff = sum(abs(budget[side] - selected[side]) for side in ('BUY', 'SELL'))
+        new_diff = sum(
+            abs(budget[side] - selected[side] - candidate[side])
+            for side in ('BUY', 'SELL')
+        )
+        if new_diff >= current_diff:
+            continue
+        for row in candidate['rows']:
+            marked_batches[row['batch_index']].iat[
+                row['row_position'], marked_batches[row['batch_index']].columns.get_loc('timeInForce')
+            ] = 'GTC'
+        selected['BUY'] += candidate['BUY']
+        selected['SELL'] += candidate['SELL']
+        used_gtc_symbols.update(candidate['symbols'])
+
+    # 再按 BUY/SELL 各自预算选择单边候选
+    for row in singleton_candidates:
+        if row['symbol'] in used_gtc_symbols:
+            continue
+        side = row['side']
+        if abs(budget[side] - selected[side] - row['notional']) >= abs(budget[side] - selected[side]):
+            continue
+        marked_batches[row['batch_index']].iat[
+            row['row_position'], marked_batches[row['batch_index']].columns.get_loc('timeInForce')
+        ] = 'GTC'
+        selected[side] += row['notional']
+        used_gtc_symbols.add(row['symbol'])
+
+    return marked_batches
 
 
 def _round_by_type(value: float, precision: int, symbol_type: str) -> float:
@@ -74,13 +200,13 @@ def _random_split_with_min(x, order_amount_limit, min_split_amount):
 
 
 def generate_order_limits(orders_df, order_amount_limit):
-    from core.binance.base_client import BinanceClient
+    from core.utils.exchange_hub import get_market_info_store
     # 动态调整 order_amount_limit，确保满足每个币种的 min_notional 要求
     adjusted_order_limits = {}  # 存储每个币种调整后的limit
     for idx, row in orders_df.iterrows():
         symbol = row['symbol']
         symbol_type = row['symbol_type']
-        market_info = BinanceClient.market_info[symbol_type]
+        market_info = get_market_info_store()[symbol_type]
         min_notional = market_info.get('min_notional', {})
 
         # 获取该币种的最小名义价值
@@ -111,7 +237,7 @@ def split_order_twap(orders_df: pd.DataFrame, order_amount_limit):
     """
          @我已无心战斗 老板提供，随机拆单优化代码以及最后一笔碎单处理
     """
-    from core.binance.base_client import BinanceClient
+    from core.utils.exchange_hub import get_market_info_store
 
     # 保存原始下单量
     original_order_amount = orders_df['实际下单量'].copy()
@@ -131,7 +257,7 @@ def split_order_twap(orders_df: pd.DataFrame, order_amount_limit):
     for idx, row in orders_df.iterrows():
         symbol = row['symbol']
         symbol_type = row['symbol_type']
-        market_info = BinanceClient.market_info[symbol_type]
+        market_info = get_market_info_store()[symbol_type]
         min_qty = market_info['min_qty']
         if symbol not in min_qty:
             print(f"symbol {symbol} not in min_qty")
@@ -209,7 +335,7 @@ def split_order_balanced(orders_df: pd.DataFrame, order_amount_limit: float):
     :param order_amount_limit: 目标下单金额（非限额）
     :return: list[DataFrame]，每个DataFrame代表一批订单，包含配对组ID列
     """
-    from core.binance.base_client import BinanceClient
+    from core.utils.exchange_hub import get_market_info_store
 
     # ========== 阶段1：预处理 - 过滤小额币种 ==========
 
@@ -218,7 +344,7 @@ def split_order_balanced(orders_df: pd.DataFrame, order_amount_limit: float):
     for idx, row in orders_df.iterrows():
         symbol = row['symbol']
         symbol_type = row['symbol_type']
-        market_info = BinanceClient.market_info[symbol_type]
+        market_info = get_market_info_store()[symbol_type]
         min_notional = market_info.get('min_notional', {})
         min_qty = market_info.get('min_qty', {})
 
@@ -466,7 +592,7 @@ def split_order_balanced(orders_df: pd.DataFrame, order_amount_limit: float):
             symbol = row['symbol']
             symbol_type = row['symbol_type']
 
-            market_info = BinanceClient.market_info[symbol_type]
+            market_info = get_market_info_store()[symbol_type]
             min_qty = market_info['min_qty']
             precision = min_qty[symbol]
 

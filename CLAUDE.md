@@ -1,5 +1,7 @@
 # CLAUDE.md
 
+Current cross-project source of truth: [统一开发说明](docs/DEVELOPMENT.md). Read it first; it records the 2026-10-14 corrected factors and supersedes historical architecture descriptions below.
+
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## What this is
@@ -8,7 +10,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Running
 
-The Python environment is the `alpha311` conda env (the `alpha` env fails on `numpy._core` for newly-pickled files). There is no `requirements.txt`, build step, or lint config — run scripts directly with the interpreter. A pytest suite lives in `tests/` (see "Tests" below).
+Framework version: **2.3.1 (20260911)** with local Arrow/precompute/parallel/dry_run extensions. See `docs/superpowers/specs/2026-10-14-upgrade-core-2.3.1.md` for merge decisions and cross-project regression results. `requirements.txt` pins the validated `xbx-py11==0.1.23` dependency bundle.
+
+The Python environment is the `alpha311` conda env (the `alpha` env fails on `numpy._core` for newly-pickled files). There is no build step or lint config — run scripts directly with the interpreter. A pytest suite lives in `tests/` (see "Tests" below).
 
 ```powershell
 # Live/main loop (runs forever, every 5 min). Mode is controlled by config, not CLI.
@@ -55,7 +59,7 @@ Synchronization is **file-flag based**, in [core/utils/datatools.py](core/utils/
 
 The data center publishes each candle batch in **two formats side by side**: `{spot,swap}_dict_{ts}.arrow` (single IPC FILE, one record batch per symbol, `schema.metadata[b'symbols']` = JSON manifest) **and** the legacy `{spot,swap}_dict_batch*.pkl`. This project prefers Arrow everywhere and falls back to pkl only when Arrow is missing/unreadable:
 - Candles: `load_bmac_data()` → `arrow_reader.read_arrow_market_dict_for_run_time()` (mmap zero-copy), falling back to the `_dict_batch*.pkl` glob. Arrow snapshots are a rolling ~5000-row-per-symbol window; pkl is full history.
-- Market pivot (used by the simulator/equity curve): `read_bmac_market_pivot(hour_offset, symbol_type, run_time=, required_index=)` reconstructs the pivot **on the consumer side** from the same Arrow candle snapshot via `build_market_pivot_from_market_dict()` (byte-equivalent to the producer's `preprocess.py::make_market_pivot`). It falls back to the year-partitioned `market_pivot_{spot,swap}_*.pkl` only when Arrow is absent or its window doesn't cover `required_index` (e.g. a long full-history simulate). The data center emits **no** `market_pivot_*.arrow` — the pivot is derived here, not published.
+- Market pivot uses the producer's year-partitioned `market_pivot_{spot,swap}_*.pkl` through the two-argument `read_bmac_market_pivot(hour_offset, symbol_type)` contract. Consumer-side Arrow pivot rebuilding was removed; do not restore it.
 - `arrow_reader.py` is the sole reader; its layout is locked to the producer `d:/alpha/core/arrow_publish.py`. A single-file Arrow schema is shared across all batches, so per-symbol dtype cannot be reproduced (a harmless int→float artifact on formerly-gapped symbols — see the parity tests).
 
 When changing data loading, preserve consistency between what the data center writes and what this project reads — the two must agree at every step, and Arrow and pkl routes must produce equivalent results (enforced by `tests/test_arrow_*`).
@@ -131,4 +135,4 @@ Pytest suite in `tests/`, run under `alpha311`: `conda run -n alpha311 --no-capt
 - Style is **oracle equivalence**: treat the legacy/producer function as the oracle and assert the new/fast path matches (`pd.testing.assert_frame_equal`, or byte/array equality). For features with no legacy oracle (entry_exit), assert against **hand-traced** expected output.
 - No `conftest.py` / `pytest.ini` — tests self-insert the repo root on `sys.path`.
 - Coverage: `test_arrow_pkl_parity.py` (candle merge Arrow vs pkl), `test_align_fast_equivalence.py`, `test_arrow_reader.py`, `test_load_bmac_data_fallback.py`, `test_arrow_pivot_parity.py` (pivot Arrow vs pkl), `test_entry_exit_engine.py` (numba engine semantics).
-- Known pre-existing failures: `test_arrow_pkl_merge_parity[swap]/[spot]` fail because the data center now emits precompute factor columns into Arrow snapshots but not into pkl (column-set mismatch). This is data-driven, reproduces on clean `main`, and is orthogonal to code changes.
+- Arrow/PKL parity compares all raw market columns and only permits additional factor columns explicitly declared in the producer configuration. Arrow intentionally carries C-precomputed factors while batch PKL stays raw. `test_precompute_contract.py` covers actual producer C calculation → Arrow publication → consumer reuse, plus local computation fallback. `test_upgrade_231.py` covers order routing, dry_run and continuation regressions. `test_main_chain_parity.py` compares pandas/Polars section outputs through selection, positions, orders and strategy attribution, and checks filtering and turnover statistics. Final 2.3.1 validation: 269 consumer tests and 24 relevant producer tests passed under the updated alpha311 environment.

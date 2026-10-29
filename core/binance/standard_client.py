@@ -502,6 +502,21 @@ class StandardClient(BinanceClient):
         # 普通账户-现货没有杠杆，所以直接返回999
         return 999
 
+    def set_fee_burn(self, is_burn: bool = False):
+        """
+        设置手续费燃烧
+        """
+        res = retry_wrapper(self.exchange.fapiprivate_get_feeburn,
+                            func_name='fapiprivate_get_feeburn', if_exit=False)
+        is_fee_burn = bool(res['feeBurn'])
+        if is_fee_burn == is_burn:
+            return
+
+        params = {'feeBurn': 'true' if is_burn else 'false', 'timestamp': ''}
+        retry_wrapper(self.exchange.fapiprivate_post_feeburn, params=params,
+                      func_name='fapiprivate_post_feeburn', if_exit=False)
+        logger.ok('修改手续费燃烧')
+
     def _collect_asset_from_spot_to_swap(self, asset='USDT'):
         # =将现货中的U转入的合约账号
         spot_position = self.get_spot_position_df()

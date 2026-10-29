@@ -32,6 +32,7 @@ is_simulate = "dry_run"  # debug, simulate, none。 debug：等同于 is_debug=T
 # ‼️‼️‼️账户配置，需要在accounts下的文件中做配置 ‼️‼️‼️
 # 此处只是展示配置的结构，具体配置情参考 accounts 文件夹下的 _55mBTC样例.py
 # ====================================================================================================
+exchange_name = "binance"  # 交易所：binance / okx；同一数据中心不混用交易所
 account_config = {}  # 实盘账户配置，需要在accounts下的文件中做配置，此处只是结构上的展示
 
 # ====================================================================================================
@@ -44,7 +45,7 @@ min_kline_num = 1 # 最小 k 线数量限制
 get_kline_num = 4050  # 获取多少根K线。这里跟策略日频和小时频影响。日线策略，代表多少根日线k。小时策略，代表多少根小时k
 strategy_config = {}  # 策略配置
 strategy_pool = []  # 策略池
-factor_col_limit = 72  # 单次因子计算数量，放这里主要与网页版配合
+factor_col_limit = 80  # 单次因子计算数量，放这里主要与网页版配合
 leverage = 1  # 杠杆数。我看哪个赌狗要把这里改成大于1的。高杠杆如梦幻泡影。不要想着一夜暴富，脚踏实地赚自己该赚的钱。
 black_list = []  # 拉黑名单，永远不会交易。不喜欢的币、异常的币。例：LUNA-USDT, 这里与实盘不太一样，需要有'-'
 white_list = []  # 如果不为空，即只交易这些币，只在这些币当中进行选币。例：LUNA-USDT, 这里与实盘不太一样，需要有'-'
@@ -187,7 +188,7 @@ job_num = max(os.cpu_count(), 1)  # 回测并行数量
 
 # ==== factor_col_limit 介绍 ====
 # 这个写法，主要与网页版配合，如需修改，请调整上面的同名变量
-factor_col_limit = factor_col_limit or 64  # 内存优化选项，一次性计算多少列因子。64是 16GB内存 电脑的典型值
+factor_col_limit = factor_col_limit or 80  # 内存优化选项，一次性计算多少列因子。64是 16GB内存 电脑的典型值
 # - 数字越大，计算速度越快，但同时内存占用也会增加。
 # - 该数字是在 "因子数量 * 参数数量" 的基础上进行优化的。
 #   - 例如，当你遍历 200 个因子，每个因子有 10 个参数，总共生成 2000 列因子。
@@ -245,7 +246,7 @@ data_source_dict = {
     # 如果使用 BMAC，这里的路径就不需要配置
     "coin-cap": ('load_coin_cap', Path(data_config['realtime_data_path']) / 'coin_cap',),
     # 如果使用 BMAC，这里的路径就不需要配置
-    "coin-btc": ('load_coin_btc', Path(data_config['realtime_data_path']) / 'binance_spot_1h_resample',),
+    "coin-btc": ('load_coin_btc', Path(data_config['realtime_data_path']) / f'{exchange_name}_spot_1h_resample',),
 }
 
 debug_flag = '🟠ON' if is_debug else '🔘OFF'

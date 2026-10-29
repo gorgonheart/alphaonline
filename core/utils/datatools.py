@@ -20,9 +20,9 @@ import pandas as pd
 from tqdm import tqdm
 
 from config import utc_offset, bmac_data_path, bmac_exginfo_path, stable_symbol
-from core.binance.base_client import BinanceClient
 from core.model.backtest_config import BacktestConfig
 from core.utils.arrow_reader import read_arrow_market_dict_for_run_time
+from core.utils.exchange_hub import get_dummy_client
 from core.utils.log_kit import logger
 from core.utils.path_kit import get_file_path, get_folder_path
 
@@ -197,6 +197,13 @@ def align_spot_swap_mapping_fast(df, column_name, n):
     return df
 
 
+def _full_history_factors(conf):
+    """仅版本化、显式声明需要完整历史的预计算因子走此回退。"""
+    from core.utils.factor_hub import FactorHub
+    return {name: params for name, params in getattr(conf, 'precompute_factor_configs', {}).items()
+            if getattr(FactorHub.get_by_name(name), 'requires_full_history', False)}
+
+
 def read_and_merge_bmac_data(conf: BacktestConfig, symbol_type: str, df: pd.DataFrame, run_time,
                              align_fn=align_spot_swap_mapping):
     """
@@ -214,10 +221,14 @@ def read_and_merge_bmac_data(conf: BacktestConfig, symbol_type: str, df: pd.Data
     if df is None or df.empty:
         return None, None
     symbol = df['symbol'].iloc[-1]  # 获取币种名称
-    if symbol.endswith('USDT') and symbol[:-4] in stable_symbol:  # 稳定币不参与选币
-        return symbol, None
-    if symbol.endswith('USDC') and symbol[:-4] in stable_symbol:  # 稳定币不参与选币
-        return symbol, None
+    if '-' in symbol:  # OKX 的原生 instId（如 USDC-USDT / BTC-USDT-SWAP），取基础币种判断
+        if symbol.split('-')[0] in stable_symbol:  # 稳定币不参与选币
+            return symbol, None
+    else:
+        if symbol.endswith('USDT') and symbol[:-4] in stable_symbol:  # 稳定币不参与选币
+            return symbol, None
+        if symbol.endswith('USDC') and symbol[:-4] in stable_symbol:  # 稳定币不参与选币
+            return symbol, None
     if symbol in conf.black_list:  # 黑名单币种直接跳过
         return symbol, None
     if conf.white_list and symbol not in conf.white_list:  # 不是白名单的币种跳过
@@ -250,6 +261,12 @@ def read_and_merge_bmac_data(conf: BacktestConfig, symbol_type: str, df: pd.Data
     _acc_merge('align', t0)
 
     t0 = time.perf_counter()
+    # 在裁切之前补算：新版有状态动量的初始 EMA/异常历史必须与生产者一致。
+    from core.factor import calc_factor_vals
+    for name, params in _full_history_factors(conf).items():
+        missing = [p for p in params if f'{name}_{p}' not in df.columns]
+        if missing:
+            df = df.assign(**calc_factor_vals(df, name, missing))
     df = df[-conf.get_kline_num():]  # 根据config配置，控制内存中币种的数据，可以节约内存，加快计算速度
 
     df['symbol_swap'].fillna(value='', inplace=True)
@@ -271,12 +288,18 @@ def load_bmac_data(symbol_type, run_time, conf: BacktestConfig):
     """
     # 获取当前可交易的币种列表，用于过滤已下架或不可交易或传统资产的币种
     t_mkt = time.time()
-    symbol_list = BinanceClient().get_market_info(symbol_type).get('symbol_list', [])
+    symbol_list = get_dummy_client().get_market_info(symbol_type).get('symbol_list', [])
     logger.debug(f'⏱️ {symbol_type} get_market_info（网络）耗时 {time.time() - t_mkt:.3f}s')
 
     # 快路径：Arrow 快照（文件名内嵌 ts，天然校验 run_time）
     t_fetch = time.time()
     arrow_dict = read_arrow_market_dict_for_run_time(bmac_data_path, symbol_type, run_time)
+    required_columns = {f'{name}_{p}' for name, params in _full_history_factors(conf).items() for p in params}
+    if arrow_dict is not None and required_columns and any(
+            frame is not None and not frame.empty and not required_columns.issubset(frame.columns)
+            for frame in arrow_dict.values()):
+        logger.warning('Arrow 缺少完整历史预计算列，回退 PKL 全历史补算后裁切')
+        arrow_dict = None
     if arrow_dict is not None:
         logger.debug(f'⏱️ {symbol_type} Arrow 快路径命中：mmap 读取 {len(arrow_dict)} symbol '
                      f'耗时 {time.time() - t_fetch:.3f}s')

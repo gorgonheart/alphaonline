@@ -24,6 +24,7 @@ from core.model.timing_signal import TimingSignal
 from core.select_coin import calc_factors, select_coins, concat_select_results, transfer_spot_to_swap, \
     agg_multi_strategy_ratio, calc_cross_sections
 from core.utils.commons import set_snapshot_time, get_snapshot_time
+from core.utils.exchange_hub import apply_bstocks_black_list
 from core.utils.functions import save_performance_df_csv, load_realtime_data
 from core.utils.log_kit import logger, divider
 from core.utils.misc_kit import mem_save_exe
@@ -197,6 +198,10 @@ def run_backtest_multi(factory: BacktestConfigFactory, run_time):
     divider('读取数据', sep='-')
     s_time = time.time()
     conf_all = factory.generate_all_factor_config()
+
+    # bStocks 黑名单显式并入：conf_all 会被 pickle 进子进程，进程内类级缓存不会跟着带过去，
+    # 提前并入 black_list 才能保证子进程里的数据过滤/选币判断同样生效
+    apply_bstocks_black_list(conf_all)
 
     # 读取数据
     # 针对现货策略和非现货策略读取的逻辑完全不同。

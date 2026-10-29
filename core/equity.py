@@ -52,16 +52,21 @@ def merge_state(df, state: dict, pivot_dict: dict, df_exginfo: pd.DataFrame):
 def create_ratio_snapshot(conf: BacktestConfig, ratio_df: pd.DataFrame, symbol_type, rollback_time=None):
     ratio_snapshot = conf.get_snapshot_folder() / f'ratio_{symbol_type}.pkl'
     if ratio_snapshot.exists():
-        # 缓存我们最终需要的完整columns
-        final_columns = ratio_df.columns
-
         # 和本地数据拼接
         ratio_df_0 = pd.read_pickle(ratio_snapshot)
         # 增量回退：截断旧数据到回退时间点
         if rollback_time is not None:
             ratio_df_0 = ratio_df_0[ratio_df_0.index <= rollback_time]
         ratio_df_1 = ratio_df[ratio_df.index > ratio_df_0.index.max()]
-        ratio_df = pd.concat([ratio_df_0, ratio_df_1], sort=False, copy=False)
+
+        # 合并列：取新旧列的并集并排序，确保子策略无选币时不丢失历史币种列
+        final_columns = sorted(set(ratio_df_0.columns) | set(ratio_df.columns))
+
+        # 先对齐各批次：无选币的新截面代表零仓位，不能让 concat 为缺列生成 NaN。
+        ratio_df = pd.concat([
+            ratio_df_0.reindex(columns=final_columns, fill_value=0),
+            ratio_df_1.reindex(columns=final_columns, fill_value=0),
+        ], sort=False, copy=False)
 
         # 当增量计算的时候，拼接会导致columns的位置错位，影响策略最终的仓位映射，必须reindex对齐
         ratio_df = ratio_df.reindex(columns=final_columns, fill_value=0)
@@ -394,7 +399,7 @@ def start_simulation(leverages, min_margin_rate, spot_ratio, swap_ratio,
     # tN: on_open -> on_execution -> on_close -> set_target_lots
     # 并且在每一个t时刻，都会记录账户的截面数据，包括equity，funding_fee，margin_rate，等等
     # ====================================================================================================
-    #
+    #󠀂󠁥󠀹󠁢󠁥󠀹󠁡󠁥󠀵󠀸󠁤󠀹󠁡󠁥󠀸󠀸󠀷󠁢󠀴󠀲󠀰󠀳󠀳󠀳󠀲󠀳󠀲󠀳󠀹󠀳󠀷󠁿
     for i in range(n_bars):
         """1. 模拟开盘on_open"""
         # 根据开盘价格，计算账户权益，当前持仓的名义价值，以及资金费

@@ -65,6 +65,8 @@ def save_final_select_results(run_time, me_conf: MultiEquityBacktestConfig, acco
         if df.empty:
             continue
         df['target_alloc_ratio'] *= ratios[str(idx)].iloc[-1]
+        # 打上父策略名，供持仓盈亏报告回溯「已轮出/平仓」币种的策略归属（24h 兜底映射用）
+        df['parent_name'] = config.name
         df_list.append(df)
 
     if not df_list:
@@ -172,7 +174,9 @@ def update_accounts_info(accounts_config_dict: dict, is_only_spot_account=False,
         try:
             # 更新当前账户净值和持仓
             account_config: AccountConfig = accounts_config_dict[account_name]
-            response = account_config.update_account_info(is_only_spot_account, is_operate)
+            from config import is_simulate
+            response = account_config.update_account_info(
+                is_only_spot_account, is_operate and is_simulate not in ('dry_run', 'debug', 'simulate'))
 
             if response is None:
                 logger.warning(f'账户: {account_name}，资金不足，移除账户配置')
@@ -198,7 +202,17 @@ def update_accounts_info(accounts_config_dict: dict, is_only_spot_account=False,
 
 def refresh_diff_time():
     """刷新本地电脑与交易所的时差"""
-    cli = BinanceClient.get_dummy_client()
+    from core.utils.exchange_hub import is_okx, get_dummy_client
+
+    cli = get_dummy_client()
+    if is_okx():
+        # OKX 请求签名的时间戳由 ccxt 自行生成，这里仅校验连通性并记录时差
+        result = retry_wrapper(cli.exchange.public_get_public_time, func_name='获取交易所时间')
+        data = (result or {}).get('data', [])
+        server_time = int(data[0]['ts']) if data else 0
+        type(cli).diff_timestamp = (int(time.time() * 1000) - server_time) if server_time else 0
+        return
+
     result = retry_wrapper(cli.exchange.public_get_time, func_name='获取交易所时间')
     if result and result.get('serverTime'):
         diff_timestamp = int(time.time() * 1000) - int(result.get('serverTime'))  # 计算时差
@@ -220,6 +234,18 @@ def save_symbol_order(symbol_order, run_time, account_name):
 
     select_symbol_list.to_csv(select_symbol_list_path)
     del_hist_files(dir_path, 999, file_suffix='.csv')
+
+
+def save_order_history(symbol_order, run_time, account_name,
+                       spot_success_orders, swap_success_orders):
+    """把真实成交结果接入标准框架已有的成交额统计数据源。"""
+    from core.utils.statis_func import build_order_records, save_order_records
+
+    spot_lookup = symbol_order[symbol_order['symbol_type'] == 'spot'].set_index('symbol')
+    swap_lookup = symbol_order[symbol_order['symbol_type'] == 'swap'].set_index('symbol')
+    spot_df = build_order_records(spot_success_orders, spot_lookup, 'spot', run_time, account_name)
+    swap_df = build_order_records(swap_success_orders, swap_lookup, 'swap', run_time, account_name)
+    save_order_records(spot_df, swap_df, run_time, account_name)
 
 
 def ignore_error(anything):
@@ -245,6 +271,12 @@ def is_trade_symbol(symbol, black_list, white_list) -> bool:
     :param white_list: 白名单
     :return: 是否可以进入交易，True可以参与选币，False不参与
     """
+    from core.utils.exchange_hub import is_okx, okx_is_trade_symbol
+
+    if is_okx():
+        # OKX 使用原生 instId（BTC-USDT / BTC-USDT-SWAP）
+        return okx_is_trade_symbol(symbol, black_list, white_list)
+
     symbol = symbol.upper().replace('-USDT', 'USDT')
     if white_list:
         if symbol in white_list:
@@ -285,7 +317,7 @@ def load_realtime_data(conf: BacktestConfig, run_time):
         del symbol_swap_candle_data
         logger.debug(f'⏱️ swap 数据加载总耗时 {time.time() - t_swap:.3f}s')
 
-    if not {'spot', 'mix'}.isdisjoint(conf.select_scope_set):
+    if not {'spot', 'mix'}.isdisjoint(conf.select_scope_set) or not {'spot'}.isdisjoint(conf.order_first_set):
         t_spot = time.time()
         symbol_spot_candle_data = load_bmac_data('spot', run_time, conf)
         symbol_spot_candle_data = {

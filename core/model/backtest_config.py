@@ -265,14 +265,15 @@ class BacktestConfig:
     @classmethod
     def init_from_config(cls, load_strategy_list: bool = True) -> "BacktestConfig":
         import config
+        from core.utils.exchange_hub import normalize_symbol_filter_list
 
         backtest_config = cls(
             # ** 策略配置 **
             config.strategy_name,
             rebalance_mode=getattr(config, 'rebalance_mode', None),  # rebalance类型
             leverage=config.leverage,  # 杠杆
-            black_list=[item.replace('-', '') for item in config.black_list],  # 拉黑名单
-            white_list=[item.replace('-', '') for item in config.white_list],  # 只交易名单
+            black_list=normalize_symbol_filter_list(config.black_list),  # 拉黑名单
+            white_list=normalize_symbol_filter_list(config.white_list),  # 只交易名单
             # ** 数据参数 **
             min_kline_num=config.data_config['min_kline_num'],  # 最小K线数量，k线数量少于这个数字的部分不会计入计算
             reserved_cache=set(config.data_config['reserved_cache']),  # 预留缓存文件类型，可以控制磁盘占用

@@ -14,9 +14,9 @@ from pandas import show_versions
 
 from core.utils.log_kit import logger, divider
 
-sys_version = '2.2.1'
+sys_version = '2.3.1'
 sys_name = 'position-management-trading'
-build_version = f'v{sys_version}.20260626'
+build_version = f'v{sys_version}.20260911'
 
 
 def version_prompt():

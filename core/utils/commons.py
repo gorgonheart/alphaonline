@@ -89,6 +89,14 @@ def retry_wrapper(func, params=None, func_name='', retry_times=5, sleep_seconds=
             elif '-4028' in msg and 'valid' in msg:
                 logger.error(f'{func_name} 无效的杠杆')
                 break
+            elif '-1123' in msg:
+                # binance {"code":-1123,"msg":"Symbol is in halt status, Can't trade on it."}
+                logger.error(f'{func_name} 币种无法操作，直接跳过')
+                break
+            elif '-5044' in msg:
+                # binance {"code":-5044,"msg":"Trading is halted. The operation is not allowed."}
+                logger.error(f'{func_name} 币种无法操作，直接跳过')
+                break
             else:
                 logger.error(f'{e}，报错内容如下')
                 divider(f'ERR:{func_name}', sep='-')

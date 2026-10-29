@@ -33,7 +33,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))  # 当前目录
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # 上级目录
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))  # 根目录
 from core.account_manager import init_system, load_multi_accounts
-from core.binance.base_client import BinanceClient
+from core.utils.exchange_hub import get_dummy_client
 from core.model.account_config import AccountConfig
 from core.model.backtest_config import MultiEquityBacktestConfig
 from core.utils.path_kit import get_file_path, get_folder_path
@@ -745,7 +745,9 @@ def draw_equity_and_send_pic(me_conf, equity_df, transfer_df, title, account_con
         return
 
     # =画图
-    fig, (ax1, ax3, ax_exp, ax4, ax5, ax6, ax7) = plt.subplots(7, 1, figsize=(12, 18), gridspec_kw={'height_ratios': [3, 1, 1, 1, 1, 1, 3]})
+    # 为独立的双列图例增加高度，避免长图例参与子图间距计算。
+    legend_height = 0.3 * ((len(me_conf.factory.config_list) + 2) // 2) + 0.3
+    fig, (ax1, ax3, ax_exp, ax4, ax5, ax6, ax7) = plt.subplots(7, 1, figsize=(12, 18 + legend_height), gridspec_kw={'height_ratios': [3, 1, 1, 1, 1, 1, 3]})
     # 标记买入和卖出点
     buy_signals = equity_df[(equity_df['type'] == 'transfer') & (equity_df['账户总净值'] > 0)]
     # 移除 bf 利息加仓部分: 加仓金额 < 当前资金 * 10% / 365
@@ -773,6 +775,7 @@ def draw_equity_and_send_pic(me_conf, equity_df, transfer_df, title, account_con
     # 主资金曲线的代理图例
     proxy_line_equity = mtlines.Line2D([0], [0], color='#fb9300', label=f'{account_config.name}-Equity', linewidth=2)
     legend_handles = [proxy_line_equity]  # 初始化图例句柄列表
+    legend_labels = [proxy_line_equity.get_label()]
 
     position_df = me_conf.factory.result_folder / '仓位比例.csv'
     if position_df.exists():
@@ -797,21 +800,21 @@ def draw_equity_and_send_pic(me_conf, equity_df, transfer_df, title, account_con
             pd.to_datetime(sub_stg_equity['candle_begin_time']) + time_diff,
             sub_stg_equity['净值'],
             color=get_color(idx),
-            label=conf.name if position_df.empty else f'{conf.name}-{round(position_df.iloc[-1][idx] * 100, 4)}%',
+            label=f'S{idx + 1}',
             zorder=3,
             alpha=0.5
         )[0]
 
-        set_annotate(ax1, line.get_c(), line.get_xdata(), line.get_ydata())
-
         # 记录图例句柄
         legend_handles.append(line)
+        legend_labels.append(f'S{idx + 1}: {conf.name}' if position_df.empty else
+                             f'S{idx + 1}: {conf.name}-{round(position_df.iloc[-1].iloc[idx] * 100, 4)}%')
 
     # 处理图例
-    ax1.legend(
+    fig.legend(
         handles=legend_handles,
-        labels=[h.get_label() for h in legend_handles],
-        loc='upper left',
+        labels=legend_labels,
+        loc='lower left', bbox_to_anchor=(0.08, 0.01), ncol=2, fontsize=8,
         frameon=True
     )
 
@@ -872,9 +875,9 @@ def draw_equity_and_send_pic(me_conf, equity_df, transfer_df, title, account_con
         position_time = pd.to_datetime(position_df.index).tz_localize(None)
         for idx, conf in enumerate(me_conf.factory.config_list):
             ax6.plot(position_time, position_df[str(idx)],
-                     label=conf.name, color=get_color(idx), linewidth=2, alpha=0.5)
+                     label=f'S{idx + 1}', color=get_color(idx), linewidth=2, alpha=0.5)
     ax6.set_ylabel('策略仓位比例')
-    ax6.legend(loc='upper left')
+    # 与顶部策略曲线共用图底图例及颜色，不再重复放置长图例。
     ax6.grid(True, linestyle='--', linewidth=0.5)
     ax6.set_xlabel('Time')
 
@@ -903,12 +906,13 @@ def draw_equity_and_send_pic(me_conf, equity_df, transfer_df, title, account_con
     ax8.set_ylabel('dd2here (%)')
     ax8.yaxis.set_major_formatter(yticks)
 
-    plt.tight_layout()
+    plt.tight_layout(rect=(0, legend_height / fig.get_figheight(), 1, 1))
 
     # =定义导出图片位置
     pos_pic_path = get_file_path(data_path, 'pos.png')
     # =保存图片
     plt.savefig(pos_pic_path)
+    plt.close(fig)
     # =发送图片
     send_wechat_work_img(pos_pic_path, account_config.wechat_webhook_url)
 
@@ -1247,7 +1251,7 @@ def run():
     default_time = '2023-09-28 00:00:00'
 
     # =加载现货交易对信息
-    dummy_bn_cli = BinanceClient.get_dummy_client()
+    dummy_bn_cli = get_dummy_client()
     market_info = dummy_bn_cli.get_market_info('spot')
     spot_symbol_list = market_info['symbol_list']
 

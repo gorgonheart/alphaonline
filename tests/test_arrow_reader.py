@@ -14,6 +14,7 @@ from core.utils.arrow_reader import (
 
 ARROW_30M = Path(r'd:/alpha/data/preprocess_1h_resample/30m')
 TS = 1782563400
+REAL_TS = max((int(p.stem.rsplit('_', 1)[1]) for p in ARROW_30M.glob('swap_dict_*.arrow')), default=None)
 
 
 def _write_arrow(tmp_path, market_dict):
@@ -62,15 +63,15 @@ def test_missing_manifest_raises(tmp_path):
         read_arrow_market_dict(out)
 
 
-@pytest.mark.skipif(not (ARROW_30M / f'swap_dict_{TS}.arrow').exists(),
+@pytest.mark.skipif(REAL_TS is None,
                     reason='需要真实 30m arrow 数据')
 def test_real_arrow_preserves_all_columns_including_key_0():
-    result = read_arrow_market_dict(ARROW_30M / f'swap_dict_{TS}.arrow')
+    result = read_arrow_market_dict(ARROW_30M / f'swap_dict_{REAL_TS}.arrow')
     assert len(result) > 100
     any_df = next(iter(result.values()))
     assert 'key_0' in any_df.columns
     assert 'candle_begin_time' in any_df.columns
-    assert len(any_df) == 5000  # publish_kline_num
+    assert max(map(len, result.values())) == 5000  # 新币可能不足发布窗口长度
 
 
 def test_arrow_snapshot_path_uses_minute_and_ts():
@@ -85,10 +86,10 @@ def test_for_run_time_returns_none_when_missing(tmp_path):
     assert read_arrow_market_dict_for_run_time(tmp_path, 'swap', rt) is None
 
 
-@pytest.mark.skipif(not (ARROW_30M / f'swap_dict_{TS}.arrow').exists(),
+@pytest.mark.skipif(REAL_TS is None,
                     reason='需要真实 30m arrow 数据')
 def test_for_run_time_reads_real_snapshot():
-    rt = datetime.fromtimestamp(TS)
+    rt = datetime.fromtimestamp(REAL_TS)
     bmac_root = ARROW_30M.parent  # .../preprocess_1h_resample
     d = read_arrow_market_dict_for_run_time(bmac_root, 'swap', rt)
     assert d is not None and len(d) > 100

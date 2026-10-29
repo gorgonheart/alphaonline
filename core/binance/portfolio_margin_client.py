@@ -105,6 +105,21 @@ class PortfolioMarginClient(BinanceClient):
         account = retry_wrapper(self.exchange.papiGetAccount, params={'timestamp': ''}, func_name='获取现货账户净值')
         return float(account['uniMMR'])
 
+    def set_fee_burn(self, is_burn: bool = False):
+        """
+        设置手续费燃烧
+        """
+        res = retry_wrapper(self.exchange.papi_get_um_feeburn,
+                            func_name='papi_get_um_feeburn', if_exit=False)
+        is_fee_burn = bool(res['feeBurn'])
+        if is_fee_burn == is_burn:
+            return
+
+        params = {'feeBurn': 'true' if is_burn else 'false', 'timestamp': ''}
+        retry_wrapper(self.exchange.papi_post_um_feeburn, params=params,
+                      func_name='papi_post_um_feeburn', if_exit=False)
+        logger.ok('修改手续费燃烧')
+
     # ====================================================================================================
     # ** 账户设置 **
     # ====================================================================================================
@@ -875,31 +890,31 @@ class PortfolioMarginClient(BinanceClient):
         send_msg_for_order([params], [order_res], self.wechat_webhook_url)
         return order_res
 
+    def _query_order_by_client_id_raw(
+            self, symbol, client_order_id, symbol_type):
+        query_func = (
+            self.exchange.papiGetMarginOrder
+            if symbol_type == 'spot'
+            else self.exchange.papiGetUmOrder
+        )
+        return query_func({
+            'symbol': symbol,
+            'origClientOrderId': client_order_id,
+            'timestamp': self._adjusted_timestamp_ms(),
+        })
+
     # 使用统一账户，
     def place_swap_order(self, symbol, side, quantity, price=None, reduce_only=False, **kwargs):
-        """
-        :param symbol: 合约代码，例如'BTCUSD_210625'
-        :param side: 方向
-        :param quantity: 数量
-        :param price: 开仓价格
-        :param reduce_only: 只减仓模式
-        :return:
-
-        timeInForce参数的几种类型
-        GTC - Good Till Cancel 成交为止
-        IOC - Immediate or Cancel 无法立即成交(吃单)的部分就撤销
-        FOK - Fill or Kill 无法全部立即成交就撤销
-        GTX - Good Till Crossing 无法成为挂单方就撤销
-        """
+        """使用 Portfolio Margin U 本位 endpoint 下单。"""
         divider(f'`{symbol}`U本位合约下单 {side} {quantity}', '.')
 
-        # 确定下单参数
+        reduce_only = kwargs.pop('reduceOnly', reduce_only)
         params = {
             'symbol': symbol,
             'side': side,
             'type': 'MARKET',
             'quantity': str(quantity),
-            'reduce_only': str(reduce_only),
+            'reduceOnly': str(reduce_only).lower(),
             **kwargs
         }
 

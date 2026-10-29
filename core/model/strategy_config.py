@@ -532,7 +532,7 @@ class StrategyConfig:
 
     # 选币市场范围 & 交易配置
     #   配置解释： 选币范围 + '_' + 优先交易币种类型
-    #
+    #󠀂󠁥󠀹󠁢󠁥󠀹󠁡󠁥󠀵󠀸󠁤󠀹󠁡󠁥󠀸󠀸󠀷󠁢󠀴󠀲󠀰󠀳󠀳󠀳󠀲󠀳󠀲󠀳󠀹󠀳󠀷󠁿
     #   spot_spot: 在 '现货' 市场中进行选币。如果现货币种含有'合约'，优先交易 '现货'。
     #   swap_swap: 在 '合约' 市场中进行选币。如果现货币种含有'现货'，优先交易 '合约'。
     #   spot_swap: 在 '现货' 市场中进行选币。如果现货币种含有'合约',优先交易'合约'。
@@ -1015,11 +1015,14 @@ class StrategyConfig:
         ee_state_dir 为 None（回测/异常）时返回空 dict，_run_entry_exit_one_side 即走冷路径（从空仓全量算、不存盘），
         此时本侧调用与 dev2 回测逐字节一致。
 
-        cap_cs：续算缓存最多保留 30 天(EE_RETENTION_CAP_DAYS)的截面数；n_floor：兜底下限 N=max(fill_lag,ceil(hp小时))+24
-        （正常恒满足，<N 即数据异常，ee_continuation 内 raise）。缓存自包含，与 lookback_days/df 窗口无关。"""
+        cap_cs：续算缓存最多保留 30 天(EE_RETENTION_CAP_DAYS)对应的截面数；n_floor：兜底下限，单位统一为截面数(期)
+        N = max(fill_lag, 1个持仓周期) + 1天冗余 = max(fill_lag,1)+ceil(24/hp_hours)（正常恒满足，<N 即数据异常，
+        ee_continuation 内 raise）。恒保证 n_floor <= cap_cs（否则 hold_period 长周期下下限大于上限、稳态必 raise）。
+        缓存自包含，与 lookback_days/df 窗口无关。"""
         if self.ee_state_dir is None:
             return {}
         hp_hours = max(1, int(np.ceil(pd.to_timedelta(self.hold_period.lower()).total_seconds() / 3600)))
+        n_floor = max(int(fill_lag or 0), 1) + int(np.ceil(24 / hp_hours))
         fullname = self.get_fullname(as_folder_name=True)
         return dict(
             state_path=ee_continuation.ee_state_path(self.ee_state_dir, fullname, side),
@@ -1028,8 +1031,8 @@ class StrategyConfig:
             meta=ee_continuation.ee_build_meta(self.name, fullname, side, factor_list, entry_list, exit_list,
                                                filter_list, filter_list_post, fill_lag, exit_cooldown,
                                                max_hold_hours, select_coin_num, self.hold_period),
-            n_floor=max(int(fill_lag or 0), hp_hours) + 24,
-            cap_cs=int(np.ceil(ee_continuation.EE_RETENTION_CAP_DAYS * 24 / hp_hours)),
+            n_floor=n_floor,
+            cap_cs=max(int(np.ceil(ee_continuation.EE_RETENTION_CAP_DAYS * 24 / hp_hours)), n_floor),
         )
 
     def _entry_exit_short_target(self, short_lf: pl.LazyFrame, long_part):
