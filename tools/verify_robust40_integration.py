@@ -82,7 +82,7 @@ def verify(root):
             price = pd.Series(c['simulation'][kind+'_close_p'][-1],index=pd.Index(symbols[kind],name='symbol'),name='price')
             setattr(bn,'get_'+kind+'_ticker_price_series',lambda price=price:price)
         acct = SimpleNamespace(spot_position=current['spot'],swap_position=current['swap'],bn=bn,
-            spot_equity=state[0][0],swap_equity=state[1][0],leverage=1.,buy_bnb_value=0.,target_equity_mode='research',
+            spot_equity=state[0][0],swap_equity=state[1][0],leverage=1.,buy_bnb_value=0.,
             rebalance_mode=RebalanceMode.init(dict(mode='RebRobust40',params=dict(min_order_usdt_ratio=.4,execution_cap=2.45))))
         old = position.runtime_folder
         try:

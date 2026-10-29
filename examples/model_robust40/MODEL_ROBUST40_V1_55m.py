@@ -6,7 +6,6 @@ The portfolio rebalance mode is nested in account_config so children keep RebAlw
 account_config = {'apiKey': '',
  'secret': '',
  'hour_offset': '55m',
- 'target_equity_mode': 'research',
  'rebalance_mode': {'mode': 'RebRobust40', 'params': {'min_order_usdt_ratio': 0.4, 'execution_cap': 2.45}},
  'account_type': '统一账户',
  'buy_bnb_value': 0,
@@ -20,7 +19,7 @@ strategy_name = 'MODEL_ROBUST40_V1_55m'
 
 strategy_config = {'name': 'ModelRobust40Strategy',
  'hold_period': '1H',
- 'params': {'factor_list': [('Bias', False, 48, 1), ('Bias', False, 144, 1), ('Bias', False, 216, 1)],
+ 'params': {'enable_live_hooks': True, 'factor_list': [('Bias', False, 48, 1), ('Bias', False, 144, 1), ('Bias', False, 216, 1)],
             'parent': {'method': 'native',
                        'gross_cap': 2.5,
                        'research_inputs': 'E:/quant/position-mgmt_v2.3.0/research_20261019_cross_strategy/inputs',
@@ -178,7 +177,7 @@ strategy_pool = [
                 'short_select_coin_num': 0,
                 'factor_list': [('QuoteVolumeMean修正', True, 168, 1)],
                 # 实盘生效日是 '2026-06-01'，回测起点是 2021-01-01，故改为 '2021-01-01'
-                'filter_list': [('VolumeMaxBias_进出场阈值分离官方', (720, 0.1, 0.9, '2025-11-28'), 'val:==1', False),
+                'filter_list': [('VolumeMaxBiasRobust40', (720, 0.1, 0.9, '2025-11-28'), 'val:==1', False),
                                 ('CirculatingMcap', 1, 'pct:>0.5', False)],
                 'filter_list_post': [('CorrBTC', 892, 'pct:>0.5', False)],
                 'use_custom_func': False,
@@ -466,7 +465,7 @@ strategy_pool = [
                 ],
                 "filter_list": [
                     ('QuoteVolumeMean修正', x, 'pct:<0.2', False),
-                    ('TopKTo2K', (x, f'{y}', z), 'val:==1'),
+                    ('TopKTo2KRobust40', (x, f'{y}', z), 'val:==1'),
                     # ('新币落九天用的', 1, 'val:>5'),
                     ('Funding_fee_sum', 24, 'val:>=-0.0006'),
                 ],

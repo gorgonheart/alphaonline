@@ -109,9 +109,6 @@ class AccountConfig:
 
         # 分钟偏移设置，可以自由设置时间，配置必须是kline脚本中interval的倍数。默认：0m表示不偏移，15m表示每个小时偏移15m下单
         self.hour_offset: str = config.get("hour_offset", '0m')
-        self.target_equity_mode: str = config.get('target_equity_mode', 'live_reserve')
-        if self.target_equity_mode not in ('live_reserve', 'research'):
-            raise ValueError('Unknown target_equity_mode')
 
         # 企业微信机器人Webhook URL
         # 创建企业微信机器人 参考帖子: https://bbs.quantclass.cn/thread/10975

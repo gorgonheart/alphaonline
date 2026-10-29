@@ -7,7 +7,7 @@ import pandas as pd
 
 
 def test_topk_exit_uses_research_2point1_boundary():
-    mod = importlib.import_module('sections.TopKTo2K')
+    mod = importlib.import_module('sections.TopKTo2KRobust40')
     rows = []
     for t in range(3):
         for s in range(10):
@@ -27,7 +27,7 @@ def test_topk_exit_uses_research_2point1_boundary():
 
 
 def test_empty_volume_section_always_returns_zero_factor():
-    mod=importlib.import_module('sections.VolumeMaxBias_进出场阈值分离官方')
+    mod=importlib.import_module('sections.VolumeMaxBiasRobust40')
     frame=pd.DataFrame(dict(candle_begin_time=pd.date_range('2026-01-01',periods=3,freq='h'),
         symbol='A',is_spot=0,symbol_spot='',symbol_swap='A',VolumeMaxBias_1=np.nan,**{'是否交易':1}))
     result=mod.signal(frame,(1,.1,.2,'2026-01-01 01:00'),'factor')

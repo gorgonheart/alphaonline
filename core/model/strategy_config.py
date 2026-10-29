@@ -1150,14 +1150,5 @@ class PosStrategyConfig:
     def calc_ratios(self, equity_dfs):
         return self.core_funcs['calc_ratio'](equity_dfs, stg_conf=self)
 
-    def prepare_live(self, me_conf, account, run_time):
-        hook = self.core_funcs.get('prepare_live')
-        if hook is not None:
-            hook(me_conf, account, run_time)
-
-    def transform_targets(self, spot, swap):
-        hook = self.core_funcs.get('transform_targets')
-        return (spot, swap) if hook is None else hook(spot, swap, stg_conf=self)
-
     def __repr__(self):
         return f'{self.name}-{self.hold_period}-{self.params}'

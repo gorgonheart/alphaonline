@@ -146,11 +146,6 @@ def signal(*args):
     # 动态构建因子列名
     base_factor_name = f'VolumeMaxBias_{n}'
 
-    # Full replay matches the research zero mask outside valid sections. On
-    # continuation the existing merge supplies this column (avoid _x/_y suffixes).
-    if df_prev is None and factor_name not in df.columns:
-        df[factor_name] = 0
-
     # 检查因子是否存在
     if base_factor_name not in df.columns:
         print(f"警告: 因子 {base_factor_name} 不存在于数据中")
@@ -179,8 +174,6 @@ def signal(*args):
     # df_work = df_work[~con]
 
     if len(df_work) == 0:
-        if factor_name not in df.columns:
-            df[factor_name] = 0
         df.index = original_index
         return df
 

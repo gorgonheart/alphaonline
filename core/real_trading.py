@@ -102,7 +102,8 @@ def run_by_account(acct_conf: AccountConfig, me_conf: MultiEquityBacktestConfig,
     # 获取所有子策略的资金曲线信息，并且针对仓位管理策略做周期转换，并计算因子
     # ====================================================================================================
     me_conf.process_equities(run_time, hour_offset=acct_conf.hour_offset)
-    me_conf.strategy.prepare_live(me_conf, acct_conf, run_time)
+    if me_conf.strategy.params.get('enable_live_hooks', False) and (hook := me_conf.strategy.core_funcs.get('prepare_live')) is not None:
+        hook(me_conf, acct_conf, run_time)
 
     # ====================================================================================================
     # ** 4. 计算仓位比例 **
@@ -123,7 +124,8 @@ def run_by_account(acct_conf: AccountConfig, me_conf: MultiEquityBacktestConfig,
     # 处理超过rate_limit的权重，将超出部分分配给fill_strategy的选币结果
     # ====================================================================================================
     df_spot_ratio, df_swap_ratio = me_conf.apply_position_limits(df_spot_ratio, df_swap_ratio)
-    df_spot_ratio, df_swap_ratio = me_conf.strategy.transform_targets(df_spot_ratio, df_swap_ratio)
+    if me_conf.strategy.params.get('enable_live_hooks', False) and (hook := me_conf.strategy.core_funcs.get('transform_targets')) is not None:
+        df_spot_ratio, df_swap_ratio = hook(df_spot_ratio, df_swap_ratio, stg_conf=me_conf.strategy)
     logger.ok(f'完成仓位限制，已花费时间{time.time() - s_time:.3f}秒')
 
     df_spot_ratio.to_pickle(runtime_folder / 'df_spot_ratio.pkl')

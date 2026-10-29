@@ -73,6 +73,15 @@ def normalized(value):
     return value
 
 
+def research_definitions(value):
+    """Map explicitly versioned equivalent factors to their research names."""
+    aliases = {'TopKTo2KRobust40': 'TopKTo2K',
+               'VolumeMaxBiasRobust40': 'VolumeMaxBias_进出场阈值分离官方'}
+    if isinstance(value, dict):return {k: research_definitions(v) for k, v in value.items()}
+    if isinstance(value, (list, tuple, range)):return [research_definitions(v) for v in value]
+    return aliases.get(value, value) if isinstance(value, str) else value
+
+
 def prepare(me_conf, account, run_time):
     from config import bmac_data_path, utc_offset, simulator_config
     from core.utils.datatools import read_bmac_market_pivot
@@ -81,7 +90,7 @@ def prepare(me_conf, account, run_time):
         raise ValueError('ROBUST40 requires 1H, full parent change and its own exposure constraints')
     minute = account.hour_offset_minute
     expected = expected_bar(run_time, minute, utc_offset)
-    if account.target_equity_mode != 'research' or account.rebalance_mode.mode != 'RebRobust40':
+    if not strategy.params.get('enable_live_hooks', False) or account.rebalance_mode.mode != 'RebRobust40':
         raise ValueError('ROBUST40 execution configuration is inconsistent')
     if account.rebalance_mode.params != dict(min_order_usdt_ratio=.4, execution_cap=2.45) or account.leverage != 1:
         raise ValueError('ROBUST40 v1 requires frozen execution parameters and leverage=1')
@@ -100,7 +109,7 @@ def prepare(me_conf, account, run_time):
             raise ValueError('Child simulation configuration differs from baseline')
         if len(me_conf.factory.config_list) != 14:raise ValueError('Expected 14 children')
         for conf, reference in zip(me_conf.factory.config_list, bundle['strategy_pool']):
-            if normalized(conf.strategy_list_raw) != normalized(reference['strategy_list']):
+            if research_definitions(conf.strategy_list_raw) != normalized(reference['strategy_list']):
                 raise ValueError('Child strategy definition differs from MODEL_ROBUST40 baseline')
             timing = dict(name=conf.timing.name, params=conf.timing.params) if conf.timing else None
             if normalized(timing) != normalized(reference.get('re_timing')):

@@ -21,11 +21,13 @@ def main():
         content = source.read_text(encoding='utf-8-sig');tree = ast.parse(content)
         node = next(n for n in tree.body if isinstance(n, ast.Assign) and isinstance(n.targets[0], ast.Name) and n.targets[0].id == 'strategy_pool')
         pool = ast.get_source_segment(content, node)
+        pool = pool.replace("'TopKTo2K'", "'TopKTo2KRobust40'").replace(
+            "'VolumeMaxBias_进出场阈值分离官方'", "'VolumeMaxBiasRobust40'")
         strategy = dict(name='ModelRobust40Strategy', hold_period='1H', params=dict(
-            factor_list=parent['factor_list'], parent=parent, runtime=dict(minute=minute,
+            enable_live_hooks=True, factor_list=parent['factor_list'], parent=parent, runtime=dict(minute=minute,
                 bootstrap_path=f'research/model_robust40_v1/{minute}m/runtime_bootstrap.pkl',
                 state_path=f'data/robust40_state/ACCOUNT_NAME_{minute}m.pkl')))
-        account = dict(apiKey='', secret='', hour_offset=f'{minute}m', target_equity_mode='research',
+        account = dict(apiKey='', secret='', hour_offset=f'{minute}m',
             rebalance_mode=dict(mode='RebRobust40', params=dict(min_order_usdt_ratio=.4, execution_cap=2.45)),
             account_type='统一账户', buy_bnb_value=0, if_use_bnb_burn=False, if_transfer_bnb=False,
             order_spot_money_limit=10, order_swap_money_limit=5, filter_bstocks=True)

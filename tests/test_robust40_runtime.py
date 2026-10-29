@@ -6,7 +6,6 @@ import pandas as pd
 import pytest
 from scipy import sparse
 
-from tools.robust40.budget import execution_budget
 from tools.robust40.runtime import expected_bar, merge_context, expand_result
 from tools.robust40.live import build_context, parent_ratios, transform_targets
 
@@ -18,13 +17,6 @@ def test_closed_bar_uses_account_clock_and_timezone(minute):
     assert expected_bar(local, minute, 8) == want
     assert expected_bar(local.tz_localize('Asia/Hong_Kong'), minute, 8) == want
     with pytest.raises(ValueError):expected_bar(local+pd.Timedelta(minutes=1), minute, 8)
-
-
-def test_equity_convention_is_opt_in():
-    assert execution_budget(1001, 2, 0, True, True, 1) == pytest.approx((1000, 1.94, 1940))
-    assert execution_budget(1001, 2, 5, True, True, 1) == pytest.approx((1000, 1.9, 1900))
-    assert execution_budget(1001, 2, 5, True, True, -1) == pytest.approx((1000, 2, 2000))
-    assert execution_budget(1001, 2, 5, True, True, 1, 'research') == (1001, 2, 2002)
 
 
 def context(start, periods, extra=False):
@@ -68,16 +60,16 @@ def test_saved_lots_map_by_symbol_including_pending_orders():
     np.testing.assert_array_equal(frame.attrs['simulation_state'][1][1], [-3])
 
 
-def test_factory_and_optional_hooks_preserve_old_strategy():
-    from core.model.strategy_config import PosStrategyConfig
+def test_execution_registration_preserves_built_in_modes():
+    from core import rebalance
     from core.model.rebalance_mode import RebalanceMode
-    s = PosStrategyConfig('old', '1H')
-    spot, swap = object(), object()
-    assert s.transform_targets(spot, swap) == (spot, swap)
-    assert s.prepare_live(None, None, None) is None
+    from tools.robust40.live_execution import register_execution
+    old = {k: v for k, v in vars(rebalance).items() if k.startswith('Reb') and k != 'RebRobust40'}
+    register_execution();register_execution()
+    assert all(getattr(rebalance,k) is v for k,v in old.items())
     reb = RebalanceMode.init(dict(mode='RebRobust40',params=dict(min_order_usdt_ratio=.4,execution_cap=2.45)))
     obj = reb.create(np.ones(1), np.ones(1))
-    assert obj.min_order_usdt_ratio == .4 and obj.execution_cap == 2.45
+    assert obj.use_full_equity and obj.calculator.min_order_usdt_ratio == .4 and obj.calculator.execution_cap == 2.45
 
 
 def test_target_adapter_aligns_timezone_and_columns_and_detects_double_timing():
@@ -116,6 +108,8 @@ def test_failed_state_update_preserves_saved_bytes_and_releases_lock(tmp_path):
 def test_missing_active_live_price_fails_before_generating_lots(tmp_path,monkeypatch):
     import core.position as position
     from core.model.rebalance_mode import RebalanceMode
+    from tools.robust40.live_execution import register_execution
+    register_execution()
     index=pd.date_range('2026-10-01 00:20',periods=1)
     pd.DataFrame(index=index).to_pickle(tmp_path/'df_spot_ratio.pkl')
     pd.DataFrame({'U':[.2]},index=index).to_pickle(tmp_path/'df_swap_ratio.pkl')
@@ -124,7 +118,7 @@ def test_missing_active_live_price_fails_before_generating_lots(tmp_path,monkeyp
         get_spot_ticker_price_series=lambda:pd.Series(dtype=float),
         get_swap_ticker_price_series=lambda:pd.Series({'U':np.nan}))
     acct=SimpleNamespace(bn=bn,spot_position=pd.DataFrame(),swap_position=pd.DataFrame(),
-        spot_equity=0,swap_equity=1000,leverage=1,buy_bnb_value=0,target_equity_mode='research',
+        spot_equity=0,swap_equity=1000,leverage=1,buy_bnb_value=0,
         rebalance_mode=RebalanceMode.init(dict(mode='RebRobust40',params={})))
     monkeypatch.setattr(position,'runtime_folder',tmp_path)
     with pytest.raises(ValueError,match='Missing active instrument price'):

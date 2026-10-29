@@ -126,7 +126,9 @@ def test_dry_run_account_refresh_disables_account_mutations(monkeypatch):
 
 
 @pytest.mark.parametrize('mode', ['dry_run', 'none'])
-def test_trading_pipeline_routes_time_and_preserves_dry_run(tmp_path, monkeypatch, mode):
+@pytest.mark.parametrize('minute', [0, 5, 15, 20, 25, 45])
+@pytest.mark.parametrize('enable_hooks', [False, True])
+def test_trading_pipeline_routes_time_and_preserves_dry_run(tmp_path, monkeypatch, mode, minute, enable_hooks):
     import core.real_trading as trading
     monkeypatch.setattr(trading, 'is_simulate', mode)
     monkeypatch.setattr(trading, 'is_debug', False)
@@ -141,18 +143,29 @@ def test_trading_pipeline_routes_time_and_preserves_dry_run(tmp_path, monkeypatc
         monkeypatch.setattr(trading, name, Mock())
     positions = pd.DataFrame({'目标持仓量': [1.]})
     monkeypatch.setattr(trading, 'calc_target_position', Mock(return_value=positions))
-    account = Mock(hour_offset_minute=0, hour_offset='0m')
+    account = Mock(hour_offset_minute=minute, hour_offset=f'{minute}m')
     account.name = 'test'
     account.proceed_spot_order.return_value = ([], pd.DataFrame())
     account.proceed_swap_order.return_value = ([], pd.DataFrame())
     me = Mock()
     from core.model.strategy_config import PosStrategyConfig
     me.strategy = PosStrategyConfig('legacy', '1H')
+    prepare = Mock()
+    transform = Mock(side_effect=lambda spot, swap, **kwargs: (spot, swap))
+    me.strategy.core_funcs = {'prepare_live': prepare, 'transform_targets': transform}
+    if enable_hooks:
+        me.strategy.params['enable_live_hooks'] = True
     ratio = pd.DataFrame({'BTCUSDT': [0.5]}, index=pd.to_datetime(['2026-10-14']))
     me.agg_pos_ratio.return_value = (ratio, ratio)
     me.apply_position_limits.return_value = (ratio, ratio)
-    rt = datetime(2026, 10, 14)
+    rt = datetime(2026, 10, 14, 0, minute)
     trading.run_by_account(account, me, rt)
+    if enable_hooks:
+        prepare.assert_called_once_with(me, account, rt)
+        transform.assert_called_once_with(ratio, ratio, stg_conf=me.strategy)
+    else:
+        prepare.assert_not_called()
+        transform.assert_not_called()
     if mode == 'dry_run':
         trading.save_order_history.assert_not_called()
         for method in [account.proceed_spot_order, account.proceed_swap_order,

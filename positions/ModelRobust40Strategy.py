@@ -1,5 +1,8 @@
 """Independent-offset MODEL_ROBUST40, using explicit framework hooks."""
 from tools.robust40 import live
+from tools.robust40.live_execution import register_execution
+
+register_execution()
 
 
 def prepare_live(me_conf, account, run_time):

@@ -4,9 +4,9 @@
 
 用户明确选择移植 MODEL_ROBUST40、各分钟独立计算和重建基准。新实现位于 `codex/live-offset-parity`，main 仍保留 e6fc3bd 旧基线。详见 [MODEL_ROBUST40 接口、结果与上线条件](MODEL_ROBUST40.md)。20m/40m/55m 已各自重建父权重、季度模型及 S5 delta，并以三目录正式回测入口复用原 14 子策略缓存验证。8,013 根组合曲线最大差 6.55e-11；最近 2,000 根通过实际实盘聚合接口的目标差为 0，末根目标手数完全一致；三偏移 240h 断点续算与全量一致。
 
-新增可选 prepare_live/transform_targets 接口、RebRobust40、research 权益口径、账户 simulator_config 覆盖和 required_history_start 完整 PKL 输入模式。旧账户默认不变，Tail-Only 未实现。S3 固定初始化日期使 5000 根滚动窗口不足，新账户示例明确最低历史；历史/配置/时钟不匹配会停止。状态在账户独立持久目录，保留待执行订单；示例位于 examples，未写入活动 accounts。TopKTo2K pandas 的退出阈值与既有 Polars/研究统一为 2.1；VolumeMaxBias 空截面补零列，增量 merge 保留。
+策略隔离收敛：相对 main 仅 4 个 core 文件、+27/−4 行，保留显式开启的 prepare_live/transform_targets、执行器完整权益声明和配置实例级 required_history_start。core 无 MODEL 导入，共享 account_config/strategy_config/rebalance 恢复主干。MODEL 调仓执行器由新策略加载时附加注册；不替换旧模式。共享 TopKTo2K、VolumeMaxBias 恢复旧行为，研究边界使用独立 Robust40 因子名。账户 simulator_config/历史配置覆盖每次重载先恢复默认。详见 [策略隔离及五个账户兼容验证](2026-10-29-strategy-isolation.md)。
 
-验证：alpha311 全仓 305 passed / 4 skipped（缺真实 30m Arrow）/ 100 warnings，80.53 秒。没有部署、生产写入或下单。尚需生产同源原始行情→14 子策略重算对账、20/40m 供数及真实执行条件验收；不能将同输入目标一致表述为实际成交一致。完整历史读取、约 344MB/偏移状态及日切模型刷新增加资源成本，不采用此前毫秒级收益估计。
+Tail-Only 未实现。S3 固定初始化日期使 5000 根滚动窗口不足，新账户示例明确最低历史；历史/配置/时钟不匹配会停止。状态在账户独立持久目录，保留待执行订单；示例位于 examples，未写入活动 accounts。初版全仓 305 passed / 4 skipped；重构验证结果以隔离报告为准。没有部署、生产写入或下单。尚需生产同源原始行情→14 子策略重算对账、20/40m 供数及真实执行条件验收；不能将同输入目标一致表述为实际成交一致。完整历史读取、约 344MB/偏移状态及日切模型刷新增加资源成本，不采用此前毫秒级收益估计。
 
 ## 2026-10-29 本地基线整理与偏移一致性审查
 

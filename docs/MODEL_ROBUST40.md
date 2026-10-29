@@ -28,17 +28,22 @@ MODEL 为 15 特征季度 LogisticRegression(C=.1,max_iter=500,solver='lbfgs')�
 
 父策略输出不提前乘再择时，框架 `calc_ratios` 仍只乘一次；S5 delta 自身包含 S5 的一次再择时。变换后与共享引擎全窗口目标再次对照。币种按名称对齐，虚拟账户的已有持仓、待执行目标、价格随新增列一起映射。新币补零，历史退市列保留。
 
-core 只增加显式可选接口/模式，没有替换 `agg_pos_ratio`，没有 monkey-patch：
+按最小修改原则收敛后，相对 main 只有 **4 个 core 文件、+27/−4 行**。core 不导入 MODEL 模块，共享账户模型、父策略模型和调仓算法均恢复主干；没有替换框架已有函数或调仓模式。
 
-| 修改位置 | 作用与默认兼容性 |
+| 修改位置 | 通用接口与默认兼容性 |
 |---|---|
-| `core/model/strategy_config.py`、`core/real_trading.py` | 可选 prepare/transform hook；旧策略无 hook 时透传 |
-| `core/rebalance.py` | 注册 `RebRobust40`，40% 死区、2.45 gross cap；旧模式不变 |
-| `core/position.py`、`account_config.py` | `target_equity_mode='research'` 显式选择回测权益口径；默认仍扣 1.001 和原现货预留。空市场 lot size 固定浮点类型；新模式缺有效价格停止 |
-| `config.py` | 允许账户覆盖 `simulator_config`、`required_history_start`，默认配置不改 |
-| `backtest_config.py`、`datatools.py` | 可选固定初始化历史；仅显式启用时读完整保留 PKL、不按 5000 尾窗裁切，缺起点停止 |
+| `core/real_trading.py` | 通过已有 `core_funcs` 调用 prepare/transform；必须同时显式设置 `params.enable_live_hooks=True`。旧策略即使存在同名函数也不会被调用 |
+| `core/position.py` | 执行器显式声明 `use_full_equity=True` 才使用完整权益；默认仍扣 1.001 和原现货预留 |
+| `core/model/backtest_config.py` | 按配置实例传递可选 `required_history_start`；默认 None |
+| `core/utils/datatools.py` | 仅该配置显式设置历史起点时读取完整保留 PKL、检查起点；其他策略继续原 Arrow、回退及尾窗路径 |
 
-只在 position 层修改无法保证输入历史、父权重和再择时正确，也不能让回测模拟器自动采用同一规则。此次将数学集中在 `tools/robust40/`，position 负责执行口径，core 提供明确调用点。
+MODEL 自身在 `positions/ModelRobust40Strategy.py` 加载时，通过 `tools/robust40/live_execution.py` 向现有按名称查找的调仓表增加独立 `RebRobust40` 名称。这是进程内的附加注册，不覆盖内置模式；重复同类注册允许，名称冲突报错。核心默认导入不加载 MODEL。私有执行器包装冻结回测算法，独自处理价格检查、lot size 类型和完整权益声明。`target_equity_mode` 账户字段已移除。
+
+core 外的 `config.py` 允许显式账户覆盖 `simulator_config` 和 `required_history_start`；两项每次加载均恢复默认，防止从 MODEL 切回旧账户时残留。已扫描当前 accounts，没有账户定义这两个新增模块级配置。MODEL 示例只放 examples。
+
+共享 `TopKTo2K` 和 `VolumeMaxBias_进出场阈值分离官方` 恢复 main 原实现。MODEL 分别使用独立的 `TopKTo2KRobust40`（研究 2.1 退出边界）和 `VolumeMaxBiasRobust40`（空截面零列），保持旧策略的既有 pandas/Polars 行为。研究定义比对只认这两个显式等价别名；其他参数仍逐项核对。旧 TopK 的 pandas 2.0 / Polars 2.1 差异本次不统一，避免改变旧策略结果。
+
+只在 position 层修改无法保证输入历史、父权重和再择时正确，也不能让回测模拟器自动采用同一规则。数学和策略约束集中在 `tools/robust40/`，core 仅提供默认关闭的通用调用点。
 
 账户的 `rebalance_mode` 必须放在 **account_config 内部**，不设成模块级全局变量，否则也会改变 14 个子策略的模拟器。示例保留子策略默认 RebAlways，子策略模拟费用/最小订单与研究一致（现货 10、合约 5），组合才用 40% 死区。
 
@@ -64,7 +69,7 @@ S3 的状态因子固定从 2025-11-28 初始化，并要求此前至少 720 小
 
 三偏移各自暂停 240 小时后继续，父权重、delta、资金曲线与全量计算误差均为 0。最终代码另对三偏移各做 24h 断点复核，三项误差仍均为 0。验证包含未执行订单、费用和持仓的保存恢复。交易链路对账实际调用本仓库 `calc_ratios`、`agg_pos_ratio`、`calc_target_position`，使用相同权益、持仓、价格、币种准入和最小手数；未调用交易所。
 
-全仓离线 `pytest tests`：**305 passed / 4 skipped / 100 warnings**，80.53 秒；跳过项缺真实 30m Arrow 快照。新因子边界先红后绿：TopKTo2K pandas 与研究/Polars 统一 2.1 退出倍数；VolumeMaxBias 空截面返回零列，并保留增量 merge 不产生 `_x/_y` 的行为。动量 V2 数学与研究一致，实盘完整历史声明不删除。其余 30 个直接依赖模块 AST 初查一致。
+初版全仓离线结果为 305 passed / 4 skipped / 100 warnings；本次隔离重构后的结果见 [策略隔离审查](2026-10-29-strategy-isolation.md)。新增五个指定账户配置加载、三种原调仓模式与主干目标手数对照、显式 hook 开关、配置重载、共享模块恢复和因子边界隔离测试。三个偏移重新经过实际聚合和目标手数接口，目标误差及不一致手数仍为 0。MODEL 因子边界保留独立 oracle；动量 V2 数学和预计算/完整历史声明不变。
 
 原 Hybrid 的 0/20/40/55m、1/4/6H 与首尾完整/不完整周期 48 组合亦已离线对照独立 OHLC oracle 和回测函数一致；MODEL 本次正式数据验收仅覆盖 20m/40m/55m。
 
