@@ -49,9 +49,14 @@ def build_context(equities, ratios, leverage, pivots, sizes, minute, simulator):
         min_margin_rate=simulator['margin_rate'], require_rebalance=np.ones(n, dtype=np.int8),
         capital_flow_arr=np.zeros(n), capital_flow_mode=-1)
     closes = []
+    benchmark = None
     for kind in ('spot', 'swap'):
         symbols = [c.split(':', 1)[1] for c in columns if c.startswith(kind+':')]
         p = {k: _frame(v) for k, v in pivots[kind].items()}
+        if kind == 'swap':
+            if 'BTCUSDT' not in p['close']:
+                raise ValueError('BTC benchmark candles are required even when trading is excluded')
+            benchmark = p['close']['BTCUSDT'].loc[:index[-1]]
         for key in ('open', 'close', 'vwap1m'):
             if not index.isin(p[key].index).all():raise ValueError('Market pivot is stale/incomplete')
             sim[kind+'_'+key+'_p'] = np.ascontiguousarray(p[key].reindex(index=index, columns=symbols).to_numpy())
@@ -62,9 +67,11 @@ def build_context(equities, ratios, leverage, pivots, sizes, minute, simulator):
             raise ValueError('Missing instrument unit for virtual account')
         close = p['close'].reindex(columns=symbols).loc[:index[-1]]
         close.columns = [kind+':'+s for s in symbols];closes.append(close)
+    close = pd.concat(closes, axis=1).reindex(columns=columns)
+    close['swap:BTCUSDT'] = benchmark
     return dict(index=index, minute=minute, columns=columns, matrices=matrices,
         leverage=leverage.reindex(index), equities=equities, simulation=sim,
-        close=pd.concat(closes, axis=1).reindex(columns=columns))
+        close=close)
 
 
 def normalized(value):

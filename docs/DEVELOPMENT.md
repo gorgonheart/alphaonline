@@ -1,5 +1,17 @@
 # alpha / alphaonline 统一开发说明
 
+## 2026-10-30 实盘同源基准与历史差异
+
+用户实跑 20m 首次触发 Historical revision in S1 positions。当前无已成功保存的账户 state，实际使用的是由研究子策略缓存生成的 bootstrap。最近共同 168 根比较：S1 每根均不同、989 个权重单元不同、最大绝对差 0.032411；14 子策略中 13 个存在持仓差异，仅 S10 一致，详见 research/live_overlap_diagnosis.json。这是输入持仓实质变化，不能放宽误差阈值或拼接原基准。
+
+已定位一个明确来源：旧实盘黑名单含 BTC/SOL，研究基准含这些持仓。用户现已移除 BTC/SOL；本次保留用户对 shared_account_config.py 的修改。现存 20m 子策略 config.pkl 仍记录旧黑名单；40/55m 当前没有完整子策略产物，本地数据中心也无 40/55m 行情目录。因此尚未生成或切换新黑名单下的基准。
+
+新增 tools/rebuild_robust40_live_baseline.py：显式离线读取本账户已完成的 14 子策略输出、snapshot 比例、生产 PKL/pivot 和缓存 lot_size；检查输出与当前黑/白名单匹配、结束时间和分钟一致；以冻结模型重算，验证 24h 全量/续算一致后写入全新目录。不会覆盖研究基准、修改活动配置、启动交易或访问交易所。当前旧产物已被生成器拒绝；第一次旧黑名单输入的试算已停止，未产生可用新基准。新产物生成后仍需实际重叠与聚合检查，再切换账户 bootstrap。
+
+同时修复 MODEL 适配器：即使 BTC 不参与持仓，也保留独立 swap:BTCUSDT 行情供条件 beta 使用；续算保留该辅助行情并检查历史未变，不会把它加入交易目标列。修正仅在 tools/robust40，core 未改。基准缺失回归先失败后修复；模型契约/运行时/因子共 28 passed，新增重建输入检查与运行时共 14 passed，日志 research/live_baseline_tests.log、research/live_rebuild_guard.log。BNB 仍按用户原设置开启。
+
+生成命令（需先有新黑名单下完整同轮产物）：alpha311 运行 `tools/rebuild_robust40_live_baseline.py --account accounts/20m_robust_4h.py --output research/live_robust40_new_filters_20m`；40/55m 同理，要求各自实盘供数和子策略产物，不能平移复用 20m。
+
 ## 2026-10-30 活动 20/40/55m MODEL 账户接入
 
 修复 startup 扫描 accounts 时找不到 HybridRobust4HStrategy：此前三个活动账户仍为旧草稿，只有 examples 已移植。现将 accounts/{20,40,55}m_robust_4h.py 的父策略、14 子策略、预计算声明、子策略 simulator_config、固定历史起点迁移到对应 MODEL 示例，杠杆 1；组合 RebRobust40 放入 account_config 内部，删除模块级 RebRobust4H，子策略保持 RebAlways。每分钟使用自己的 bootstrap 和 data/robust40_state/<账户名>.pkl，不再有 ACCOUNT_NAME 占位符。

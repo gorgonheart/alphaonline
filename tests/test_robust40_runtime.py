@@ -48,6 +48,27 @@ def test_merge_preserves_history_expands_symbols_and_rejects_revision():
     assert old['leverage'][4].eq(1).all()
 
 
+def test_nontraded_benchmark_survives_context_and_continuation():
+    c = context('2026-10-01 00:20', 5)
+    idx = c['index']
+    ratios = [(pd.DataFrame({'S': .1}, index=idx), pd.DataFrame({'U': -.1}, index=idx))]*14
+    pivots = {k: {field: pd.DataFrame(100., index=idx, columns=cols)
+                  for field in ('open','close','vwap1m','funding_rate')}
+              for k, cols in [('spot',['S']), ('swap',['U','BTCUSDT'])]}
+    simulator = dict(initial_usdt=10000, spot_c_rate=.001, swap_c_rate=.0006,
+                     spot_min_order_limit=10, swap_min_order_limit=5, margin_rate=.05)
+    built = build_context(c['equities'], ratios, c['leverage'], pivots,
+                          {'spot':pd.Series({'S':1.}), 'swap':pd.Series({'U':1.})}, 20, simulator)
+    assert 'swap:BTCUSDT' not in built['columns']
+    assert built['close']['swap:BTCUSDT'].eq(100).all()
+    result = merge_context(built, built, minimum_overlap=3, warmup=0)
+    pd.testing.assert_frame_equal(result['close'], built['close'])
+    changed = dict(built, close=built['close'].copy())
+    changed['close'].iloc[-1, changed['close'].columns.get_loc('swap:BTCUSDT')] = 101
+    with pytest.raises(ValueError, match='reference prices'):
+        merge_context(built, changed, minimum_overlap=3, warmup=0)
+
+
 def test_saved_lots_map_by_symbol_including_pending_orders():
     frame = pd.DataFrame({'equity': [100.]})
     frame.attrs['simulation_state'] = ((100., np.array([1]), np.array([2]), np.array([10.]), True),

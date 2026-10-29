@@ -121,7 +121,13 @@ def merge_context(old, new, minimum_overlap=168, warmup=1000):
         if not isinstance(simulation[key], np.ndarray) and simulation[key] != new['simulation'][key]:
             raise ValueError(f'Simulator parameter changed: {key}')
     # Newly listed instruments may bring older prices, but never revise old symbols.
-    close = old['close'].reindex(columns=columns).combine_first(new['close'].reindex(columns=columns))
+    price_columns = list(dict.fromkeys(columns+list(old['close'].columns)+list(new['close'].columns)))
+    references = [c for c in price_columns if c not in columns]
+    for column in references:
+        if column not in old['close'] or column not in new['close']:
+            raise ValueError('Reference price history changed')
+        _same(old['close'].loc[overlap, column], new['close'].loc[overlap, column], 'reference prices')
+    close = old['close'].reindex(columns=price_columns).combine_first(new['close'].reindex(columns=price_columns))
     close = close.loc[:new['index'][-1]]
     result = dict(old, index=old['index'].append(addition), columns=columns, matrices=matrices,
         leverage=pd.concat([old['leverage'], new['leverage'].loc[addition]]),
