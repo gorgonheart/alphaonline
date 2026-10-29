@@ -41,7 +41,7 @@ MODEL 自身在 `positions/ModelRobust40Strategy.py` 加载时，通过 `tools/r
 
 core 外的 `config.py` 允许显式账户覆盖 `simulator_config` 和 `required_history_start`；两项每次加载均恢复默认，防止从 MODEL 切回旧账户时残留。已扫描当前 accounts，没有账户定义这两个新增模块级配置。MODEL 示例只放 examples。
 
-共享 `TopKTo2K` 和 `VolumeMaxBias_进出场阈值分离官方` 恢复 main 原实现。MODEL 分别使用独立的 `TopKTo2KRobust40`（研究 2.1 退出边界）和 `VolumeMaxBiasRobust40`（空截面零列），保持旧策略的既有 pandas/Polars 行为。研究定义比对只认这两个显式等价别名；其他参数仍逐项核对。旧 TopK 的 pandas 2.0 / Polars 2.1 差异本次不统一，避免改变旧策略结果。
+2026-10-30 按用户要求统一共享 section：`TopKTo2K` 的公开 pandas 入口复用原 Polars 实现，统一 2.1 倍退出边界与市场分组；`VolumeMaxBias_进出场阈值分离官方` 全量初始化补零，空截面也生成结果列，增量分支仍由历史 merge 提供结果列。所有引用这两个原名称的策略均生效，旧策略走 pandas 时边界选币可能改变。删除两个 Robust40 专用 section 文件、示例别名和研究定义别名转换；MODEL 使用原名称，直接逐项核对研究定义。此次不修改 core。
 
 只在 position 层修改无法保证输入历史、父权重和再择时正确，也不能让回测模拟器自动采用同一规则。数学和策略约束集中在 `tools/robust40/`，core 仅提供默认关闭的通用调用点。
 
@@ -69,7 +69,7 @@ S3 的状态因子固定从 2025-11-28 初始化，并要求此前至少 720 小
 
 三偏移各自暂停 240 小时后继续，父权重、delta、资金曲线与全量计算误差均为 0。最终代码另对三偏移各做 24h 断点复核，三项误差仍均为 0。验证包含未执行订单、费用和持仓的保存恢复。交易链路对账实际调用本仓库 `calc_ratios`、`agg_pos_ratio`、`calc_target_position`，使用相同权益、持仓、价格、币种准入和最小手数；未调用交易所。
 
-初版全仓离线结果为 305 passed / 4 skipped / 100 warnings；本次隔离重构后的结果见 [策略隔离审查](2026-10-29-strategy-isolation.md)。新增五个指定账户配置加载、三种原调仓模式与主干目标手数对照、显式 hook 开关、配置重载、共享模块恢复和因子边界隔离测试。三个偏移重新经过实际聚合和目标手数接口，目标误差及不一致手数仍为 0。MODEL 因子边界保留独立 oracle；动量 V2 数学和预计算/完整历史声明不变。
+初版全仓离线结果为 305 passed / 4 skipped / 100 warnings；本次隔离重构后的结果见 [策略隔离审查](2026-10-29-strategy-isolation.md)。新增五个指定账户配置加载、三种原调仓模式与主干目标手数对照、显式 hook 开关、配置重载、框架共享模块恢复测试；共享因子已于 10 月 30 日按用户要求统一修正。三个偏移重新经过实际聚合和目标手数接口，目标误差及不一致手数仍为 0。MODEL 因子边界保留独立 oracle；动量 V2 数学和预计算/完整历史声明不变。
 
 原 Hybrid 的 0/20/40/55m、1/4/6H 与首尾完整/不完整周期 48 组合亦已离线对照独立 OHLC oracle 和回测函数一致；MODEL 本次正式数据验收仅覆盖 20m/40m/55m。
 

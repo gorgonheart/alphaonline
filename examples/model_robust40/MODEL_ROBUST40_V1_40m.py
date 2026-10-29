@@ -177,7 +177,7 @@ strategy_pool = [
                 'short_select_coin_num': 0,
                 'factor_list': [('QuoteVolumeMean修正', True, 168, 1)],
                 # 实盘生效日是 '2026-06-01'，回测起点是 2021-01-01，故改为 '2021-01-01'
-                'filter_list': [('VolumeMaxBiasRobust40', (720, 0.1, 0.9, '2025-11-28'), 'val:==1', False),
+                'filter_list': [('VolumeMaxBias_进出场阈值分离官方', (720, 0.1, 0.9, '2025-11-28'), 'val:==1', False),
                                 ('CirculatingMcap', 1, 'pct:>0.5', False)],
                 'filter_list_post': [('CorrBTC', 892, 'pct:>0.5', False)],
                 'use_custom_func': False,
@@ -465,7 +465,7 @@ strategy_pool = [
                 ],
                 "filter_list": [
                     ('QuoteVolumeMean修正', x, 'pct:<0.2', False),
-                    ('TopKTo2KRobust40', (x, f'{y}', z), 'val:==1'),
+                    ('TopKTo2K', (x, f'{y}', z), 'val:==1'),
                     # ('新币落九天用的', 1, 'val:>5'),
                     ('Funding_fee_sum', 24, 'val:>=-0.0006'),
                 ],

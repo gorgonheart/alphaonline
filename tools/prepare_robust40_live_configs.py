@@ -21,8 +21,6 @@ def main():
         content = source.read_text(encoding='utf-8-sig');tree = ast.parse(content)
         node = next(n for n in tree.body if isinstance(n, ast.Assign) and isinstance(n.targets[0], ast.Name) and n.targets[0].id == 'strategy_pool')
         pool = ast.get_source_segment(content, node)
-        pool = pool.replace("'TopKTo2K'", "'TopKTo2KRobust40'").replace(
-            "'VolumeMaxBias_进出场阈值分离官方'", "'VolumeMaxBiasRobust40'")
         strategy = dict(name='ModelRobust40Strategy', hold_period='1H', params=dict(
             enable_live_hooks=True, factor_list=parent['factor_list'], parent=parent, runtime=dict(minute=minute,
                 bootstrap_path=f'research/model_robust40_v1/{minute}m/runtime_bootstrap.pkl',

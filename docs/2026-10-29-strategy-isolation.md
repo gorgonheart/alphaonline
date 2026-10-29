@@ -1,5 +1,7 @@
 # 2026-10-29 策略与框架隔离审查
 
+> 后续变更（2026-10-30）：用户明确要求共享因子修正对所有策略生效。两个 Robust40 专用 section 已删除，所有策略统一使用修正后的 TopKTo2K / VolumeMaxBias 原文件。下文“共享因子恢复 main / 边界隔离”及对应源码比较为 10 月 29 日历史结论，不再代表当前因子实现；core 隔离与执行规则保持不变。当前接口见 MODEL_ROBUST40.md 与 DEVELOPMENT.md。
+
 范围：在 `codex/live-offset-parity` 收敛 MODEL_ROBUST40 移植，兼容基准是 main=e6fc3bd。没有修改活动账户、部署服务器或运行交易。此前 4b0b5af 修改 7 个 core 文件、+50/−13；现在相对 main 为 **4 个文件、+27/−4**。
 
 ## 收敛内容

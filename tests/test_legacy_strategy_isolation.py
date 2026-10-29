@@ -1,6 +1,5 @@
 """Offline regression using the five named accounts, without loading credentials."""
 import ast
-import importlib
 import subprocess
 import sys
 import types
@@ -88,8 +87,7 @@ def test_model_examples_explicitly_select_private_extensions(minute):
     pool = public_assignment(path, 'strategy_pool')
     names = {f[0] for p in pool for c in p['strategy_list'] for k,v in c.items()
              if 'factor_list' in k or 'filter_list' in k for f in v}
-    assert {'TopKTo2KRobust40','VolumeMaxBiasRobust40'} <= names
-    assert not {'TopKTo2K','VolumeMaxBias_进出场阈值分离官方'} & names
+    assert {'TopKTo2K','VolumeMaxBias_进出场阈值分离官方'} <= names
 
 
 @pytest.mark.parametrize('name', ACCOUNTS)
@@ -148,24 +146,10 @@ def test_legacy_target_lots_match_main_even_after_model_registration(name, mode,
 
 
 @pytest.mark.parametrize('path', ['core/model/account_config.py', 'core/model/strategy_config.py',
-    'core/rebalance.py', 'sections/TopKTo2K.py', 'sections/VolumeMaxBias_进出场阈值分离官方.py',
+    'core/rebalance.py',
     'positions/HybridRotationDriftStrategy.py'])
 def test_shared_implementation_unchanged_from_main(path):
     assert ast.dump(ast.parse((ROOT/path).read_text(encoding='utf-8-sig'))) == ast.dump(ast.parse(baseline_source(path)))
-
-
-def test_old_and_model_factor_boundaries_remain_independent():
-    old = importlib.import_module('sections.TopKTo2K')
-    new = importlib.import_module('sections.TopKTo2KRobust40')
-    rows = []
-    for t in range(2):
-        for i in range(10):
-            rank = i+1 if t == 0 else [2,1,3,4,5,6,7,8,9,10][i]
-            rows.append(dict(candle_begin_time=pd.Timestamp('2026-01-01')+pd.Timedelta(hours=t),
-                             symbol=str(i), is_spot=0, score_1=11-rank))
-    df = pd.DataFrame(rows)
-    assert old.signal(df.copy(), (2,'score',1), 'x').loc[10,'x'] == 1
-    assert new.signal(df.copy(), (2,'score',1), 'x').loc[10,'x'] == 0
 
 
 def test_existing_robust4h_draft_was_already_missing_its_strategy():

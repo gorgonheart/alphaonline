@@ -73,15 +73,6 @@ def normalized(value):
     return value
 
 
-def research_definitions(value):
-    """Map explicitly versioned equivalent factors to their research names."""
-    aliases = {'TopKTo2KRobust40': 'TopKTo2K',
-               'VolumeMaxBiasRobust40': 'VolumeMaxBias_进出场阈值分离官方'}
-    if isinstance(value, dict):return {k: research_definitions(v) for k, v in value.items()}
-    if isinstance(value, (list, tuple, range)):return [research_definitions(v) for v in value]
-    return aliases.get(value, value) if isinstance(value, str) else value
-
-
 def prepare(me_conf, account, run_time):
     from config import bmac_data_path, utc_offset, simulator_config
     from core.utils.datatools import read_bmac_market_pivot
@@ -109,7 +100,7 @@ def prepare(me_conf, account, run_time):
             raise ValueError('Child simulation configuration differs from baseline')
         if len(me_conf.factory.config_list) != 14:raise ValueError('Expected 14 children')
         for conf, reference in zip(me_conf.factory.config_list, bundle['strategy_pool']):
-            if research_definitions(conf.strategy_list_raw) != normalized(reference['strategy_list']):
+            if normalized(conf.strategy_list_raw) != normalized(reference['strategy_list']):
                 raise ValueError('Child strategy definition differs from MODEL_ROBUST40 baseline')
             timing = dict(name=conf.timing.name, params=conf.timing.params) if conf.timing else None
             if normalized(timing) != normalized(reference.get('re_timing')):
