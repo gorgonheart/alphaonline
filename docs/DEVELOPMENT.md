@@ -4,7 +4,9 @@
 
 仅ModelRobust40Strategy且runtime.server_init=True时，effective_settings排除required_history_start。server worker原本在完整初始化/4050 Arrow续算均将它覆盖为None；三个生产账户移除该赋值并保留说明。普通策略、MODEL手工预热/未配置server_init及历史示例仍保持原历史覆盖功能；S3日期、行情长度、模型数学及snapshot格式不变。运行代码只改tools/robust40/warmup.py，不修改core/startup/alpha，不新增IO或行情扫描。
 
-TDD先5失败/22通过，实现后配置语义专项27通过：覆盖三个账户、旧元数据与新配置一致、普通/手工路径保留历史要求及单次小元数据读取。git diff --check通过。重新部署自动模式无需滚动更新此日期，详见[参数说明](model-robust40-parameters.md)。服务器同步另行记录；不启动交易或初始化，不修改私有配置或业务数据。
+TDD先5失败/22通过，实现后配置语义专项27通过：覆盖三个账户、旧元数据与新配置一致、普通/手工路径保留历史要求及单次小元数据读取。git diff --check通过。重新部署自动模式无需滚动更新此日期，详见[参数说明](model-robust40-parameters.md)。
+
+运行提交3d6f809已快进同步/home/ubuntu/alphatrade。服务器部署后已有用户账户调整：四份原账户被删除，新增55m_o.rgonheart1020.py（传统Hybrid）和55m_o.rgonheart1101.py（MODEL自动模式），全部保留。仅新MODEL账户移除同一日期赋值，移除前后其余AST一致；传统账户、私有JSON及accounts_backup不改。Ubuntu专项24通过/3未选中（原账户已被用户替换，三个原账户检查在本地通过），未启动交易或初始化，最终无活动worker、业务data文件0。服务器原有账户Git未提交状态仍保留，不声称工作副本干净。
 
 ## 2026-11-02 alphatrade提交合并与Ubuntu离线部署（保持停止）
 
