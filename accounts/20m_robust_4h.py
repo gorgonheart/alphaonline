@@ -691,4 +691,4 @@ simulator_config = {'account_type': '统一账户',
  'avg_price_col': 'avg_price_1m',
  'unified_time': '2017-01-01'}
 
-required_history_start = '2025-10-28 00:20:00'
+# server_init=True自动使用完整历史初始化、4050 Arrow续算，无需required_history_start。

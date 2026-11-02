@@ -41,7 +41,11 @@
 
 现由positions中的effective_parent_params明确排除method/gross_cap/risk_definitions/momentum_60/short_single_coin_max_ratio及三个研究路径；tools中的effective_settings同时排除冗余runtime.minute。当前配置和旧snapshot使用同一口径，旧元数据和模型文件不改写，不做状态格式迁移。新初始化保存有效parent参数。
 
-仅这八个已确认无效字段被排除：有效字段、未知字段、账户hour_offset、server_init、子策略池、S3和其他原来比较的内容继续严格比较；状态时间轴和账户身份检查保持。删除旧路径/历史声明或冗余minute不会单独要求重建，有效策略变化仍按原规则重建/报不一致。实现只浅拷贝少量配置字典，不增加大文件读取、行情扫描或哈希。
+父参数仅排除上述八个已确认无效字段。另从2026-11-02起，仅MODEL的server_init=True路径排除顶层required_history_start：worker本来就在初始化和续算时将它覆盖为None，账户无需维护该日期，修改或删除它不再单独要求重建。三个生产账户已移除该赋值；普通策略、server_init=False/未配置的手工预热及历史示例仍保留原历史覆盖要求和比较。
+
+有效字段、未知字段、账户hour_offset、server_init、子策略池、S3和其他原来比较的内容继续严格比较；状态时间轴和账户身份检查保持。删除旧路径/历史声明或冗余minute不会单独要求重建，有效策略变化仍按原规则重建/报不一致。实现只浅拷贝少量配置字典，不增加大文件读取、行情扫描或哈希。
+
+重新部署自动模式时，不需要填写“当前时间减一年”等required_history_start日期。首次初始化读取保留的完整140xx历史，后续按4050 Arrow和snapshot续算；S3起点仍由对应截面参数单独配置，不受本次清理影响。
 
 若将来接通gross_cap等参数，必须同步从排除清单移除并验证所有计算/状态路径。当前取消注释也不会让它们成为调参开关；不能把此项配置清理当作算法功能扩展。
 

@@ -25,11 +25,46 @@ def test_unused_parent_fields_do_not_change_calculation_identity():
         assert effective_parent_params(dict(old,**{key:value}))!=parent
 
 
+def test_server_history_requirement_is_not_a_calculation_input():
+    from tools.robust40.warmup import effective_settings
+    values = config()
+    expected = effective_settings(values)
+    for date in (None, '2025-10-28 00:40:00', '2026-01-01'):
+        supplied = dict(values, required_history_start=date)
+        assert effective_settings(supplied) == expected
+        assert supplied['required_history_start'] == date
+    assert effective_settings(dict(values, get_kline_num=5000)) != expected
+
+
+@pytest.mark.parametrize('mode', ['manual', 'unset', 'traditional'])
+def test_other_paths_keep_history_requirement(mode):
+    from tools.robust40.warmup import effective_settings
+    values = config()
+    runtime = values['strategy_config']['params']['runtime']
+    if mode == 'manual':runtime['server_init'] = False
+    elif mode == 'unset':runtime.clear()
+    else:values['strategy_config']['name'] = 'HybridRotationDriftStrategy'
+    dated = dict(values, required_history_start='2025-10-28 00:40:00')
+    assert effective_settings(dated) != effective_settings(values)
+    assert effective_settings(dated)['required_history_start'] == dated['required_history_start']
+
+
+@pytest.mark.parametrize('minute', [20, 40, 55])
+def test_server_accounts_do_not_maintain_unused_history_date(minute):
+    import ast
+    path = Path(__file__).resolve().parents[1] / 'accounts' / f'{minute}m_robust_4h.py'
+    tree = ast.parse(path.read_text(encoding='utf-8-sig'))
+    assert not any(isinstance(n, ast.Assign) and any(
+        isinstance(t, ast.Name) and t.id == 'required_history_start' for t in n.targets
+    ) for n in tree.body)
+
+
 def test_old_metadata_compares_by_effective_settings_without_state_read(tmp_path,monkeypatch):
     from tools.robust40 import server
     now=config();old=copy.deepcopy(now)
     old['strategy_config']['params']['parent']['research_inputs']='E:/not-present'
     old['strategy_config']['params']['runtime']['minute']=40
+    old['required_history_start']='2025-10-28 00:40:00'
     server.save_meta(tmp_path,dict(account='acct',settings=old,complete=False))
     read=pd.read_pickle;calls=[]
     def only_meta(path):

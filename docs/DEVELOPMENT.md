@@ -1,5 +1,11 @@
 # alpha / alphaonline 统一开发说明
 
+## 2026-11-02 MODEL自动模式历史日期冗余清理
+
+仅ModelRobust40Strategy且runtime.server_init=True时，effective_settings排除required_history_start。server worker原本在完整初始化/4050 Arrow续算均将它覆盖为None；三个生产账户移除该赋值并保留说明。普通策略、MODEL手工预热/未配置server_init及历史示例仍保持原历史覆盖功能；S3日期、行情长度、模型数学及snapshot格式不变。运行代码只改tools/robust40/warmup.py，不修改core/startup/alpha，不新增IO或行情扫描。
+
+TDD先5失败/22通过，实现后配置语义专项27通过：覆盖三个账户、旧元数据与新配置一致、普通/手工路径保留历史要求及单次小元数据读取。git diff --check通过。重新部署自动模式无需滚动更新此日期，详见[参数说明](model-robust40-parameters.md)。服务器同步另行记录；不启动交易或初始化，不修改私有配置或业务数据。
+
 ## 2026-11-02 alphatrade提交合并与Ubuntu离线部署（保持停止）
 
 整理当前MODEL单文件仓管、服务器初始化/4050续算、共同恢复点/修订回放、统计与时间戳重试等未提交实现，保留既有Arrow/Polars/C消费及传统策略默认行为。部署新增最小core适配仅时序因子池显式spawn，避免Python3.11 Linux fork继承Polars线程；无因子公式/参数改变、无Tail-Only或MODEL lookback开启。config接入仅凭据的accounts.local.json及proxy机器覆盖，参数/offset/BNB仍在各accounts。私有JSON、research/归档/IDE/平台缓存不入Git，原Windows有效机器配置和凭据迁到忽略文件；不改其他项目运行配置。

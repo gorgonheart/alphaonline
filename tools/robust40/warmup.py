@@ -31,7 +31,11 @@ def effective_settings(values):
     # 旧snapshot可能有minute；真实偏移仍由account.hour_offset及状态时间轴核对。
     if 'runtime' in params:
         params['runtime'] = {k:v for k,v in params['runtime'].items() if k != 'minute'}
-    return dict(values, strategy_config=dict(strategy, params=params))
+    result = dict(values, strategy_config=dict(strategy, params=params))
+    # server worker在初始化/续算均覆盖为None；手工预热和普通策略仍需比较历史覆盖要求。
+    if params.get('runtime', {}).get('server_init'):
+        result.pop('required_history_start', None)
+    return result
 
 
 def settings(path):
