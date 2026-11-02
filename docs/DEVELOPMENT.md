@@ -8,7 +8,7 @@
 
 TDD部署合同先4失败后4通过；本地首轮全量774通过/2路径夹具失败/62跳过，补显式临时producer路径后相关11项复测通过。跨项目测试改用显式producer-root，旧main oracle固定提交，增加无凭据15/25/45传统公开fixture；本轮未重写golden/容差。运行代码debac03在Ubuntu完整768通过/70跳过（333.52秒），随后仅部署记录及行尾策略修正；原35个Python文件保留原字节，AST及忽略行尾对照相同。准确最终版本以main git log为准。未启动新交易服务、下单、通知或复制/清理生产data。
 
-部署到/home/ubuntu/alphatrade，独立alpha311已pip check通过，私有配置权限600。alpha2实际55m静态发布满足12列Arrow及14060根BTC历史；检查时5/20/40m未ready，未来启用前需生产者补齐并检查新鲜度，本轮不混用旧alpha或改生产者。剩余磁盘约57GB，未复制业务数据；日志/home/ubuntu/alphatrade-verify.log。Git工作区、更新命令及停止状态完成最终复核后交付；已有alphatrade1/alphatradetest/alpha/alpha2进程保留。
+部署到/home/ubuntu/alphatrade，独立alpha311已pip check通过，私有配置权限600。alpha2实际55m静态发布满足12列Arrow及14060根BTC历史；检查时5/20/40m未ready，未来启用前需生产者补齐并检查新鲜度，本轮不混用旧alpha或改生产者。最终磁盘剩余约51GB，未复制业务数据。人工update命令再次完整768通过/70跳过（205.49秒），Git干净、新安装无活动worker、业务data文件数0；日志/home/ubuntu/alphatrade-verify.log及alphatrade-update-verify.log。已有alphatrade1/alphatradetest/alpha/alpha2进程保留；本轮发布后的最后提交仅校正文档。
 
 ## 2026-11-02 alpha提交、主干合并与alpha2部署（不切换服务）
 

@@ -120,8 +120,8 @@ bash tools/deploy_alphatrade.sh verify
 
 运行代码`debac03`在Ubuntu完整离线测试**768通过、70跳过**（333.52秒）；跳过为旧历史账户/生产snapshot等当前安装没有的输入，未计通过。包含实际配套alpha2的C→Arrow→消费端测试，既有数值oracle及容差未放宽。本地首轮774通过、2个路径夹具失败、62跳过，补显式临时数据目录后相关11项复测通过，即全部原失败用例已通过；不把重叠批次相加。
 
-随后发布格式仅将`.gitattributes`限制为shell脚本LF；原35个混合行尾Python文件保留原字节，全部AST和忽略行尾的比较一致，没有因子公式变更。准确最终版本以main的git log为准。Ubuntu测试日志`/home/ubuntu/alphatrade-verify.log`，依赖日志`/home/ubuntu/alphatrade-dependencies.log`，均在工作副本外。
+随后发布格式仅将`.gitattributes`限制为shell脚本LF；原35个混合行尾Python文件保留原字节，全部AST和忽略行尾的比较一致，没有因子公式变更。人工执行文档中的update命令也完整通过：**768通过、70跳过**（205.49秒），工作副本干净，未启动worker，业务data文件数0。准确最终版本以main的git log为准。初次/更新测试日志分别为`/home/ubuntu/alphatrade-verify.log`、`/home/ubuntu/alphatrade-update-verify.log`，依赖日志`/home/ubuntu/alphatrade-dependencies.log`，均在工作副本外。
 
-独立环境pip check通过，机器配置为alpha2数据、无代理、dry_run；四账户凭据在权限600的私有JSON。本次没有启动/注册alphatrade服务、没有下单/通知，没有复制旧data或修改运行中的其他安装。独立环境克隆及依赖安装后服务器剩余磁盘约57GB；未来业务初始化仍需按实际数据规模安排容量。
+独立环境pip check通过，机器配置为alpha2数据、无代理、dry_run；四账户凭据在权限600的私有JSON。本次没有启动/注册alphatrade服务、没有下单/通知，没有复制旧data或修改运行中的其他安装。最终检查服务器剩余磁盘约51GB（后台生产者仍在产出数据，数值会变化）；未来业务初始化仍需按实际数据规模安排容量。
 
 实际行情静态检查：alpha2当前仅有55m共同ready，spot/swap Arrow均有12个所需预计算列，样本5000行，BTC原始历史14060根。检查时共同截止发布为`1793580900`，对应最后K线2026-11-01 23:55 UTC；这不是实时健康证明。**5m/20m/40m尚无完整ready，未来启用相应账户前需补齐并检查新鲜度。** 不混读旧alpha，不在本次部署中重配/重启生产者。

@@ -1,5 +1,7 @@
 # MODEL_ROBUST40 部署与维护
 
+2026-11-02发布状态：已部署 `/home/ubuntu/alphatrade` 并通过Ubuntu离线验收，保持停止。机器路径、凭据隔离、Git更新和回滚以[DEPLOYMENT](DEPLOYMENT.md)为当前入口；下文保留MODEL功能说明及各次历史实施记录。
+
 更新：2026-10-31，已按用户纠正撤销“公共仓管参数文件”方案。每个offset完全可以不同，所有原账户配置继续在各自accounts文件中维护。当前方案是服务器完整PKL初始化、4050 Arrow续算、按账户/offset独立保存状态。
 
 账户每个字段是否实际生效、E盘研究文件用途及部署依赖，见 [参数说明](model-robust40-parameters.md)。不要将历史声明误当成已经接通的配置开关。
