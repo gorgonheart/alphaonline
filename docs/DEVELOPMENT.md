@@ -1,12 +1,14 @@
 # alpha / alphaonline 统一开发说明
 
-## 2026-11-02 alphatrade版本整理与Ubuntu部署准备
+## 2026-11-02 alphatrade提交合并与Ubuntu离线部署（保持停止）
 
 整理当前MODEL单文件仓管、服务器初始化/4050续算、共同恢复点/修订回放、统计与时间戳重试等未提交实现，保留既有Arrow/Polars/C消费及传统策略默认行为。部署新增最小core适配仅时序因子池显式spawn，避免Python3.11 Linux fork继承Polars线程；无因子公式/参数改变、无Tail-Only或MODEL lookback开启。config接入仅凭据的accounts.local.json及proxy机器覆盖，参数/offset/BNB仍在各accounts。私有JSON、research/归档/IDE/平台缓存不入Git，原Windows有效机器配置和凭据迁到忽略文件；不改其他项目运行配置。
 
 新增tools/deploy_alphatrade.sh提供status/check/verify/update，更新需停止本安装worker、代码干净且仅fast-forward；不自动装依赖/启动/删除状态。服务器目标/home/ubuntu/alphatrade，独立conda前缀/home/ubuntu/alphatrade-env/alpha311，配套生产者/home/ubuntu/alpha2只读。依赖安装已通过pip check，Source Han Sans SC可用。代码经SSH私有Git传递，部署与维护入口见[DEPLOYMENT](DEPLOYMENT.md)，全部core/startup人工审核项见[复核清单](2026-11-02-core-release-review.md)。
 
-TDD部署合同先4失败后4通过；本地首轮全量774通过/2路径夹具失败/62跳过，补显式临时producer路径后相关11项复测通过。跨项目测试改用显式producer-root，旧main oracle固定提交，增加无凭据15/25/45传统公开fixture；本轮未重写golden/容差。Linux完整验收、准确发布提交和最终停止状态将在完成后补记；当前未启动新交易服务、下单、通知或复制/清理生产data。
+TDD部署合同先4失败后4通过；本地首轮全量774通过/2路径夹具失败/62跳过，补显式临时producer路径后相关11项复测通过。跨项目测试改用显式producer-root，旧main oracle固定提交，增加无凭据15/25/45传统公开fixture；本轮未重写golden/容差。运行代码debac03在Ubuntu完整768通过/70跳过（333.52秒），随后仅部署记录及行尾策略修正；原35个Python文件保留原字节，AST及忽略行尾对照相同。准确最终版本以main git log为准。未启动新交易服务、下单、通知或复制/清理生产data。
+
+部署到/home/ubuntu/alphatrade，独立alpha311已pip check通过，私有配置权限600。alpha2实际55m静态发布满足12列Arrow及14060根BTC历史；检查时5/20/40m未ready，未来启用前需生产者补齐并检查新鲜度，本轮不混用旧alpha或改生产者。剩余磁盘约57GB，未复制业务数据；日志/home/ubuntu/alphatrade-verify.log。Git工作区、更新命令及停止状态完成最终复核后交付；已有alphatrade1/alphatradetest/alpha/alpha2进程保留。
 
 ## 2026-11-02 alpha提交、主干合并与alpha2部署（不切换服务）
 

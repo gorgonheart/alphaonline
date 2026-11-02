@@ -114,4 +114,14 @@ bash tools/deploy_alphatrade.sh verify
 
 不要reset --hard或git clean清理配置/data。旧代码若不能理解当前状态，代码回滚并不能安全回滚业务；应按匹配的完整状态备份或明确初始化流程恢复。依赖变化时使用匹配环境再验收。回到主干用git switch main，随后正常update。
 
-本轮core/startup完整人工复核范围见[发布复核清单](2026-11-02-core-release-review.md)。首次部署的准确提交号、测试结果和停止状态在验收后补记。
+本轮core/startup完整人工复核范围见[发布复核清单](2026-11-02-core-release-review.md)。
+
+## 2026-11-02首次验收记录
+
+运行代码`debac03`在Ubuntu完整离线测试**768通过、70跳过**（333.52秒）；跳过为旧历史账户/生产snapshot等当前安装没有的输入，未计通过。包含实际配套alpha2的C→Arrow→消费端测试，既有数值oracle及容差未放宽。本地首轮774通过、2个路径夹具失败、62跳过，补显式临时数据目录后相关11项复测通过，即全部原失败用例已通过；不把重叠批次相加。
+
+随后发布格式仅将`.gitattributes`限制为shell脚本LF；原35个混合行尾Python文件保留原字节，全部AST和忽略行尾的比较一致，没有因子公式变更。准确最终版本以main的git log为准。Ubuntu测试日志`/home/ubuntu/alphatrade-verify.log`，依赖日志`/home/ubuntu/alphatrade-dependencies.log`，均在工作副本外。
+
+独立环境pip check通过，机器配置为alpha2数据、无代理、dry_run；四账户凭据在权限600的私有JSON。本次没有启动/注册alphatrade服务、没有下单/通知，没有复制旧data或修改运行中的其他安装。独立环境克隆及依赖安装后服务器剩余磁盘约57GB；未来业务初始化仍需按实际数据规模安排容量。
+
+实际行情静态检查：alpha2当前仅有55m共同ready，spot/swap Arrow均有12个所需预计算列，样本5000行，BTC原始历史14060根。检查时共同截止发布为`1793580900`，对应最后K线2026-11-01 23:55 UTC；这不是实时健康证明。**5m/20m/40m尚无完整ready，未来启用相应账户前需补齐并检查新鲜度。** 不混读旧alpha，不在本次部署中重配/重启生产者。
