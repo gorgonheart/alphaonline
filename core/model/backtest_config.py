@@ -98,6 +98,11 @@ class BacktestConfig:
         self.has_snapshot = False
         self.precompute_factor_configs: dict = conf.get('precompute_factor_configs', {})
         self.required_history_start = conf.get('required_history_start')
+        self.input_mode = conf.get('input_mode', 'auto')
+        self.section_state = conf.get('section_state', False)
+        self.checkpoint_hours = conf.get('checkpoint_hours', 0)
+        if self.input_mode not in ('auto', 'full_pkl', 'arrow_strict'):
+            raise ValueError('Unknown market input mode')
         if self.required_history_start is not None:
             pd.Timestamp(self.required_history_start)  # Validate explicit UTC-naive origin.
 
@@ -293,6 +298,9 @@ class BacktestConfig:
             incremental_lookback_hours=getattr(config, "incremental_lookback_hours", 0),  # 增量计算时回退多少小时
             precompute_factor_configs=getattr(config, 'precompute_factor_configs', {}),
             required_history_start=getattr(config, 'required_history_start', None),
+            input_mode=getattr(config, 'input_mode', 'auto'),
+            section_state=getattr(config, 'section_state', False),
+            checkpoint_hours=getattr(config, 'checkpoint_hours', 0),
         )
 
         # ** 策略配置 **

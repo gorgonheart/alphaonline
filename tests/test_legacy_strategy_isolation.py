@@ -16,6 +16,8 @@ ACCOUNTS = ['5m-onheart0607.py', '15m-nheart0701.py', '20m_heart0723.py',
 
 
 def public_assignment(path, name):
+    if path.parent.name == 'accounts' and not path.exists() and (ROOT/'accounts backup'/path.name).exists():
+        path = ROOT/'accounts backup'/path.name
     if path.parent.name == 'accounts' and not path.exists():
         pytest.skip('Local account is not present: '+path.name)
     tree = ast.parse(path.read_text(encoding='utf-8-sig'))
@@ -36,7 +38,8 @@ def public_assignment(path, name):
 
 
 def baseline_source(name):
-    return subprocess.run(['git', 'show', 'main:'+name], cwd=ROOT, check=True,
+    # Fixed pre-MODEL main; merging a release must not silently change the oracle.
+    return subprocess.run(['git', 'show', 'e6fc3bd8705815bf594c5f2c4f0c62f938b21cf9:'+name], cwd=ROOT, check=True,
                           stdout=subprocess.PIPE, stderr=subprocess.PIPE).stdout.decode('utf-8-sig')
 
 
@@ -54,6 +57,7 @@ def test_reload_resets_opt_in_history_and_simulator_settings(tmp_path):
     opted = tmp_path/'opted.py'
     legacy = tmp_path/'legacy.py'
     opted.write_text("required_history_start = '2025-10-28 00:20'\n"
+                     "input_mode = 'arrow_strict'\nsection_state = True\n"
                      "simulator_config = dict(spot_min_order_limit=10, swap_min_order_limit=5)\n",
                      encoding='utf-8')
     legacy.write_text("strategy_name = 'legacy'\n", encoding='utf-8')
@@ -62,10 +66,12 @@ import importlib, os, sys
 os.environ['X3S_TRADING_ACCOUNT'] = sys.argv[1]
 import config
 assert config.required_history_start == '2025-10-28 00:20'
+assert config.input_mode == 'arrow_strict' and config.section_state is True
 assert config.simulator_config['swap_min_order_limit'] == 5
 os.environ['X3S_TRADING_ACCOUNT'] = sys.argv[2]
 importlib.reload(config)
 assert config.required_history_start is None
+assert config.input_mode == 'auto' and config.section_state is False
 assert config.simulator_config['spot_min_order_limit'] == 20
 assert config.simulator_config['swap_min_order_limit'] == 20
 print('reload isolation passed')
@@ -123,7 +129,7 @@ def test_real_account_strategy_loading_preserves_features(name):
 def test_legacy_target_lots_match_main_even_after_model_registration(name, mode, swap_net, tmp_path, monkeypatch):
     import core.position as current
     from core.model.rebalance_mode import RebalanceMode
-    from tools.robust40.live_execution import register_execution
+    from positions.ModelRobust40Strategy import register_execution
     register_execution()
     old = types.ModuleType('baseline_position')
     exec(compile(baseline_source('core/position.py'), '<baseline position>', 'exec'), old.__dict__)
@@ -152,24 +158,31 @@ def test_legacy_target_lots_match_main_even_after_model_registration(name, mode,
     'core/rebalance.py',
     'positions/HybridRotationDriftStrategy.py'])
 def test_shared_implementation_unchanged_from_main(path):
-    assert ast.dump(ast.parse((ROOT/path).read_text(encoding='utf-8-sig'))) == ast.dump(ast.parse(baseline_source(path)))
+    expected = baseline_source(path)
+    if path == 'positions/HybridRotationDriftStrategy.py':
+        # Only the type-only framework import moved behind TYPE_CHECKING;
+        # every function, constant and numerical decorator still matches main.
+        expected = expected.replace('from typing import Any, Iterable',
+                                    'from typing import TYPE_CHECKING, Any, Iterable')
+        expected = expected.replace('from core.model.strategy_config import PosStrategyConfig',
+            'if TYPE_CHECKING:\n    from core.model.strategy_config import PosStrategyConfig')
+    assert ast.dump(ast.parse((ROOT/path).read_text(encoding='utf-8-sig'))) == ast.dump(ast.parse(expected))
 
 
 @pytest.mark.parametrize('minute', [20, 40, 55])
-def test_active_model_accounts_are_migrated(minute):
+def test_active_model_accounts_preserve_execution_contract(minute):
     source = ROOT/'accounts'/f'{minute}m_robust_4h.py'
     if not source.exists():pytest.skip('Local account is not present')
     strategy = public_assignment(source, 'strategy_config')
-    reference = public_assignment(ROOT/'examples/model_robust40'/f'MODEL_ROBUST40_V1_{minute}m.py', 'strategy_config')
     runtime = strategy['params']['runtime']
     assert strategy['name'] == 'ModelRobust40Strategy'
-    assert runtime['minute'] == minute
-    assert Path(runtime['bootstrap_path']).is_file()
-    assert runtime['state_path'] == f'data/robust40_state/{source.stem}.pkl'
-    reference['params']['runtime']['state_path'] = runtime['state_path']
-    assert strategy == reference
-    assert public_assignment(source, 'strategy_pool') == public_assignment(
-        ROOT/'examples/model_robust40'/f'MODEL_ROBUST40_V1_{minute}m.py', 'strategy_pool')
+    assert runtime == dict(server_init=True)
+    # Runtime packages and tuned child parameters are maintained in the account,
+    # not pinned to the historical example's old bootstrap/ILLQ parameters.
+    pool=public_assignment(source,'strategy_pool')
+    # Each account owns its parent parameters; examples are not a shared source.
+    assert len(strategy['params']['parent']['cap_ratios']) == len(pool)
+    assert len(pool)==14 and len({p['name'] for p in pool})==14
     account = public_assignment(source, 'account_config')
     assert account['rebalance_mode'] == dict(mode='RebRobust40', params=dict(min_order_usdt_ratio=.4, execution_cap=2.45))
     assert account['order_spot_money_limit'] == 10 and account['order_swap_money_limit'] == 5

@@ -156,12 +156,12 @@ def test_parallel_section_write_failure_is_not_silenced(workspace, monkeypatch):
         section_outputs(workspace, monkeypatch, None)
 
 
-def test_arrow_and_pkl_share_new_exchange_filters(tmp_path, monkeypatch):
+def test_arrow_and_pkl_share_new_exchange_filters(tmp_path, monkeypatch, producer_root):
     import core.utils.datatools as dt
     from core.utils import exchange_hub
     from core.utils.arrow_reader import read_arrow_market_dict
     import importlib.util
-    spec = importlib.util.spec_from_file_location('producer_filter_publish', 'D:/alpha/core/arrow_publish.py')
+    spec = importlib.util.spec_from_file_location('producer_filter_publish', producer_root/'core/arrow_publish.py')
     producer = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(producer)
     symbols = ['AAAUSDT', 'STOCKUSDT', 'USDCUSDT', 'USDC-USDT', 'OLDUSDT']

@@ -19,6 +19,7 @@ from pathlib import Path
 
 import ccxt
 import matplotlib.lines as mtlines
+import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
 import numpy as np
@@ -32,6 +33,8 @@ sys.path.append('..')  # '..' 表示上级相对目录，系统中添加上级�
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))  # 当前目录
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # 上级目录
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))  # 根目录
+from tools.statistics_runtime import atomic_save, temporary_path, account_lock
+from tools.statistics_format import format_number, format_amount, format_percent, format_time, format_weights
 from core.account_manager import init_system, load_multi_accounts
 from core.utils.exchange_hub import get_dummy_client
 from core.model.account_config import AccountConfig
@@ -590,39 +593,30 @@ def save_order_info(order_info, stats_info, run_time, account_name):
 
 
 def send_position_result(account_config: AccountConfig, spot_position, swap_position, spot_last_price,
-                         me_conf=None):
-    """
-    发送现货、合约持仓信息
-    :param account_config: 账户配置
-    :param spot_position: 现货持仓
-    :param swap_position: 合约持仓
-    :param spot_last_price: 现货最新价格
-    :param me_conf: MultiEquityBacktestConfig，可选，用于追加 "strategy" 列
-    :return:
-              side  change    pos_u   pnl_u  avg_price  cur_price
-    symbol
-    ARDRUSDT     1  59.24%   419.98  248.81     0.0515     0.0820
-    BTSUSDT      1  36.90%   184.30   68.00     0.0071     0.0097
-    GLMUSDT      1  26.67%   691.78  184.49     0.1466     0.1857
-    """
-    send_spot_df = calc_spot_position(spot_position, account_config.name, spot_last_price)
-    send_swap_df = calc_swap_position(swap_position)
-
-    utc_now_timestamp = int(datetime.utcnow().timestamp()) * 1000
-    save_send_pos_info(utc_now_timestamp, send_spot_df, account_config.name, pos_type='spot')
-    save_send_pos_info(utc_now_timestamp, send_swap_df, account_config.name, pos_type='swap')
-
-    # 如果传入了 me_conf，则尝试从 select_coin 数据中追加 "strategy" 列
-    if me_conf is not None:
-        spot_map, swap_map = build_symbol_strategy_columns(me_conf)
-        if spot_map and not send_spot_df.empty:
-            send_spot_df['strategy'] = send_spot_df.index.map(spot_map).fillna('未匹配')
-        if swap_map and not send_swap_df.empty:
-            send_swap_df['strategy'] = send_swap_df.index.map(swap_map).fillna('未匹配')
-
-    for data in [send_spot_df, send_swap_df]:
-        if not data.empty:
-            send_img_for_dataframe(data, account_config.wechat_webhook_url)
+                         me_conf=None, *, run_time=None, observed_at=None, current_frames=None,
+                         strategy_maps=None, notify=True, history_cache=None, snapshot_source=None,
+                         metrics=None):
+    frames = current_frames or (calc_spot_position(spot_position, account_config.name, spot_last_price), calc_swap_position(swap_position))
+    stamp = int((run_time or datetime.now()).timestamp()*1000)
+    for market, frame in zip(('spot', 'swap'), frames):
+        saved = frame.copy()
+        saved.attrs.update(observed_at=observed_at or datetime.now(), run_time=run_time,
+                           phase='post_trade', snapshot_source=snapshot_source,
+                           offset_minute=getattr(account_config, 'hour_offset_minute', None))
+        if market == 'spot' and metrics is not None:
+            saved.attrs['account_snapshot'] = metrics
+        records = save_send_pos_info(stamp, saved, account_config.name, pos_type=market)
+        if history_cache is not None:
+            history_cache[market] = records
+    if not notify:
+        return frames
+    maps = strategy_maps if strategy_maps is not None else (build_symbol_strategy_columns(me_conf) if me_conf else ({}, {}))
+    for frame, mapping in zip(frames, maps):
+        if not frame.empty:
+            display = frame.copy()
+            display['strategy'] = display.index.map(mapping).fillna('未匹配')
+            send_img_for_dataframe(display, account_config.wechat_webhook_url)
+    return frames
 
 
 def set_annotate(ax, line_color, x, y):
@@ -694,7 +688,7 @@ def get_color(index):
         return rgb
 
 
-def draw_equity_and_send_pic(me_conf, equity_df, transfer_df, title, account_config: AccountConfig, is_send=True):
+def draw_equity_and_send_pic(me_conf, equity_df, transfer_df, title, account_config: AccountConfig, is_send=True, child_cache=None):
     """
     画资金曲线并发送图片
     :param me_conf:     仓管配置
@@ -706,12 +700,15 @@ def draw_equity_and_send_pic(me_conf, equity_df, transfer_df, title, account_con
     """
     # =合并转换划转记录
     equity_df['type'] = 'log'
+    transfer_df = transfer_df.loc[transfer_df['time'] <= equity_df['time'].max()] if not transfer_df.empty else transfer_df
     equity_df = pd.concat([equity_df, transfer_df], ignore_index=True, copy=False)
     equity_df.sort_values('time', inplace=True)
     equity_df.reset_index(inplace=True, drop=True)
-    equity_df['time'] = equity_df['time'].dt.floor('H')
+    equity_df['time'] = pd.to_datetime(equity_df['time'])  # preserve minute offsets
+    child_cache = load_child_equities(me_conf) if child_cache is None else child_cache
     # =计算净值
     equity_df = net_fund(equity_df)
+    equity_df.attrs['transfer_history_status'] = 'not_tracked'
     equity_df['net'] = (equity_df['净值'] - 1) * 100
     equity_df['max2here'] = equity_df['净值'].expanding().max()
     equity_df['dd2here'] = (equity_df['净值'] / equity_df['max2here'] - 1) * 100
@@ -721,7 +718,7 @@ def draw_equity_and_send_pic(me_conf, equity_df, transfer_df, title, account_con
     equity_df['exposure'] = (equity_df['多头仓位'] - equity_df['空头仓位'].abs()) / equity_df['账户总净值']
     columns_to_fill = ['long_ratio', 'short_ratio', 'empty_ratio', '多头选币', '空头选币', '多头单币最大持仓', '空头单币最大持仓',
                        'exposure']
-    equity_df[columns_to_fill] = equity_df[columns_to_fill].fillna(method='ffill')
+    equity_df[columns_to_fill] = equity_df[columns_to_fill].ffill()
     equity_df['多头选币'] = equity_df['多头选币'].fillna(0)
     equity_df['空头选币'] = equity_df['空头选币'].fillna(0)
     equity_df['多头单币最大持仓'] = equity_df['多头单币最大持仓'].fillna(0)
@@ -730,18 +727,15 @@ def draw_equity_and_send_pic(me_conf, equity_df, transfer_df, title, account_con
     time_diff = pd.to_timedelta(utc_offset + 1, unit='hours')
     if not is_send:
         equity_pkl_path = get_file_path(data_path, account_config.name, '账户信息', f'equity.pkl', as_path_type=True)
-        equity_df.to_pickle(equity_pkl_path)
+        atomic_save(equity_pkl_path, lambda target: equity_df.to_pickle(target))
 
         sub_stg_eqs_path = get_file_path(data_path, account_config.name, '账户信息', f'sub_stg_eqs.pkl', as_path_type=True)
         sub_stg_eqs = {}
         for conf in me_conf.factory.config_list:
-            sub_stg_file = conf.get_result_folder() / '资金曲线_再择时.csv'
-            if not sub_stg_file.exists():
-                sub_stg_file = conf.get_result_folder() / '资金曲线.csv'
-            sub_stg_equity = pd.read_csv(sub_stg_file, parse_dates=['candle_begin_time'], index_col=0)
+            sub_stg_equity = child_cache[conf.name].copy()
             sub_stg_equity['candle_begin_time'] = sub_stg_equity['candle_begin_time'].dt.tz_localize(None) + time_diff
             sub_stg_eqs[conf.name] = sub_stg_equity
-        pd.to_pickle(sub_stg_eqs, sub_stg_eqs_path)
+        atomic_save(sub_stg_eqs_path, lambda target: pd.to_pickle(sub_stg_eqs, target))
         return
 
     # =画图
@@ -762,14 +756,7 @@ def draw_equity_and_send_pic(me_conf, equity_df, transfer_df, title, account_con
     empty_color = np.array([0, 46, 77])
     equity_df['color'] = '#{:02x}{:02x}{:02x}'.format(*[253, 147, 0])
 
-    # 动态绘制资金曲线
-    for i in range(len(equity_df) - 1):
-        start_time = equity_df.iloc[i]['time']
-        end_time = equity_df.iloc[i + 1]['time']
-        start_net = equity_df.iloc[i]['net']
-        end_net = equity_df.iloc[i + 1]['net']
-        color = equity_df.iloc[i]['color']
-        ax1.plot([start_time, end_time], [start_net, end_net], color=color, zorder=3)
+    ax1.plot(equity_df['time'], equity_df['net'], color='#fd9300', zorder=3)
     set_annotate(ax1, equity_df['color'].iloc[-1], equity_df['time'].to_numpy() , equity_df['net'].to_numpy())
 
     # 主资金曲线的代理图例
@@ -785,10 +772,7 @@ def draw_equity_and_send_pic(me_conf, equity_df, transfer_df, title, account_con
         position_df = pd.DataFrame()
 
     for idx, conf in enumerate(me_conf.factory.config_list):
-        sub_stg_file = conf.get_result_folder() / '资金曲线_再择时.csv'
-        if not sub_stg_file.exists():
-            sub_stg_file = conf.get_result_folder() / '资金曲线.csv'
-        sub_stg_equity = pd.read_csv(sub_stg_file, parse_dates=['candle_begin_time'], index_col=0)
+        sub_stg_equity = child_cache[conf.name].copy()
         sub_stg_equity['candle_begin_time'] = sub_stg_equity['candle_begin_time'].dt.tz_localize(None)
         sub_stg_equity = sub_stg_equity[sub_stg_equity['candle_begin_time'] >= equity_df['time'].min() - time_diff].reset_index(drop=True)
         if sub_stg_equity.empty:
@@ -808,7 +792,7 @@ def draw_equity_and_send_pic(me_conf, equity_df, transfer_df, title, account_con
         # 记录图例句柄
         legend_handles.append(line)
         legend_labels.append(f'S{idx + 1}: {conf.name}' if position_df.empty else
-                             f'S{idx + 1}: {conf.name}-{round(position_df.iloc[-1].iloc[idx] * 100, 4)}%')
+                             f'S{idx + 1}: {conf.name}: {format_percent(position_df.iloc[-1].iloc[idx])}')
 
     # 处理图例
     fig.legend(
@@ -906,155 +890,130 @@ def draw_equity_and_send_pic(me_conf, equity_df, transfer_df, title, account_con
     ax8.set_ylabel('dd2here (%)')
     ax8.yaxis.set_major_formatter(yticks)
 
+    for axis in fig.axes:
+        axis.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d %H:%M:%S'))
     plt.tight_layout(rect=(0, legend_height / fig.get_figheight(), 1, 1))
 
-    # =定义导出图片位置
-    pos_pic_path = get_file_path(data_path, 'pos.png')
-    # =保存图片
-    plt.savefig(pos_pic_path)
-    plt.close(fig)
-    # =发送图片
-    send_wechat_work_img(pos_pic_path, account_config.wechat_webhook_url)
+    try:
+        with temporary_path(data_path, '.png') as path:
+            fig.savefig(path)
+            send_wechat_work_img(str(path), account_config.wechat_webhook_url)
+    finally:
+        plt.close(fig)
 
 
-def save_and_send_equity_info(account_config: AccountConfig, me_conf, spot_position, swap_position, spot_equity, account_equity, spot_usdt,
-                              seed_coin_spot_equity, run_time=None):
-    """
-    保存、发送账户信息
-    :param account_config: 账户配置对象
-    :param me_conf: 仓管配置对象
-    :param spot_position: 现货持仓
-    :param swap_position: 合约持仓
-    :param spot_equity: 现货净值
-    :param account_equity: 账户净值
-    :param spot_usdt: 现货的u
-    :param seed_coin_spot_equity: 种子现货价值
-    :param run_time: 运行时间
-    :return:
-    """
-    # =创建需要存储equity的df
-    new_equity_df = pd.DataFrame()
-    # 记录时间
-    new_equity_df.loc[0, 'time'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    # 记录账户总净值
-    new_equity_df.loc[0, '账户总净值'] = round(account_equity, 2)
-    # 记录多头现货
-    new_equity_df.loc[0, '多头现货'] = round(spot_equity - spot_usdt - seed_coin_spot_equity, 2)
 
-    # =追加信息到本地存储中
-    swap_send_df = calc_swap_position(swap_position)
-    if swap_send_df is None or swap_send_df.empty:
-        new_equity_df.loc[0, '多头合约'] = 0  # 记录多头合约，合约为空时，无合约多头
-        new_equity_df.loc[0, '多头仓位'] = round(spot_equity - spot_usdt - seed_coin_spot_equity, 2) # 记录多头仓位，合约为空时，多头仓位就只有现货仓位
-        new_equity_df.loc[0, '空头仓位'] = 0  # 记录空头仓位，合约为空时，无空头仓位
-    else:
-        # 记录多头合约
-        new_equity_df.loc[0, '多头合约'] = round(swap_send_df[swap_send_df['side'] == 1]['pos_u'].sum(), 2)
-        # 记录多头仓位
-        new_equity_df.loc[0, '多头仓位'] = round(spot_equity - spot_usdt - seed_coin_spot_equity + swap_send_df[swap_send_df['side'] == 1]['pos_u'].sum(), 2)
-        # 记录空头仓位
-        new_equity_df.loc[0, '空头仓位'] = round(swap_send_df[swap_send_df['side'] == -1]['pos_u'].sum(), 2)
-    new_equity_df.loc[0, '多头选币'] = swap_position[swap_position['当前持仓量'] > 0].shape[0] + spot_position.shape[0]
-    new_equity_df.loc[0, '空头选币'] = swap_position[swap_position['当前持仓量'] < 0].shape[0]
-    new_equity_df.loc[0, '多头单币最大持仓'] = round(
-        max(swap_position[swap_position['当前持仓量'] > 0]['仓位价值'].max() if not swap_position.empty else 0,
-            spot_position['仓位价值'].max() if not spot_position.empty else 0) / account_equity, 2)
-    new_equity_df.loc[0, '空头单币最大持仓'] = round(
-        swap_position[swap_position['当前持仓量'] < 0]['仓位价值'].abs().max() / account_equity, 2) if not swap_position.empty else 0
+def save_and_send_equity_info(account_config: AccountConfig, me_conf, spot_position, swap_position, spot_equity,
+                              account_equity, spot_usdt, seed_coin_spot_equity, run_time=None, *,
+                              observed_at=None, options=None, swap_frame=None, metrics=None):
+    """Persist the basic observation first; optional reporting cannot discard it."""
+    options = options or {}
+    observed_at = observed_at or datetime.now()
+    run_time = run_time or observed_at
+    swap = calc_swap_position(swap_position) if swap_frame is None else swap_frame
+    longs = swap.loc[swap.side > 0, 'pos_u'] if not swap.empty else pd.Series(dtype=float)
+    shorts = swap.loc[swap.side < 0, 'pos_u'] if not swap.empty else pd.Series(dtype=float)
+    spot_value = spot_equity - spot_usdt - seed_coin_spot_equity
+    spot_max = spot_position['仓位价值'].max() if not spot_position.empty else 0.
+    row = dict(time=run_time, observed_at=observed_at,
+        **{'账户总净值':account_equity, '多头现货':spot_value, '多头合约':longs.sum(),
+           '多头仓位':spot_value+longs.sum(), '空头仓位':shorts.sum(),
+           '多头选币':len(longs)+len(spot_position), '空头选币':len(shorts),
+           '多头单币最大持仓':max(longs.max() if len(longs) else 0., spot_max)/account_equity if account_equity > 0 else np.nan,
+           '空头单币最大持仓':abs(shorts.min())/account_equity if account_equity > 0 and len(shorts) else 0.})
+    if metrics is not None:
+        row.update(equity_source=metrics['equity_source'], equity_currency=metrics['equity_currency'])
+        if hasattr(account_config, 'hour_offset_minute'):
+            row['offset_minute'] = account_config.hour_offset_minute
+        if not spot_position.empty:
+            spot_long = spot_position['仓位价值'].where(spot_position['当前持仓量'] > 0, 0.).sum(skipna=False)
+            spot_short = spot_position['仓位价值'].where(spot_position['当前持仓量'] < 0, 0.).sum(skipna=False)
+            row.update(多头现货=spot_long, 多头仓位=spot_long+longs.sum(), 空头仓位=spot_short+shorts.sum(),
+                       多头选币=len(longs)+int((spot_position['当前持仓量'] > 0).sum()),
+                       空头选币=len(shorts)+int((spot_position['当前持仓量'] < 0).sum()))
+    path = get_file_path(data_path, account_config.name, '账户信息', 'equity.csv')
+    old = pd.read_csv(path, encoding='gbk', parse_dates=['time']) if os.path.exists(path) else pd.DataFrame()
+    equity = pd.concat([old, pd.DataFrame([row])], ignore_index=True)
+    equity['time'] = pd.to_datetime(equity['time'], format='mixed')
+    equity = equity.drop_duplicates('time', keep='last').sort_values('time').reset_index(drop=True)
+    atomic_save(path, lambda target: equity.to_csv(target, encoding='gbk', index=False))
+    comparable = equity
+    if metrics is not None:
+        comparable = equity.loc[(equity.equity_source == metrics['equity_source']) &
+                                (equity.equity_currency == metrics['equity_currency'])]
+        if 'offset_minute' in row:
+            comparable = comparable.loc[comparable.offset_minute == row['offset_minute']]
+    history = pd.to_numeric(comparable.loc[comparable.time <= run_time, '账户总净值'], errors='coerce')
+    history = history[np.isfinite(history)]
+    msg = (f'账户：{account_config.name}\n账户净值：{format_amount(account_equity)}\n'
+           f'历史最高账户总净值：{format_amount(history.max())}\n历史最低账户总净值：{format_amount(history.min())}\n'
+           f'观察时间：{format_time(observed_at)}\n多头仓位：{format_amount(row["多头仓位"])}\n空头仓位：{format_amount(row["空头仓位"])}\n'
+           f'现货USDT余额：{format_amount(spot_usdt)}\n')
+    if metrics is not None:
+        msg += f'权益口径：BN实际净权益（{metrics["equity_currency"]}）\n'
+        # Retain complete observation intervals; a changed equity definition is not PnL.
+        for hours in (1, 24):
+            target = observed_at-timedelta(hours=hours)
+            times = pd.to_datetime(comparable.observed_at, errors='coerce')
+            valid = comparable.loc[(times <= target) & (times >= target-timedelta(minutes=10))]
+            valid = valid.loc[pd.to_numeric(valid['账户总净值'], errors='coerce').map(np.isfinite)]
+            if valid.empty:
+                msg += f'{hours}小时账户损益：历史不足\n'
+            else:
+                idx = times.loc[valid.index].idxmax()
+                change = account_equity-float(valid.loc[idx, '账户总净值'])
+                msg += (f'{hours}小时账户损益：{format_amount(change)} {metrics["equity_currency"]}'
+                        f'；起点 {format_time(times.loc[idx])}\n')
+    # Difference in observed equity is not cash-flow-adjusted trading PnL.
+    if metrics is None and not old.empty:
+        times = pd.to_datetime(old['observed_at'], errors='coerce') if 'observed_at' in old else pd.Series(pd.NaT,index=old.index)
+        target = observed_at-timedelta(hours=1)
+        prior = old.loc[(times <= target) & (times >= target-timedelta(minutes=10))]
+        if not prior.empty:
+            idx = times.loc[prior.index].idxmax()
+            msg += f'约1小时权益变化：{format_amount(account_equity-float(old.loc[idx,"账户总净值"]))}；起点 {format_time(times.loc[idx])}\n'
+    if options.get('details', False):
+        try:
+            volume = compute_recent_volume(account_config.name, run_time, strict=True)
+            msg += format_volume_message(*volume) + '\n'
+        except Exception as error:
+            msg += '本轮成交额：本地记录缺失或不可读\n'
+            print(f'统计成交额不可用: {error}')
+    if options.get('notify', True) or options.get('details', False):
+        try:
+            value = metrics.get('uniMMR') if metrics is not None else account_config.bn.get_unimmr()
+            if value is None or not np.isfinite(float(value)):
+                raise ValueError('UniMMR unavailable')
+            msg += f'账户UniMMR：{format_number(value)}\n'
+        except Exception as error:
+            msg += '账户UniMMR：未知\n'
+            print(f'统计UniMMR不可用: {error}')
+    if options.get('charts', False):
+        try:
+            # Scope: account snapshots only, no manual flows or history reconstruction.
+            transfers = pd.DataFrame()
+            child_cache = load_child_equities(me_conf)
+            draw_equity_and_send_pic(me_conf, comparable.copy(), transfers, 'equity-curve(All days)', account_config, is_send=False, child_cache=child_cache)
+            if options.get('notify', True) and account_equity > 0:
+                for days in (30, 7):
+                    part = comparable.loc[comparable.time >= comparable.time.max()-pd.Timedelta(days=days)].copy()
+                    try:
+                        draw_equity_and_send_pic(me_conf, part, transfers, f'equity-curve(last {days} days)', account_config, child_cache=child_cache)
+                    except Exception as error:
+                        print(f'统计{days}天曲线失败: {error}')
+        except Exception as error:
+            print(f'统计曲线不可用（基础净值已保存）: {error}')
+    return msg
 
-    # =新建文件夹路径，保存数据
-    equity_file_path = get_file_path(data_path, account_config.name, '账户信息', 'equity.csv')
-    # =判断文件是否存在
-    if os.path.exists(equity_file_path):  # 如果存在
-        # 读取数据
-        equity_df = pd.read_csv(equity_file_path, encoding='gbk', parse_dates=['time'])
-        # 容错代码，转换时间周期
-        equity_df['time'] = pd.to_datetime(equity_df['time'], format='mixed')
-        # 保留近一个半小时的数据，增加一点提前下单造成的时间容错
-        old_equity_df = equity_df[equity_df['time'] > datetime.now() - pd.Timedelta(hours=1, minutes=30)]
-        # =数据整理
-        old_equity_df = old_equity_df.sort_values('time', ascending=True).reset_index(drop=True)
 
-        # =将保存的全部历史账户数据与最新账户数据合并
-        equity_df = pd.concat([equity_df, new_equity_df], axis=0, copy=False)
-        equity_df['time'] = pd.to_datetime(equity_df['time'])  # 修改时间格式
-        equity_df = equity_df.sort_values('time').reset_index(drop=True)  # 整理数据
-
-        # =记录一下账户总净值的最大值和最小值
-        max_all_equity = round(equity_df['账户总净值'].max(), 2)
-        min_all_equity = round(equity_df['账户总净值'].min(), 2)
-
-        # ===输出近期走势图
-        equity_df_temp = equity_df.reset_index(drop=True)
-        _start_time = equity_df_temp.iloc[0]['time']
-        # =获取划转记录
-        transfer_df = account_config.bn.fetch_transfer_history()
-        transfer_path = get_file_path(data_path, account_config.name, '账户信息', 'transfer.csv')
-        transfer_df = get_and_save_local_transfer(transfer_df, transfer_path)
-        # =构建上线后所有数据
-        equity_df0 = equity_df_temp.copy()
-        draw_equity_and_send_pic(me_conf, equity_df0, transfer_df, 'equity-curve(All days)', account_config, is_send=False)
-        # =构建近30天数据
-        duration = '720h'
-        equity_df1 = equity_df_temp[equity_df_temp['time'] >= equity_df_temp['time'].max() - pd.to_timedelta(duration)].reset_index(drop=True)
-        # 绘图
-        draw_equity_and_send_pic(me_conf, equity_df1, transfer_df, 'equity-curve(last 30 days)', account_config)
-
-        # =构建近7天数据
-        duration = '168h'
-        equity_df2 = equity_df_temp[equity_df_temp['time'] >= equity_df_temp['time'].max() - pd.to_timedelta(duration)].reset_index(drop=True)
-        # 绘图
-        draw_equity_and_send_pic(me_conf, equity_df2, transfer_df, 'equity-curve(last 7 days)', account_config)
-    else:  # 如果不存在，则创建一个新的df
-        old_equity_df = pd.DataFrame()
-        max_all_equity = np.nan  # 历史最高为nan
-        min_all_equity = np.nan  # 历史最低为nan
-        equity_df = new_equity_df
-
-    # =构建推送消息内容
-    equity_msg = f'账户净值： {new_equity_df.loc[0, "账户总净值"]:.2f}\n'
-    equity_msg += f'账户： {account_config.name}\n'
-    equity_msg += f'账户类型：{account_config.account_type}\n'
-    if old_equity_df.empty:  # 如果是第一次运行，将之前的信息赋值为空
-        old_all_equity = np.nan
-        # old_long_pos = np.nan
-        # old_short_pos = np.nan
-    else:  # 不是第一次运行，则将历史数据用来比较
-        old_all_equity = old_equity_df.loc[0, "账户总净值"]
-        # old_long_pos = old_equity_df.loc[0, "多头仓位"]
-        # old_short_pos = old_equity_df.loc[0, "空头仓位"]
-
-    equity_msg += f'最近1小时盈亏：{(new_equity_df.loc[0, "账户总净值"] - old_all_equity):.2f}\n'  # 记录近一小时盈亏
-    # equity_msg += f'多头最近1小时盈亏：{(new_equity_df.loc[0, "多头仓位"] - old_long_pos):.2f}\n'  # 记录多头最近1小时盈亏
-    # equity_msg += f'空头最近1小时盈亏：{(new_equity_df.loc[0, "账户总净值"] - old_all_equity) - (new_equity_df.loc[0, "多头仓位"] - old_long_pos):.2f}\n\n'  # 记录空头最近1小时盈亏
-
-    equity_msg += f'历史最高账户总净值：{max_all_equity}\n'  # 记录历史最高账户净值
-    equity_msg += f'历史最低账户总净值：{min_all_equity}\n'  # 记录历史最低账户净值
-
-    # 记录多头仓位、多头现货、多头合约、空头仓位
-    equity_msg += f'现货USDT余额：{spot_usdt}\n'  # 记录历史USDT净值
-    equity_msg += f'多头仓位：{new_equity_df.loc[0, "多头仓位"]:.2f}（spot {new_equity_df.loc[0, "多头现货"]:.2f}, swap {new_equity_df.loc[0, "多头合约"]:.2f}）\n'
-    equity_msg += f'空头仓位：{new_equity_df.loc[0, "空头仓位"]:.2f}\n'
-
-    # ===计算账户保证金率
-    # total_equity = swap_equity + swap_position['持仓盈亏'].sum()  # 计算当前账户总净值（含未实现盈亏）
-    # pos_equity = (swap_position['当前标记价格'] * swap_position['当前持仓量']).abs().sum()  # 计算合约账户持仓价值
-    # margin_rate = total_equity / pos_equity  # 计算当前账户保证金率
-    # equity_msg += f'合约保证金率：{margin_rate:.2f}\n'  # 记录合约保证金率
-
-    # ===计算当前的杠杆倍数
-    equity_msg += f'杠杆：{account_config.leverage:.2f}\n'  # 记录杠杆倍数
-    equity_msg += f'账户的UniMMR：{account_config.bn.get_unimmr():.2f}\n'  # 记录Unimmr
-
-    # 注入最近 1h 成交额
-    if run_time is not None:
-        spot_qv, swap_qv = compute_recent_volume(account_config.name, run_time)
-        equity_msg += format_volume_message(spot_qv, swap_qv) + '\n'
-
-    # 保存净值文件
-    equity_df.to_csv(equity_file_path, encoding='gbk', index=False)
-
-    return equity_msg
+def load_child_equities(me_conf):
+    cache = {}
+    for conf in me_conf.factory.config_list:
+        path = conf.get_result_folder() / '资金曲线_再择时.csv'
+        if not path.exists():
+            path = conf.get_result_folder() / '资金曲线.csv'
+        cache[conf.name] = pd.read_csv(path, parse_dates=['candle_begin_time'], index_col=0)
+    return cache
 
 
 def get_and_save_local_transfer(transfer_df, transfer_path):
@@ -1062,16 +1021,16 @@ def get_and_save_local_transfer(transfer_df, transfer_path):
         exist_transfer_df = pd.read_csv(transfer_path, encoding='gbk', parse_dates=['time'])
         transfer_df = pd.concat([exist_transfer_df, transfer_df], axis=0, copy=False)
         transfer_df = transfer_df.drop_duplicates(keep='first').reset_index(drop=True)
-        transfer_df.to_csv(transfer_path, encoding='gbk', index=False)
+        atomic_save(transfer_path, lambda target: transfer_df.to_csv(target, encoding='gbk', index=False))
     elif not transfer_df.empty:
-        transfer_df.to_csv(transfer_path, encoding='gbk', index=False)
+        atomic_save(transfer_path, lambda target: transfer_df.to_csv(target, encoding='gbk', index=False))
 
     return transfer_df
 
 
 def net_fund(df):
     first_log_index = (df['type'] == 'log').idxmax()
-    df = df.loc[first_log_index:, :]
+    df = df.loc[first_log_index:, :].copy()
     df.reset_index(inplace=True, drop=True)
 
     df.loc[0, '净值'] = 1
@@ -1121,7 +1080,10 @@ def send_fixed_ratio_info(me_conf: MultiEquityBacktestConfig, account_info: Acco
             continue
         timing_df = pd.read_csv(timing_path, encoding='utf-8-sig', parse_dates=['candle_begin_time'],
                                 usecols=['candle_begin_time', '动态杠杆'])
+        if timing_df.empty:
+            continue
         timing_df['candle_begin_time'] = timing_df['candle_begin_time'].dt.tz_localize(None)
+        previous_signal = timing_df.iloc[-2]['动态杠杆'] if len(timing_df) > 1 else np.nan
         last_row = timing_df.iloc[-1]
         last_signal_time = timing_df[timing_df['动态杠杆'] != timing_df['动态杠杆'].shift()]['candle_begin_time'].iloc[
             -1]
@@ -1130,8 +1092,8 @@ def send_fixed_ratio_info(me_conf: MultiEquityBacktestConfig, account_info: Acco
             'strategy': f'{conf.timing.name}-{conf.timing.params}',
             'signal': last_row['动态杠杆'],
             'status': format_timing_signal(last_row['动态杠杆']),  # 当前小时
-            'last_hour_status': format_timing_signal(timing_df.iloc[-2]['动态杠杆']),  # 上个小时
-            'status_change': last_row['动态杠杆'] != timing_df.iloc[-2]['动态杠杆'],  # 当小时状态是否切换
+            'last_hour_status': format_timing_signal(previous_signal) if pd.notna(previous_signal) else np.nan,
+            'status_change': (last_row['动态杠杆'] != previous_signal) if pd.notna(previous_signal) else None,  # 当小时状态是否切换
             'hour': format_timedelta(last_row['candle_begin_time'] - last_signal_time),  # 持续时间
         })
 
@@ -1173,6 +1135,8 @@ def send_rotation_info(me_conf: MultiEquityBacktestConfig, account_info: Account
         if not file_path.exists():
             continue
         factor_df = pd.read_pickle(file_path)
+        if factor_df.empty:
+            continue
         factor_df['candle_begin_time'] = factor_df['candle_begin_time'].dt.tz_localize(None)
         last_row = factor_df.iloc[-1]
         all_rotation_signal_list.append({
@@ -1180,7 +1144,7 @@ def send_rotation_info(me_conf: MultiEquityBacktestConfig, account_info: Account
             'strategy': conf.name,
             'has_timing': None if conf.timing is None else conf.timing.name,
             **{col: last_row[col] for col in
-               sorted(me_conf.strategy.factor_columns, key=lambda x: int(x.split('_')[1]))}
+               sorted(me_conf.strategy.factor_columns, key=lambda x: x.rsplit('_', 1))}
         })
         if start_time is None or factor_df.iloc[0]['candle_begin_time'] > start_time:
             start_time = factor_df.iloc[0]['candle_begin_time']
@@ -1198,15 +1162,18 @@ def send_rotation_info(me_conf: MultiEquityBacktestConfig, account_info: Account
             if 'cal_one_ratio' not in me_conf.strategy.core_funcs:
                 continue
             _rotation_df = me_conf.strategy.core_funcs['cal_one_ratio'](factor_info, all_rotation_df_list)
+            if _rotation_df.empty or not len(_rotation_df.columns):
+                continue
             _rotation_df.rename(columns=idx_to_conf_dict, inplace=True)
             # _rotation_df['status'] = _rotation_df.idxmax(axis=1)
             _rotation_df['status'] = _rotation_df.apply(get_max_columns, axis=1, cols=_rotation_df.columns.tolist())
+            previous_status = _rotation_df.iloc[-2]['status'] if len(_rotation_df) > 1 else None
             last_signal_time = _rotation_df[_rotation_df['status'] != _rotation_df['status'].shift()].index[-1]
             all_rotation_status_list.append({
                 'factor': f'{factor_info[0]}_{factor_info[2]}',
                 'status': _rotation_df.iloc[-1]['status'],
-                'last_hour_status': _rotation_df.iloc[-2]['status'],
-                'status_change': _rotation_df.iloc[-1]['status'] != _rotation_df.iloc[-2]['status'],
+                'last_hour_status': previous_status,
+                'status_change': (_rotation_df.iloc[-1]['status'] != previous_status) if previous_status is not None else None,
                 'hour': format_timedelta(_rotation_df.index[-1] - last_signal_time),
             })
 
@@ -1236,157 +1203,97 @@ def calculate_status(row):
 
 
 def run():
-    import sys
-    if len(sys.argv) > 1:
-        timestamp = sys.argv[1]
-        account_param = sys.argv[2] if len(sys.argv) > 2 else None
-        run_time = datetime.fromtimestamp(int(timestamp))
-    else:
-        run_time = None
-        account_param = None
-    print(run_time)
-    # =====刷新一下与交易所的时差
-    refresh_diff_time()
-    # =设置一下默认时间，用于获取订单时截取订单数据
-    default_time = '2023-09-28 00:00:00'
-
-    # =加载现货交易对信息
-    dummy_bn_cli = get_dummy_client()
-    market_info = dummy_bn_cli.get_market_info('spot')
-    spot_symbol_list = market_info['symbol_list']
-
-    for account_profile_file in load_multi_accounts():
-        # 初始化多策略回测
-        account_info, me_conf = init_system(account_profile_file.stem)
-        account_info.update_account_info()
-        account_name = account_info.name
-        if account_param is not None and account_name != account_param:
-            print(f'当前账号【{account_name}】，不是指定的账号 【{account_param}】，跳过')
+    import config
+    options = dict(config.statistics_config)
+    if not options.get('enabled', True):
+        return
+    requested_time = datetime.fromtimestamp(int(sys.argv[1])) if len(sys.argv) > 1 else None
+    requested_account = sys.argv[2] if len(sys.argv) > 2 else None
+    failures = []
+    time_refreshed = False
+    for profile in load_multi_accounts():
+        if requested_account is not None and profile.stem != requested_account:
             continue
-        # ===获取账号的配置
-        account_overview = account_info.bn.get_account_overview()
-        account_equity = account_overview['account_equity']
-        try:
-            swap_position = account_overview['swap_assets']['swap_position_df']
-            swap_equity = account_info.swap_equity
-            if account_info.use_spot:
-                seed_coin_spot_equity = account_overview['seed_coin_spot_equity']
-                spot_position = account_overview['spot_assets']['spot_position_df']
-                spot_equity = account_overview['spot_assets']['equity']
-                spot_usdt = account_overview['spot_assets']['usdt']
-            else:
-                seed_coin_spot_equity = 0
-                spot_position = pd.DataFrame()
-                spot_equity = 0
-                spot_usdt = 0
-        except BaseException as e:
-            print(e)
-            print(traceback.format_exc())
-            print(f'当前账号【{account_name}】，获取数据失败')
-            continue
-
-        # =====获取当前运行小时
-        if run_time is None:
-            run_time = datetime.now().replace(minute=account_info.hour_offset_minute, second=0, microsecond=0)
-            # 仅仅在run time是none时，进行判断
-            if not (datetime.now() - pd.to_timedelta('5m') <= run_time <= datetime.now() + pd.to_timedelta('5m')):
-                print(f'当前账号【{account_name}】未到时间统计')
+        # This also excludes concurrent manual invocations, before client construction.
+        with account_lock(data_path / profile.stem / '账户信息') as acquired:
+            if not acquired:
+                print(f'{profile.stem}: 统计已在运行，跳过')
                 continue
-        # 以下代码可以测试的时候使用
-        # run_time = datetime.strptime('2025-11-12 10:00:00', "%Y-%m-%d %H:%M:%S")
-        if run_time.minute != account_info.hour_offset_minute:
-            print(f'当前账号【{account_name}】未到时间统计, run_time: {run_time}, hour_offset: {account_info.hour_offset_minute}')
-            continue
-
-        # 获取仓位信息
-        position_df = me_conf.factory.result_folder / '仓位比例.csv'
-        if position_df.exists():
-            position_df = pd.read_csv(position_df, index_col=0)
-            position_df.index.name = 'time'
-            last_pos = position_df.iloc[-1]
-            content = ''
-            strategy_list = me_conf.factory.config_list
-            strategy_list_length = len(strategy_list)
-            for idx in last_pos.index.to_list():
-                idx_int = int(idx)
-                if idx_int < strategy_list_length:
-                    stg_name = strategy_list[idx_int].name
-                else:
-                    stg_name = f'策略{idx_int}'
-                content += f"{stg_name}: {round(last_pos[idx_int] * 100, 4)}%\n"
-            rotation_msg = f"【子策略状态】\n\n{content}\n"
-            send_wechat_work_msg(rotation_msg, account_info.wechat_webhook_url)
-
-        # 发送仓位管理统计数据
-        send_pos_strategy_info(me_conf, account_info)
-
-        # ===生成账户净值信息
-        equity_msg = save_and_send_equity_info(account_info, me_conf, spot_position, swap_position, spot_equity, account_equity, spot_usdt, seed_coin_spot_equity, run_time=run_time)
-        # =发送账户净值信息
-        send_wechat_work_msg(equity_msg, account_info.wechat_webhook_url)
-
-        # =获取一下现货各个币种的最新价格
-        spot_last_price = account_info.bn.get_spot_ticker_price_series()
-
-        # =====每小时交易的订单监测、生成历史持仓信息(只保留当前持仓的文件，历史交易过的且已经清仓的不会保留文件)
-        if account_info.use_spot:
-            # ===获取订单的详细信息、以及生成各币种的持仓信息
-
-            # ==new读取账户的换仓信息
             try:
-                filename = run_time.strftime("%Y%m%d_%H") + ".csv"
-                select_symbol_list_path = get_file_path(data_path, account_name, '账户换仓信息', filename)
-                select_symbol = pd.read_csv(select_symbol_list_path)
-                select_symbol_list = select_symbol.loc[select_symbol['symbol_type'] == 'spot', 'symbol'].tolist()
-                all_spot_order_info = get_all_order_info(
-                    account_info, sorted(select_symbol_list), run_time, default_time, spot_last_price)
-            except Exception as e:
-                ignore_error(e)
-                print('读取账户换仓信息失败，准备获取全部订单信息')
-                all_spot_order_info = get_all_order_info(
-                    account_info, sorted(spot_symbol_list), run_time, default_time, spot_last_price)
-
-            # 判断当前小时是否存在订单信息
-            if all_spot_order_info.empty:
-                print('该时间不存在订单，不发送订单监测信息...')
-            else:
-                # =整理订单数据
-                all_spot_order_info = all_spot_order_info.sort_values(['方向', 'time', 'symbol']).reset_index(drop=True)
-                # =将订单数据拆分为买入和卖出
-                buyer = all_spot_order_info[all_spot_order_info['方向'] == 1].reset_index(drop=True)
-                seller = all_spot_order_info[all_spot_order_info['方向'] == -1].reset_index(drop=True)
-
-                # =生成该小时的统计数据，一共两行，一行为买入，一行为卖出
-                stats_info = get_stats_info(buyer, seller, spot_equity)
-
-                # =获取发送的订单监测信息
-                order_msg, bs_msg = get_order_msg(run_time, all_spot_order_info, stats_info, buyer, seller)
-
-                # =保存订单监测信息
-                save_order_info(all_spot_order_info, stats_info, run_time, account_name)
-
-                # =发送订单监测信息
-                if order_msg:
-                    send_wechat_work_msg(order_msg, account_info.wechat_webhook_url)
-                # =发送买卖币种信息
-                if bs_msg:
-                    send_wechat_work_msg(bs_msg, account_info.wechat_webhook_url)
-
-                # =清理数据
-                del buyer, seller, stats_info, order_msg, bs_msg
-
-        # ===发送各币种持仓信息
-        send_position_result(account_info, spot_position, swap_position, spot_last_price,
-                             me_conf=me_conf)
-
-        # =====计算并发送持仓盈亏报告
-        try:
-            calculate_and_send_pnl_report(account_info, spot_position, swap_position, spot_last_price, me_conf=me_conf)
-        except Exception as e:
-            print(f"计算持仓盈亏失败: {traceback.format_exc()}")
-
-        # 休息一会儿，避免超权重
-        time.sleep(60)
+                account, me_conf = init_system(profile.stem)
+                if account.name != profile.stem:
+                    raise ValueError('statistics account identity mismatch')
+                run_time = requested_time or datetime.now().replace(minute=account.hour_offset_minute, second=0, microsecond=0)
+                if run_time.minute != account.hour_offset_minute:
+                    continue
+                if requested_time is None and abs((datetime.now()-run_time).total_seconds()) > 300:
+                    continue
+                if not time_refreshed:
+                    refresh_diff_time()
+                    time_refreshed = True
+                # Read-only overview. Never call the trading update/BNB mutation path here.
+                native_reader = getattr(type(account.bn), 'get_statistics_overview', None)
+                overview = native_reader(account.bn) if callable(native_reader) else account.bn.get_account_overview()
+                if not isinstance(overview, dict):
+                    raise ValueError('account overview unavailable')
+                equity = float(overview['account_equity'])
+                spot_assets, swap_assets = overview['spot_assets'], overview['swap_assets']
+                if not np.isfinite(equity):
+                    raise ValueError('nonfinite account equity')
+                spot, swap = spot_assets['spot_position_df'], swap_assets['swap_position_df']
+                if not isinstance(spot, pd.DataFrame) or not isinstance(swap, pd.DataFrame):
+                    raise ValueError('position snapshot unavailable')
+                observed_at = datetime.now()
+                metrics = overview.get('statistics')
+                snapshot_source = metrics['equity_source'] if metrics is not None else 'framework_overview'
+                # Derive prices from the overview; no second ticker for already valued assets.
+                indexed = spot.set_index('symbol') if 'symbol' in spot else spot
+                prices = spot_assets.get('prices')
+                if prices is None:
+                    prices = indexed['仓位价值'] / indexed['当前持仓量'] if not spot.empty else pd.Series(dtype=float)
+                frames = (calc_spot_position(spot, account.name, prices), calc_swap_position(swap))
+                history_cache = {}
+                send_position_result(account, spot, swap, prices, run_time=run_time, observed_at=observed_at,
+                                     current_frames=frames, notify=False, history_cache=history_cache,
+                                     snapshot_source=snapshot_source, metrics=metrics)
+                msg = save_and_send_equity_info(account, me_conf, spot, swap, float(spot_assets['equity']), equity,
+                    float(spot_assets['usdt']), float(overview.get('seed_coin_spot_equity', 0)), run_time=run_time,
+                    observed_at=observed_at, options=options, swap_frame=frames[1], metrics=metrics)
+                def optional(label, action):
+                    try:
+                        return action()
+                    except Exception as error:
+                        print(f'{account.name}: {label}失败（基础数据已保存）: {error}')
+                maps = ({}, {})
+                if options.get('notify', True):
+                    optional('净值通知', lambda: send_wechat_work_msg(msg, account.wechat_webhook_url))
+                    optional('策略状态', lambda: send_pos_strategy_info(me_conf, account))
+                    def weights():
+                        path = me_conf.factory.result_folder / '仓位比例.csv'
+                        if path.exists():
+                            frame = pd.read_csv(path, index_col=0)
+                            if not frame.empty:
+                                names = {str(idx): getattr(conf, 'original_name', conf.name.removeprefix(f'S{idx+1}-'))
+                                         for idx, conf in enumerate(me_conf.factory.config_list)}
+                                send_wechat_work_msg('【子策略权重】\n'+format_weights(frame.iloc[-1], names),
+                                                    account.wechat_webhook_url)
+                    optional('策略权重', weights)
+                    maps = optional('策略归属', lambda: build_symbol_strategy_columns(me_conf)) or maps
+                    for frame, mapping in zip(frames, maps):
+                        if not frame.empty:
+                            display = frame.copy()
+                            display['strategy'] = display.index.map(mapping).fillna('未匹配')
+                            optional('持仓图', lambda: send_img_for_dataframe(display, account.wechat_webhook_url))
+                if options.get('price_impact', False):
+                    optional('价格影响估算', lambda: calculate_and_send_pnl_report(account, spot, swap, prices,
+                        observed_at=observed_at, run_time=run_time, current_frames=frames, strategy_maps=maps,
+                        total_equity=equity, notify=options.get('notify', True), history_cache=history_cache,
+                        snapshot_source=snapshot_source))
+            except Exception as error:
+                failures.append(f'{profile.stem}: {error}')
+                print(traceback.format_exc())
+    if failures:
+        raise RuntimeError('; '.join(failures))
 
 
 if __name__ == '__main__':
@@ -1396,4 +1303,4 @@ if __name__ == '__main__':
         msg = '保3下单统计脚本出错，出错原因: ' + str(err)
         print(msg)
         print(traceback.format_exc())
-        send_wechat_work_msg(msg, error_webhook_url)
+        raise SystemExit(1)

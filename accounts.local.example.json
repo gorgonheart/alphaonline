@@ -1,0 +1,6 @@
+{
+  "20m_robust_4h": {"apiKey": "", "secret": "", "wechat_webhook_url": ""},
+  "40m_robust_4h": {"apiKey": "", "secret": "", "wechat_webhook_url": ""},
+  "55m_robust_4h": {"apiKey": "", "secret": "", "wechat_webhook_url": ""},
+  "5m-onheart1020": {"apiKey": "", "secret": "", "wechat_webhook_url": ""}
+}

@@ -1,0 +1,6 @@
+{
+  "realtime_data_path": "/home/ubuntu/alpha2/data",
+  "proxy": {},
+  "error_webhook_url": "",
+  "is_simulate": "dry_run"
+}

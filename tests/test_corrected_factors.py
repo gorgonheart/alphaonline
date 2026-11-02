@@ -59,14 +59,14 @@ def test_cci_prefix_and_cooldown_are_causal():
                                        result.iloc[:end], check_exact=True)
 
 
-def test_active_account_and_producer_use_new_names():
+def test_active_account_and_producer_use_new_names(producer_root):
     for path in Path('accounts').glob('*.py'):
         if path.name.startswith('_'):
             continue
         values = [n.value for n in ast.walk(ast.parse(path.read_text(encoding='utf-8-sig')))
                   if isinstance(n, ast.Constant) and isinstance(n.value, str)]
         assert not set(REPLACEMENTS).intersection(values), path
-    producer_tree = ast.parse(Path('D:/alpha/config.py').read_text(encoding='utf-8-sig'))
+    producer_tree = ast.parse((producer_root/'config.py').read_text(encoding='utf-8-sig'))
     conf = next(ast.literal_eval(n.value) for n in producer_tree.body if isinstance(n, ast.Assign)
                 and any(isinstance(t, ast.Name) and t.id == 'precompute_factor_configs' for t in n.targets))
     assert MOMENTUM in conf and '动量因子210401修正' not in conf

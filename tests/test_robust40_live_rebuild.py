@@ -3,7 +3,7 @@ from types import SimpleNamespace
 import pandas as pd
 import pytest
 
-from tools.rebuild_robust40_live_baseline import read_children
+from tools.robust40.cli.rebuild_robust40_live_baseline import read_children
 
 
 def test_rebuild_rejects_children_from_old_blacklist(tmp_path):

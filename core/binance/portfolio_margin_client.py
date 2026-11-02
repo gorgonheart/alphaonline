@@ -51,7 +51,9 @@ class PortfolioMarginClient(BinanceClient):
 
     def update_balance(self):
         self.balance = retry_wrapper(
-            self.exchange.papi_get_balance, params={'timestamp': ''},
+            # Read-only balance query: tolerate proxy latency up to the 30s HTTP timeout.
+            # Keep the exchange-wide (including order) recvWindow unchanged.
+            self.exchange.papi_get_balance, params={'timestamp': '', 'recvWindow': 30000},
             func_name='获取统一账户的持仓资产'
         )  # 获取账户净值
 
@@ -101,9 +103,19 @@ class PortfolioMarginClient(BinanceClient):
 
         return exchange_info_list
 
+    def get_account_info(self):
+        return retry_wrapper(self.exchange.papiGetAccount, params={'timestamp': ''}, func_name='获取统一账户信息')
+
     def get_unimmr(self):
-        account = retry_wrapper(self.exchange.papiGetAccount, params={'timestamp': ''}, func_name='获取现货账户净值')
-        return float(account['uniMMR'])
+        return float(self.get_account_info()['uniMMR'])
+
+    def get_statistics_overview(self):
+        """Read-only full account view; keep trading filters/reserves out of statistics."""
+        from tools.statistics_snapshot import portfolio_overview
+        ticker = self.fetch_spot_ticker_price()
+        balance = self.get_balance_df()
+        positions = self.get_swap_position_df(for_statistics=True)
+        return portfolio_overview(balance, positions, ticker, self.base_coins, self.get_account_info())
 
     def set_fee_burn(self, is_burn: bool = False):
         """

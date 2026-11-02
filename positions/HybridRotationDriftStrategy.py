@@ -30,7 +30,7 @@ weights and compare the resulting portfolio at the outer backtest level.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Iterable
+from typing import TYPE_CHECKING, Any, Iterable
 
 import numpy as np
 import pandas as pd
@@ -40,7 +40,10 @@ try:  # numba is bundled with the alpha311 environment; keep a safe fallback.
 except ImportError:  # pragma: no cover - exercised only in minimal deployments
     njit = None
 
-from core.model.strategy_config import PosStrategyConfig
+# Annotations are postponed; numerical workers must not load account/framework
+# configuration just to import this strategy (also permits normal Numba caching).
+if TYPE_CHECKING:
+    from core.model.strategy_config import PosStrategyConfig
 
 
 EPS = 1e-12

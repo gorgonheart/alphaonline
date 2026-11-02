@@ -6,8 +6,8 @@ import pandas as pd
 import pytest
 from scipy import sparse
 
-from tools.robust40.runtime import expected_bar, merge_context, expand_result
-from tools.robust40.live import build_context, parent_ratios, transform_targets
+from positions.ModelRobust40Strategy import expected_bar, merge_context, expand_result
+from positions.ModelRobust40Strategy import build_context, parent_ratios, validate_targets as transform_targets
 
 
 @pytest.mark.parametrize('minute', [0, 20, 40, 55])
@@ -48,6 +48,31 @@ def test_merge_preserves_history_expands_symbols_and_rejects_revision():
     assert old['leverage'][4].eq(1).all()
 
 
+def test_price_revision_names_time_symbol_values_and_preserves_saved_state(tmp_path):
+    from positions.ModelRobust40Strategy import update_state
+    old = context('2026-10-01 00:40', 1300)
+    new = context('2026-10-01 00:40', 1301)
+    new['simulation']['swap_close_p'][-2, 0] = 101.
+    path = tmp_path/'state.pkl'
+    pd.to_pickle(dict(version=1, minute=40, account_identity='account', context=old,
+                      result={'parent': pd.DataFrame(index=old['index'])}), path)
+    original = path.read_bytes()
+    with pytest.raises(ValueError) as exc:
+        update_state(path, tmp_path/'bootstrap.pkl', 'account', 40, new, {}, new['index'][-1])
+    message = str(exc.value)
+    for part in ('swap_close_p', str(old['index'][-1]), 'swap:U', 'saved=100.0', 'incoming=101.0'):
+        assert part in message
+    assert path.read_bytes() == original
+
+
+def test_revision_diagnostics_include_missing_value_and_series_instrument():
+    from positions.ModelRobust40Strategy import _same
+    old = pd.Series([1., np.nan], index=['spot:A', 'spot:B'])
+    new = pd.Series([1., 2.], index=old.index)
+    with pytest.raises(ValueError, match='spot:B.*saved=nan.*incoming=2.0'):
+        _same(old, new, 'spot instrument units')
+
+
 def test_nontraded_benchmark_survives_context_and_continuation():
     c = context('2026-10-01 00:20', 5)
     idx = c['index']
@@ -69,6 +94,15 @@ def test_nontraded_benchmark_survives_context_and_continuation():
         merge_context(built, changed, minimum_overlap=3, warmup=0)
 
 
+def test_merge_rejects_unit_changes_before_using_saved_lots():
+    old=context('2026-10-01 00:40',5)
+    new=context('2026-10-01 02:40',5)
+    new['simulation']['swap_lot_sizes'][0]=10.
+    with pytest.raises(ValueError,match='instrument units'):
+        merge_context(old,new,minimum_overlap=3,warmup=0)
+    assert old['simulation']['swap_lot_sizes'][0]==1.
+
+
 def test_saved_lots_map_by_symbol_including_pending_orders():
     frame = pd.DataFrame({'equity': [100.]})
     frame.attrs['simulation_state'] = ((100., np.array([1]), np.array([2]), np.array([10.]), True),
@@ -84,7 +118,7 @@ def test_saved_lots_map_by_symbol_including_pending_orders():
 def test_execution_registration_preserves_built_in_modes():
     from core import rebalance
     from core.model.rebalance_mode import RebalanceMode
-    from tools.robust40.live_execution import register_execution
+    from positions.ModelRobust40Strategy import register_execution
     old = {k: v for k, v in vars(rebalance).items() if k.startswith('Reb') and k != 'RebRobust40'}
     register_execution();register_execution()
     assert all(getattr(rebalance,k) is v for k,v in old.items())
@@ -94,7 +128,7 @@ def test_execution_registration_preserves_built_in_modes():
 
 
 def test_target_adapter_aligns_timezone_and_columns_and_detects_double_timing():
-    from tools.robust40.execution import apply_s5_delta
+    from positions.ModelRobust40Strategy import apply_s5_delta
     idx = pd.date_range('2026-10-01 00:55', periods=2, freq='h')
     net = pd.DataFrame([[.2,-.1]]*2,index=idx,columns=['B','A'])
     delta = pd.DataFrame([[-.1,0]]*2,index=idx,columns=net.columns)
@@ -112,7 +146,7 @@ def test_target_adapter_aligns_timezone_and_columns_and_detects_double_timing():
 
 
 def test_failed_state_update_preserves_saved_bytes_and_releases_lock(tmp_path):
-    from tools.robust40.runtime import update_state
+    from positions.ModelRobust40Strategy import update_state
     path=tmp_path/'account.pkl';bootstrap=tmp_path/'bootstrap.pkl'
     incoming=context('2026-10-01 00:20',5)
     bundle=dict(version=1,minute=20,account_identity='account-A')
@@ -129,7 +163,7 @@ def test_failed_state_update_preserves_saved_bytes_and_releases_lock(tmp_path):
 def test_missing_active_live_price_fails_before_generating_lots(tmp_path,monkeypatch):
     import core.position as position
     from core.model.rebalance_mode import RebalanceMode
-    from tools.robust40.live_execution import register_execution
+    from positions.ModelRobust40Strategy import register_execution
     register_execution()
     index=pd.date_range('2026-10-01 00:20',periods=1)
     pd.DataFrame(index=index).to_pickle(tmp_path/'df_spot_ratio.pkl')

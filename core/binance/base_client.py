@@ -1150,7 +1150,7 @@ class BinanceClient:
 
     # =====获取持仓
     # 获取币安账户的实际持仓
-    def get_swap_position_df(self) -> pd.DataFrame:
+    def get_swap_position_df(self, *, for_statistics=False) -> pd.DataFrame:
         """
         获取币安账户的实际持仓
 
@@ -1182,7 +1182,11 @@ class BinanceClient:
         position_df['仓位价值'] = position_df['当前持仓量'] * position_df['当前标记价格']
 
         # 保留指定字段
-        position_df = position_df[['当前持仓量', '均价', '持仓盈亏', '当前标记价格', '仓位价值']]
+        result_columns = ['当前持仓量', '均价', '持仓盈亏', '当前标记价格', '仓位价值']
+        if for_statistics and 'notional' in position_df:
+            position_df['notional'] = pd.to_numeric(position_df['notional'], errors='raise')
+            result_columns.append('notional')
+        position_df = position_df[result_columns]
 
         return position_df
 

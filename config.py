@@ -20,11 +20,12 @@ from core.utils.path_kit import get_folder_path, get_file_path
 # ====================================================================================================
 # ** 数据配置 **
 # ====================================================================================================
-realtime_data_path = r'd:/alpha/data'  # 实盘数据路径
+realtime_data_path = str(Path(__file__).resolve().parent.parent / 'alpha2' / 'data')  # 机器差异在config.json
 # 全局报错机器人通知
 # - 创建企业微信机器人 参考帖子: https://bbs.quantclass.cn/thread/10975
 # - 配置案例  https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxxxxxxxxxxxxxxxxxx
-error_webhook_url = 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=ea70ba8e-9352-4f09-bab3-2c9653c2374a'
+error_webhook_url = ''  # 通知凭据在被Git忽略的config.json中维护
+proxy = {}  # 服务器默认直连；本地代理在config.json中维护
 is_simulate = "dry_run"  # debug, simulate, none。 debug：等同于 is_debug=True；simulate: 模拟盘；none：等同于 is_debug=False 实盘模式
 
 # ====================================================================================================
@@ -53,6 +54,8 @@ white_list = []  # 如果不为空，即只交易这些币，只在这些币当�
 lookback_days = 0  # 回看实盘数据天数，放这里主要与网页版配合
 precompute_factor_configs = {}  # 预计算因子配置，在账户配置文件中设置
 required_history_start = None  # 每次加载重置；仅显式配置的账户读取固定起点历史
+input_mode = 'auto'  # auto / full_pkl / arrow_strict; old accounts keep auto fallback
+section_state = False  # Explicit generic section continuation, default off
 
 # ====================================================================================================
 # ** 模拟器细节配置 **
@@ -94,7 +97,7 @@ if trading_account:
     allowed_attrs = (
         'account_config', 'strategy_name', 'strategy_config', 'strategy_pool', 'leverage', 'black_list', 'white_list',
         'rebalance_mode', 'get_kline_num', 'get_kline_num_spot', 'min_kline_num', 'precompute_factor_configs',
-        'simulator_config', 'required_history_start')
+        'simulator_config', 'required_history_start', 'input_mode', 'section_state')
     if account_config_path.is_file():
         spec = spec_from_file_location("account_config", account_config_path)
         account_module = module_from_spec(spec)
@@ -110,6 +113,9 @@ if trading_account:
 
     # 生成策略名称，避免同策略明覆盖重复的策略
     account_name = f'{account_config_path.stem}'  # 账户名等于文件名
+    # Credentials are machine-local; strategy, offset and BNB settings remain in accounts.
+    from tools.deployment import account_credentials
+    account_config = account_credentials(get_file_path('accounts.local.json', as_path_type=True), account_name, account_config)
     strategy_name = f'{account_config_path.stem}_{globals().get("strategy_name")}'
 else:
     account_name = ''  # 防御性编程，避免提示器出问题
@@ -124,7 +130,7 @@ if json_file_config.exists():
         # 目前只支持配置这些
         allowed_attrs = (
             'realtime_data_path', 'error_webhook_url', 'is_simulate', 'factor_col_limit', 'lookback_days',
-            'incremental_lookback_hours'
+            'incremental_lookback_hours', 'proxy'
         )
 
         for _attr in allowed_attrs:
@@ -173,6 +179,10 @@ data_config = dict(
 )
 clean_start = True  # 启动是是否删除缓存。如果你不了解这个选项，保持为True，滥用缓存会有灾难性后果。
 
+# 统计独立于交易/补BNB。性能优先：默认基础快照和通知，不在线重建历史成交。
+statistics_config = dict(enabled=True, notify=True, charts=True, details=True,
+                         price_impact=True, max_workers=2)
+
 # 回看多久的数据
 # 用来裁切保留选币&因子值，方便实盘与回测对比，实盘使用该配置会影响部分速度
 # 配置 0: 不生效
@@ -207,7 +217,7 @@ utc_offset = int(time.localtime().tm_gmtoff / 60 / 60)  # 如果服务器在上�
 # ====================================================================================================
 # 如果使用代理 注意替换IP和Port
 # proxy = {}
-proxy = {'http': 'http://127.0.0.1:7897', 'https': 'http://127.0.0.1:7897'}  # 如果你用clash的话
+# proxy在文件顶部定义，由config.json覆盖；这里不重新覆盖机器设置。
 exchange_basic_config = {
     'timeout': 30000,
     'rateLimit': 30,

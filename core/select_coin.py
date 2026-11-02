@@ -10,6 +10,7 @@
 Author: 邢不行
 """
 import gc
+import multiprocessing
 import os
 import time
 import warnings
@@ -305,7 +306,9 @@ def calc_factors(conf: BacktestConfig):
 
         all_factor_pl_list = [pl.DataFrame()] * len(candle_df_list)
         t_mp_start = time.time()
-        with ProcessPoolExecutor(max_workers=job_num) as executor:
+        # Polars may already own native threads: explicit spawn is safe on Linux
+        # as well as Windows and retains each worker's normal configuration load.
+        with ProcessPoolExecutor(max_workers=job_num, mp_context=multiprocessing.get_context('spawn')) as executor:
             futures = [executor.submit(
                 process_candle_df_return_polars, candle_df, conf, factor_col_name_list, candle_idx
             ) for candle_idx, candle_df in enumerate(candle_df_list)]
@@ -531,7 +534,8 @@ def calc_cross_sections_polars(conf: BacktestConfig):
         for factor_name, param in tqdm(chunk, desc='🧮 截面因子计算 (Polars)'):
             factor = FactorHub.get_by_name(factor_name)
             factor_col_name = f'{factor_name}_{param}'
-            lf_chunk = factor.signal_polars(lf_chunk, param, factor_col_name)
+            from core.utils.section_state import run_section
+            lf_chunk = run_section(conf, factor, lf_chunk, param, factor_col_name, polars=True)
 
         t_calc = time.time()
         logger.debug(f'📊 截面因子 - 因子计算: {t_calc - t_chunk_start:.2f}s')
@@ -607,7 +611,8 @@ def calc_cross_sections_pandas(conf: BacktestConfig):
         legacy_candle_df = factor_df[base_cols].copy()  # 如果是老的因子计算逻辑，单独拿出来一份数据
         for param in tqdm(factor_param_list, total=len(factor_param_list), desc=f'🧮 截面因子计算 {factor_name}'):
             factor_col_name = f'{factor_name}_{param}'
-            legacy_candle_df = factor.signal(legacy_candle_df, param, factor_col_name)
+            from core.utils.section_state import run_section
+            legacy_candle_df = run_section(conf, factor, legacy_candle_df, param, factor_col_name)
 
             # 对数据进行裁切并保存
             cross_factor_df = legacy_candle_df[['candle_begin_time', factor_col_name]]
@@ -1236,6 +1241,18 @@ def agg_strategy_offsets(df_select: pd.DataFrame, stg_conf: StrategyConfig, max_
     return df_ratio
 
 
+def _include_snapshot_gap(conf, fallback_start):
+    """Keep no-signal periods when resuming more than one holding period later."""
+    if getattr(conf, 'has_snapshot', False):
+        folder = conf.get_snapshot_folder()
+        marker = (folder.parent if conf.iter_round else folder) / 'snapshot_time.txt'
+        if marker.exists():
+            previous = pd.to_datetime(marker.read_text().strip(), utc=True)
+            previous = previous.tz_convert(fallback_start.tzinfo) if fallback_start.tzinfo else previous.tz_localize(None)
+            fallback_start = min(fallback_start, previous + pd.Timedelta('1' + conf.hold_period_type))
+    return fallback_start
+
+
 def agg_multi_strategy_ratio(conf: BacktestConfig, df_select: pd.DataFrame, max_candle_time):
     """
     聚合多offset、多策略选币结果中的target_alloc_ratio
@@ -1309,6 +1326,7 @@ def agg_multi_strategy_ratio(conf: BacktestConfig, df_select: pd.DataFrame, max_
         pd.to_timedelta(conf.max_hold_period),
         pd.Timedelta(hours=conf.incremental_lookback_hours),
     )
+    fallback_start_date = _include_snapshot_gap(conf, fallback_start_date)
 
     if pd.isna(start_date):
         # 防止选币为空时 fallback 窗口小于 incremental_lookback_hours 导致下游 concat 出现时间空洞
@@ -1442,6 +1460,7 @@ def agg_multi_strategy_ratio_v2(conf: BacktestConfig, df_select: pd.DataFrame, m
         pd.to_timedelta(conf.max_hold_period),
         pd.Timedelta(hours=conf.incremental_lookback_hours),
     )
+    fallback_start_date = _include_snapshot_gap(conf, fallback_start_date)
 
     if pd.isna(start_date):
         # 防止选币为空时 fallback 窗口小于 incremental_lookback_hours 导致下游 concat 出现时间空洞

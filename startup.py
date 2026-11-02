@@ -20,12 +20,12 @@ import sys
 import time
 import traceback
 import warnings
-from concurrent.futures import ThreadPoolExecutor
+from tools.statistics_runtime import StatisticsTasks
 from datetime import datetime
 
 import pandas as pd
 
-from config import is_debug, error_webhook_url, debug_flag, clean_start, snapshot_path, is_simulate
+from config import is_debug, error_webhook_url, debug_flag, clean_start, snapshot_path, is_simulate, statistics_config
 from core.account_manager import init_system, load_multi_accounts
 from core.utils.commons import sleep_until_run_time, remedy_until_run_time, get_debug_run_time
 from core.utils.datatools import check_bmac_update_flag
@@ -63,8 +63,10 @@ if os_type == 'Windows':  # win执行
 # ** 本脚本的全局变量 **
 # ====================================================================================================
 # 构建线程池，给统计脚本异步执行
-stat_executor = ThreadPoolExecutor()  # 统计脚本真的会跑很久很久
+stat_executor = StatisticsTasks(statistics_config['max_workers'], logger.warning)
 python_exec = sys.executable  # 获取当前环境下的python解释器，也是给统计脚本用的
+from tools.robust40.server import Coordinator, clean_startup
+server_initializer = Coordinator(PROJECT_ROOT)
 
 
 # ====================================================================================================
@@ -73,7 +75,7 @@ python_exec = sys.executable  # 获取当前环境下的python解释器，也是
 # ====================================================================================================
 def run_statistics_async(run_time, random_time, account_name):
     # debug 模式不统计
-    if is_debug and is_simulate == 'debug':
+    if not statistics_config['enabled'] or (is_debug and is_simulate == 'debug'):
         return
     logger.info(f'sleep 一下保证统计脚本在 offset 下单之后开始计算数据···')
     time.sleep(random_time if random_time else 120)  # 提前随机多久，就休息多久，默认2分钟
@@ -145,11 +147,14 @@ def run_loop() -> datetime | None:
         if run_time.minute in [int(hour_offset_value[:-1])]:
             os.environ["X3S_TRADING_ACCOUNT"] = account_profile_file.name
             os.environ['PYTHONPATH'] = PROJECT_ROOT
+            from config import bmac_data_path
+            command, worker_env = server_initializer.command(account_profile_file, run_time, bmac_data_path)
+            if command is None:
+                continue
             subprocess.run(
-                [sys.executable, get_file_path('core', 'account_exec.py'), f'{int(run_time.timestamp())}'],
-                check=True
+                command, env=worker_env, check=True
             )
-            stat_executor.submit(run_statistics_async, run_time, random_time, account_profile_file.stem)  # 异步执行
+            stat_executor.submit(account_profile_file.stem, run_statistics_async, run_time, random_time, account_profile_file.stem)
         else:
             logger.warning(f'当前运行时间为{run_time}，不是 `{hour_offset_value}` 的offset，跳过\n')
         gc.collect()  # 强制垃圾回收
@@ -189,14 +194,18 @@ if __name__ == '__main__':
     # ====================================================================================================
     # 运行前自检和准备
     # ====================================================================================================
-    # 如果不是debug模式准备账户设置
+    # 显式启用的 MODEL 账户：先验证并保留成对状态，再执行原有清理。
+    from tools.robust40.warmup import prepare_startup, restore_startup
+    warmup_plans = prepare_startup(load_multi_accounts(), PROJECT_ROOT, clean_start) if not is_debug else []
     if clean_start:
-        shutil.rmtree(snapshot_path, ignore_errors=True)
+        clean_startup(load_multi_accounts(), PROJECT_ROOT, snapshot_path)
     else:
         logger.critical('!!!!! 注意，你选择了允许缓存的条件下重启，可能会有灾难性后果 !!!!!')
         logger.warning('如果你对此不确定，请立即退出，并删除 `data -> snapshot` 文件夹，再重启。')
         logger.debug('给你7s时间确认...')
         time.sleep(7)
+
+    restore_startup(warmup_plans)
 
     # 如果不是debug模式准备账户设置
     if not is_debug:

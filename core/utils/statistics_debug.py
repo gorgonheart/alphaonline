@@ -19,6 +19,7 @@ from pathlib import Path
 
 import ccxt
 import matplotlib.lines as mtlines
+import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 import matplotlib.ticker as mtick
 import numpy as np
@@ -32,6 +33,8 @@ sys.path.append('..')  # '..' 表示上级相对目录，系统中添加上级�
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))  # 当前目录
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))  # 上级目录
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))  # 根目录
+from tools.statistics_runtime import temporary_path
+from tools.statistics_format import format_percent
 from core.account_manager import init_system, load_multi_accounts
 from core.utils.exchange_hub import get_dummy_client
 from core.model.account_config import AccountConfig
@@ -605,7 +608,7 @@ def send_position_result(account_config: AccountConfig, spot_position, swap_posi
     send_spot_df = calc_spot_position(spot_position, account_config.name, spot_last_price)
     send_swap_df = calc_swap_position(swap_position)
 
-    utc_now_timestamp = int(datetime.utcnow().timestamp()) * 1000
+    utc_now_timestamp = int(datetime.now().timestamp()) * 1000
     save_send_pos_info(utc_now_timestamp, send_spot_df, account_config.name, pos_type='spot')
     save_send_pos_info(utc_now_timestamp, send_swap_df, account_config.name, pos_type='swap')
 
@@ -798,7 +801,7 @@ def draw_equity_and_send_pic(me_conf, equity_df, transfer_df, title, account_con
         # 记录图例句柄
         legend_handles.append(line)
         legend_labels.append(f'S{idx + 1}: {conf.name}' if position_df.empty else
-                             f'S{idx + 1}: {conf.name}-{round(position_df.iloc[-1].iloc[idx] * 100, 4)}%')
+                             f'S{idx + 1}: {conf.name}: {format_percent(position_df.iloc[-1].iloc[idx])}')
 
     # 处理图例
     fig.legend(
@@ -873,6 +876,8 @@ def draw_equity_and_send_pic(me_conf, equity_df, transfer_df, title, account_con
     ax7.set_ylabel('dd2here (%)')
     ax7.yaxis.set_major_formatter(yticks)
 
+    for axis in fig.axes:
+        axis.xaxis.set_major_formatter(mdates.DateFormatter('%m-%d %H:%M:%S'))
     plt.tight_layout(rect=(0, legend_height / fig.get_figheight(), 1, 1))
 
     # =添加密集水印覆盖
@@ -887,13 +892,13 @@ def draw_equity_and_send_pic(me_conf, equity_df, transfer_df, title, account_con
                      va='center',
                      transform=fig.transFigure)
 
-    # =定义导出图片位置
-    pos_pic_path = get_file_path(data_path, 'pos.png')
-    # =保存图片
-    plt.savefig(pos_pic_path)
-    plt.close(fig)
-    # =发送图片
-    send_wechat_work_img(pos_pic_path, account_config.wechat_webhook_url)
+    try:
+        with temporary_path(data_path, '.png') as path:
+            fig.savefig(path)
+            send_wechat_work_img(str(path), account_config.wechat_webhook_url)
+    finally:
+        plt.close(fig)
+
 
 
 def save_and_send_equity_info(account_config: AccountConfig, me_conf, spot_position, swap_position, spot_equity, account_equity, spot_usdt):
@@ -1189,6 +1194,9 @@ def calculate_status(row):
 
 def run():
     import sys
+    from config import statistics_config
+    if not statistics_config['enabled'] or not statistics_config['notify']:
+        return
     if len(sys.argv) > 1:
         timestamp = sys.argv[1]
         account_param = sys.argv[2] if len(sys.argv) > 2 else None
@@ -1208,6 +1216,8 @@ def run():
     spot_symbol_list = market_info['symbol_list']
 
     for account_profile_file in load_multi_accounts():
+        if account_param is not None and account_profile_file.stem != account_param:
+            continue
         # 初始化多策略回测
         account_info, me_conf = init_system(account_profile_file.stem)
         account_name = account_info.name
@@ -1243,7 +1253,7 @@ def run():
                     stg_name = strategy_list[idx_int].name
                 else:
                     stg_name = f'策略{idx_int}'
-                content += f"{stg_name}: {round(last_pos[idx_int] * 100, 4)}%\n"
+                content += f"{stg_name}: {format_percent(last_pos.loc[idx])}\n"
             rotation_msg = f"【子策略状态】\n\n{content}\n"
             send_wechat_work_msg(rotation_msg, account_info.wechat_webhook_url)
 
@@ -1254,11 +1264,12 @@ def run():
         send_simulate_select_coin_info(me_conf, account_info)
 
         # ===生成账户净值信息
-        equity_msg = save_and_send_equity_info(account_info, me_conf, None, None, None, None, None)
-        print(f'账户【{account_name}】净值信息已发送: {equity_msg}')
+        if statistics_config['charts']:
+            equity_msg = save_and_send_equity_info(account_info, me_conf, None, None, None, None, None)
+            print(f'账户【{account_name}】净值信息已发送: {equity_msg}')
 
         # 休息一会儿，避免超权重
-        time.sleep(60)
+        # 定向任务完成即退出；并发由startup限制。
 
 
 if __name__ == '__main__':

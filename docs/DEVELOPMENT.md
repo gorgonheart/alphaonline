@@ -1,5 +1,389 @@
 # alpha / alphaonline 统一开发说明
 
+## 2026-11-02 alphatrade版本整理与Ubuntu部署准备
+
+整理当前MODEL单文件仓管、服务器初始化/4050续算、共同恢复点/修订回放、统计与时间戳重试等未提交实现，保留既有Arrow/Polars/C消费及传统策略默认行为。部署新增最小core适配仅时序因子池显式spawn，避免Python3.11 Linux fork继承Polars线程；无因子公式/参数改变、无Tail-Only或MODEL lookback开启。config接入仅凭据的accounts.local.json及proxy机器覆盖，参数/offset/BNB仍在各accounts。私有JSON、research/归档/IDE/平台缓存不入Git，原Windows有效机器配置和凭据迁到忽略文件；不改其他项目运行配置。
+
+新增tools/deploy_alphatrade.sh提供status/check/verify/update，更新需停止本安装worker、代码干净且仅fast-forward；不自动装依赖/启动/删除状态。服务器目标/home/ubuntu/alphatrade，独立conda前缀/home/ubuntu/alphatrade-env/alpha311，配套生产者/home/ubuntu/alpha2只读。依赖安装已通过pip check，Source Han Sans SC可用。代码经SSH私有Git传递，部署与维护入口见[DEPLOYMENT](DEPLOYMENT.md)，全部core/startup人工审核项见[复核清单](2026-11-02-core-release-review.md)。
+
+TDD部署合同先4失败后4通过；本地首轮全量774通过/2路径夹具失败/62跳过，补显式临时producer路径后相关11项复测通过。跨项目测试改用显式producer-root，旧main oracle固定提交，增加无凭据15/25/45传统公开fixture；本轮未重写golden/容差。Linux完整验收、准确发布提交和最终停止状态将在完成后补记；当前未启动新交易服务、下单、通知或复制/清理生产data。
+
+## 2026-11-02 alpha提交、主干合并与alpha2部署（不切换服务）
+
+用户要求alpha提交Git、合并主干并部署/home/ubuntu/alpha2，随后明确选择只部署验证、暂不切换现有服务。整理已实现的共享因子线程池、调度/预热、更新异常恢复、共享exchangeInfo补取和ILLQ/动量C修正；机器凭据迁到被忽略config.json，JSON增加proxy/storage_path/publish_kline_num差异覆盖。取消跟踪平台二进制/缓存及IDE设置，保留本地文件和原归档排除规则。诊断/备份未纳入提交、未删除。Git无既有远程，新增SSH私有production远程，服务器bare仓库/home/ubuntu/repos/alpha.git，alpha2工作副本跟踪main；配置/数据/日志不被代码更新覆盖。
+
+移除测试对D盘和另一项目的依赖，携带原始BTC输入和独立Python oracle，原golden不变。本地101项通过；服务器独立alpha311由现有alpha环境克隆，未改原环境，Python3.11.14；本机编译四个Linux C扩展并100项专项通过。首次Linux验收发现CCI黄金数据2.37e-13差异，/tmp隔离证明GCC FMA contraction是原因；只加-ffp-contract=off后既有golden逐值相同，未改数值公式、golden或容差。验证运行代码dc12fdc，随后只更新文档记录。
+
+alpha2配置禁代理、独立/home/ubuntu/alpha2/data，密钥/通知值复用服务器现有配置，权限600；配置策略参数默认继承Git源码。未启动/注册第二份服务、未重启/停止旧alpha、未改消费者或删除生产数据。旧data约87GB、剩余磁盘约43GB，未复制数据；未来切换前需先安排数据复用/容量及消费者路径。构建及测试日志/home/ubuntu/alpha2-build.log、alpha2-verify.log，本地research/alpha2_local_verify.log。更新、回滚、环境/配置维护和最小部署范围见[Linux部署维护](../../alpha/docs/DEPLOYMENT.md)。
+
+## 2026-11-01 Hybrid缓存与Ubuntu时序因子审计（本地离线完成）
+
+MODEL初始化/续算改为正常导入Hybrid原calc_ratio，保留原cache=True；不再经过关闭缓存的离线AST加载器。共享Hybrid仅把类型注解依赖移到TYPE_CHECKING，数值函数/常量/装饰器与main的AST一致。仅两个positions运行文件修改，tools离线加载器、core/startup、账户、因子、sections及alpha无新增业务修改。无参数/状态协议变化，不要求重建snapshot；源文件更新后的首次Numba冷编译仍正常。
+
+TDD先2失败1通过，相关批次最终36通过/50因旧账户缺失跳过（不计通过）；跨新进程缓存命中、正常导入无框架配置副作用、初始化调用、MODEL续算及共享框架隔离已验证。真实40m12994小时/14子策略整张Hybrid权重及baseline逐值一致，热缓存新进程0.727秒，对照原路径2.912秒；单次Windows样本，不是Ubuntu/P95承诺。未重启、部署、下单、通知或改生产状态。最小差异、Ubuntu缓存目录/权限/失效、复跑命令和人工复核见[Hybrid缓存部署说明](2026-11-01-hybrid-cache-ubuntu-review.md)。
+
+时序因子仅分析：静态展开当前20/40/55 MODEL和5m账户，30种时序模块/72列（其中3种/12列Arrow预计算），另4种截面模块；16份真实4050行输入测量27种本地因子并对6个热点独立profile。逐因子语义/风险、完整参数清单、Pandas/Numba/Polars/C等路线及最小core候选见[时序因子审计](2026-11-01-timeseries-factor-audit.md)。优先multi参数复用、coin-cap标量map向量化、BiasV1回调、BTC重复数据读取；没有改任何因子公式。Ubuntu未实测，当前Python3.11 Linux默认fork与Polars组合需上线前明确处理，建议后续人工审核因子池显式spawn；不能把Windows测试等同Linux生产验收。此前15/25/45账户当前缺失，真实策略验证仍待对应配置。
+
+## 2026-11-01 MODEL续算三项性能优化（离线验收，未重启）
+
+已按用户要求实现：positions内模拟入口用稳定数组/标量/tuple签名缓存Numba编译，原jitclass在native内构造；原始swap行情仅初始化或新增offset日按需加载，跨日用tools投影必要字段并保留最后4050行；同轮state只读一次并在原锁内完成准备、校验、更新和原子保存。原公开prepare/update_state行为、snapshot格式、S3/因子数学及修订检查保持。alpha Arrow只有3个长周期预计算因子，其余短周期因子的正常时序计算不在本轮改动范围。
+
+运行变更仅positions/ModelRobust40Strategy.py与tools/robust40/handoff.py，无core/startup/config/账户/alpha新增修改。先15项失败；实现后相关86项通过（4条既有pandas提示）。两个独立Windows进程验证缓存加载，正常/跨日/季度/停机/回放/重复轮次和失败状态保护覆盖。真实40m12992小时两种换仓死区新旧模拟全部曲线、最终状态和25恢复点逐值相同；756币原始行情投影输入列一致。新进程命中缓存的一小时advance为1.778秒；跨日raw单样本9.368→6.271秒，普通小时完全不加载raw；不承诺整轮P95。
+
+源文件更新首次仍会编译，随后复用，原生产snapshot无需重建；未重启、下单、发送通知或修改生产状态。最小变更、人工复核、测试边界及可复跑证据见[续算性能说明](2026-11-01-model-continuation-performance.md)。
+
+## 2026-11-01 价格自适应精度（替代上一版2位有效数字）
+
+按用户确认不加千分位：价格绝对值>=1默认2位小数，较小价格保留约4位有效数字；同一行均价/现价、历史价/当前价分别统一精度。原值不同但显示相同时最多再加2位，不追逐浮点噪声；所需小数超过12位时用科学计数保留有效数字，避免微小价格归零或拉宽表格。仓位/净值/损益金额仍整数、权重/UniMMR仍3位有效数字、数量与持久化原精度不变。
+
+本轮运行代码仅tools/statistics_format.py修改，core/startup/config/账户/交易及alpha无新增修改。价格路径采用浮点log10和固定次数格式比较，成对价格用数组zip，不用逐行DataFrame.apply或逐价格Decimal，也无IO/API/新依赖。测试先14项失败，完成后30项格式专项通过（1条既有Jupyter提示）；1000行、每行2价格+2金额、9轮纯格式化中位19.158ms，最大20.899ms，非网络/绘图/整轮耗时。日志research/statistics_adaptive_price_tests.log，计时research/statistics_adaptive_price_benchmark.json；diff检查通过。未启动/重启、下单、通知或改写生产数据。
+
+## 2026-11-01 统计整数金额、2位有效价格与未匹配分析
+
+展示金额（仓位/市值/净值/余额/损益/成交额）改为整数，价格字段2位有效数字；权重百分比/UniMMR保留3位有效数字，数量/保存数据不变。删除报告固定假设/警告说明及曲线提示，实际历史不足/缺价格/行级待对账状态仍保留。仅tools格式工具和两个core统计展示文件修改，没有改BN接口、startup、配置、仓管或交易。相关86项离线通过，详见[展示与归属分析](2026-11-01-statistics-display-and-unmatched.md)。
+
+未匹配只分析未改算法：本地config仍dry_run，40m 09:47:16日志确认跳过下单；同轮4个现货/25个合约未匹配资产的目标均为零或无非零目标，实际旧持仓保留，不能视为已按新目标成交。20m当前14个映射文件缺失；55m存在父权重为零、手续费/非策略资产、历史币种不在本轮名单等情况。代码的历史归属回填函数当前未调用。排查期间5m映射文件消失后重现，脚本冻结小输入后分析，尚未定位具体清理动作；不凭当前缺失推断通知当时也缺失。证据research/statistics_unmatched_analysis.json及mode_evidence.json，未访问真实交易所/通知、未启动/重启/下单或改写生产数据，alpha未修改。
+
+## 2026-11-01 BN原生统计与小时快照最小修正（待人工复核，未重启）
+
+按用户确认，不采集逐笔/补历史，不处理手动交易/外部转账，以2.3.1统计结构修正数据来源。统一账户新增只读统计视图，用同一账户响应actualEquity(USD)/uniMMR，保留BNB、碎币、原始余额/负债；交易get_account_overview默认路径、预留及补BNB不变。合约数量/均价/浮盈直接保存BN值，统计额外保留notional；普通账户/其他客户端仍用原概览。现货旧净投入不是剩余成本，未核实旧账继续待对账，不按现价伪造。
+
+统计1h/24h使用同来源/货币/offset的权益差，旧过滤口径不混算；缺基线自然积累、不初始化。价格影响报告改用交易后pos缓存，保留原交易前snapshot供原功能；先按小时间属性定位最多两帧，避免拼接7日全表和重复读历史。统计曲线不查转账历史，按无外部变化假设；保存精度、3位有效数字展示及全部分钟偏移保留。
+
+core仅4文件增量：portfolio_margin_client新增统计入口/复用账户信息，base_client默认关闭的notional保留选项，statistics/statis_func接入原生值/同口径窗口/缓存。纯数据处理放tools/statistics_snapshot.py；无startup/config/账户/模型/因子/alpha修改。初始20失败后实现；联合回归138通过，时间定位优化再先失败后专用28通过（批次重叠），5文件语法及diff检查通过。500+500持仓、7日历史本地标准化约4.95ms，两个字典保存/窗口选择约236.60ms，不含联网/绘图/导入。人工复核、数据含义和限制见[BN快照统计复核](2026-11-01-statistics-bn-snapshot-review.md)，本轮独立差异research/statistics_bn_snapshot_review.patch。未调用真实私有接口/通知、未启动/重启/下单、未改写或删除生产历史、未提交Git。此方案替代此前逐笔/数据库第二阶段计划。
+
+## 2026-11-01 MODEL计算并发统一（替代下节的双配置）
+
+按用户要求，tools/robust40/initialization_config.py仅保留MODEL_JOB_NUM=4。删除INITIALIZATION.job_num和LIVE_JOB_NUM；server worker初始化/续算及历史prewarm worker都在框架导入前读取同一值，删除手工预热min(job_num, 2)。初始化/续算默认数不变，手工预热由最多2变为4。传统策略全局config.job_num、core/startup/alpha及模型数学未修改，不将其他模型的LightGBM单线程设置并入MODEL框架并发。
+
+唯一针对性验证：初始化、续算、手工预热的真实Windows spawn测试3项通过，检查父/子进程config与core.select_coin实际job_num一致，原路径隔离断言仍通过；git diff --check通过。未重启、下单或运行生产预热，不需因该资源配置重建状态。维护入口与人工复核范围已同步[部署指南](model-robust40-deployment.md)及tools README。
+
+## 2026-11-01 MODEL正常续算并发内存峰值
+
+20m 09:20用户日志明确MemoryError发生在Windows子进程接收任务数据，继发BrokenProcessPool；预检5.60秒完成、尚未提交计算。初始化原有4进程限制，正常续算却继承全局CPU数量，本机20。最小修复只在tools/robust40/initialization_config.py新增LIVE_JOB_NUM=4，worker apply_profile在core导入前按两种模式设置job_num，Windows spawn继承相同设置；不改全局config/core/startup/alpha/传统策略，不改变仓管、S3或因子数学。
+
+既有Windows spawn测试增加config和core.select_coin并发断言，先1失败1通过，修复后2通过；离线测试未调用交易接口、未启动生产计算。资源改动不触发重建；既有incomplete状态仍按原规则初始化，不删数据或伪造完成标记。未测生产峰值/延迟，不保证4进程在任意共存负载下不OOM；较低并发会影响MODEL中共享job_num的阶段。具体配置与人工复核范围见[部署指南](model-robust40-deployment.md)。
+
+## 2026-11-01 统计展示格式与第二阶段评估
+
+统计通知/表图时间统一为月日时分秒，金额/价格3位有效数字，策略仓位按“名称: 45.8%”逐行显示并保留原列顺序；实盘/模拟曲线日期轴和策略图例同口径。格式工具放tools/statistics_format.py，core仅3个统计文件的展示调用，无startup/config/交易计算变化。保存数据仍为完整日期和原数值精度，未知值不伪零。当前charts/details/price_impact均True，保留用户现状，不将第一阶段最初默认值覆盖回来。
+
+展示与第一阶段相关52项离线通过，1000金额格式化7轮中位3.11ms，无新增API/IO。未调用私有接口/发送通知、未启动/重启/下单或改动生产数据与alpha。第二阶段只完成设计评估，尚无分页、成本、现金流或存储实现：建议先原始ID增量/严格分页，再可信成本，最后完整期间收益。正常增量新增网络耗时按2–5页约1–6秒、10–30页约3–30秒估算，首次100–1000页约0.5–17分钟且限速可延长；均是明确假设下的工程估算。完整开发与离线验收预估40–64小时，不含人工/数据等待。详细接口、事务/费用/可信期初、最小core候选范围、预算及边界见[统计第二阶段评估](2026-11-01-statistics-stage2-plan.md)。
+
+## 2026-10-31 enable_live_hooks开关注释
+
+核对core/real_trading.py两个分支及MODEL的prepare/parent_ratios依赖后，在20/40/55m账户和三个历史示例旁补充True/False含义：True接通准备模型状态和目标变换入口；False跳过扩展但仍运行calc_ratio及交易流程，当前MODEL会因缺少准备结果或配置不一致而报错，必须保持True。与server_init的自动初始化运行模式区分，不能用作停单开关。详细说明见[参数说明](model-robust40-parameters.md)。
+
+仅注释/文档变化，六份配置修改前后AST相等；不改变参数值、计算逻辑、状态比较或运行耗时，core/startup/alpha未修改。未启动、重启或下单。
+
+## 2026-10-31 清理无效仓管字段、hour_offset单一来源与有效配置比较
+
+用户要求不需要的配置注释掉，并取消runtime.minute重复配置。三账户/三示例的method/gross_cap/risk_definitions/momentum_60/short_single_coin_max_ratio及三个研究路径均已注释；hour_offset作为唯一分钟配置。positions新增effective_parent_params仅排除这8个已确认未读取字段，tools的effective_settings对旧/新配置同口径比较并去掉冗余minute，其他有效及未知字段仍严格比较。新初始化保存有效parent，旧状态文件不改写/迁移；此项删除不再导致无意义重建。模型数学、固定常量和状态时间轴核对不变。
+
+settings从账户hour_offset派生内部minute，server worker、手工预热/重建工具同步改用该来源；旧配置导出器不再生成重复minute。server_init=False保持原行为：走普通account_exec而不是停止交易，不提供自动初始化/profile/恢复流程；当前生产账户未配手工路径时会报错，clean_start也不再按server_init规则保留其snapshot。账户注释和[参数说明](model-robust40-parameters.md)明确这一边界。
+
+core/startup/alpha及其他策略无本轮新增修改，无框架功能取消。配置投影只浅拷贝小字典，不增加大状态读取、行情扫描或哈希；测试确认inspect仅读一次小元数据。TDD新语义16项先失败再通过；主相关批次123通过、10个旧预热fixture缺hour_offset失败，补全唯一来源后预热/离线工具19项全部通过。随后坏元数据4项先失败，补充后配置语义/生命周期33项通过；批次有重叠。Windows spawn及0/5/…/55分钟覆盖通过，原pandas警告保留。清理前六份配置有效口径相同，旧40m 12968小时离线状态父参数匹配，core/startup差异不变；证据research/model_module_review/config_identity_result.json。未重启、下单或改写/删除生产snapshot，未重跑全量模型/C因子对拍。
+
+## 2026-10-31 MODEL账户参数语义与部署依赖注释
+
+逐项核对当前positions及共享Hybrid读取位置，并只读检查原E盘研究代码：rebalance_anchor_time与runtime生效；method/gross_cap/risk_definitions/momentum_60/short_single_coin_max_ratio及三个研究路径为未被当前MODEL数学读取的历史字段。2.5、up/down、S5基准0.60目前在实现中固定；short_single_coin_max_ratio不构成已启用的单币5%限仓。E盘三路径分别为冻结仓位/再择时输入、子策略收益表、预计算条件beta；当前从本offset实际输入计算，部署无需这些文件。
+
+三账户/三示例、positions固定规则与参数核对处、tools的settings及功能配置共9文件补充注释，逐文件整体AST相等通过；无值、算法、参数接线或配置比较规则变化，不增加读取/判断/耗时。未删除历史字段（仍参与旧状态配置比较）、未启动/重启、重算或交易。core/startup/alpha未修改。维护入口：[参数说明](model-robust40-parameters.md)，部署指南和工具README已链接；未来若要启用这些配置开关需单独实现并对拍，不能只改账户字段。
+
+## 2026-10-31 按框架职责整理MODEL：账户独立配置、positions单文件（替代下节）
+
+用户明确纠正：所有原accounts配置仍须留在各账户，offset可以不同。已撤回公共model_parameters抽取，删除tools/robust40/config.py及对应离线解析白名单；20/40/55m和三个历史示例恢复完整strategy_config字典，数值、子策略、S3和BNB未变。账户测试不再强制参数/子策略名称与历史示例相同。真实仓管算法由10个tools实现文件及模型自身恢复函数归并到positions/ModelRobust40Strategy.py一个文件，按11个功能段组织；三个框架hook、算法/容差及状态格式保持。旧实现路径无兼容壳，活动工具/测试导入已更新。
+
+用户另行确认通用运行功能留tools：server/worker负责分发与初始化，handoff/replay/warmup负责快照事务/共同点及包交接，telemetry负责日志；initialization_config仅保留并发、历史长度、等待等功能配置。7个ready/冻结/公共市场辅助函数独立到market_inputs.py，生产worker不再导入历史prewarm CLI。signals/factors/sections/共享Hybrid/core/startup/alpha本轮零新增修改，没有取消框架功能。现有local_risk_model的lock/atomic_save仅作为IO复用，本轮未修改其他策略。
+
+TDD布局合同先5失败/17通过，行情工具归属先1失败；实现后仓管/合同68通过、初始化/回放/原策略隔离等178通过（50个旧账户缺失跳过）、行情工具归属及Windows spawn等81通过，各批次可能重叠。6份展开配置与settings相同；49个函数/类去除导入并规范化路径/校验函数名称后AST完全相同，7个行情工具函数AST完全相同；原40m离线12968小时state无需旧模块即可加载。证据research/model_module_review/result.json。未全量重跑140xx计算或真实C因子对拍，未部署、启动/重启、下单、通知或改写/删除生产状态。Numba函数所在文件变化可能触发首次编译，不增加正常轮次行情读取或验证门禁。
+
+当前唯一维护/上线说明为[部署指南](model-robust40-deployment.md)及[工具职责](../tools/robust40/README.md)。仅目录归并不要求重建，但上线仍须按实际配置/数据检查结果决定；更换代码应停目标调度且等待子进程退出后整体切换。历史文档/research内旧import路径不再代表当前实现。
+
+## 2026-10-31 MODEL策略目录与公共配置整理（公共参数方案已撤回，以上节为准）
+
+当前维护入口为 [MODEL部署指南](model-robust40-deployment.md) 和 [包内导航](../tools/robust40/README.md)。保留现有tools/robust40计算包，将14个散落的命令移入tools/robust40/cli，更新Coordinator两处worker路径、命令内部导入和项目根定位。旧tools根目录命令不提供兼容入口；历史文档/研究脚本旧路径应按新指南转换。positions/ModelRobust40Strategy.py保持原薄入口，共享Hybrid/因子/截面/信号不搬动。core/startup/alpha本轮零新增修改，未取消框架功能。
+
+公共仓管参数集中到tools/robust40/config.py的model_parameters()，每次返回独立深副本；20/40/55m账户和三个历史示例仅将strategy_config改为引用该函数，各账户子策略池、S3、offset、执行和BNB配置保持原样。offline.assignment白名单允许该纯函数，仍不执行账户其他语句。历史E盘字段集中标为元数据、不作为服务器文件依赖，保留原值避免无意义重建；部分旧声明并非当前native调参开关，指南明确了这一现有边界。
+
+先19项组织合同失败再实施；路径/初始化/Windows spawn首批39通过，配置/生命周期/回放/原策略隔离等第二批182通过、50项因旧账户缺失跳过，两批含重复测试。补充当前5m/15m加载隔离及离线基准工具4项通过。6份公开配置展开值及settings与迁移前完全相同；40m已有12968小时离线state可读取、父参数一致；core/startup本轮前后diff逐字节相同。三实际账户4050静态依赖通过、容量240小时，S3保持2025-04-30的各offset。配置复制本机样本中位约0.324ms/次，不增加大文件读取、每根K线校验或状态格式。证据research/model_layout_review/result.json；本轮未重跑全量回测/C因子对拍，未启动服务、交易、通知、删除或改写生产snapshot。
+
+上线仍需人工审核公共参数、账户引用、14个命令迁移及新worker路径，按指南停调度且等子进程结束后整体切换代码；不替换服务器凭据或清空状态。requirements.txt不是完整环境锁，复用已验证alpha311；历史示例和prepare_robust40_live_configs不作为当前生产生成器。纯目录整理无需重建，但实际snapshot可用性继续由已有检查决定。
+
+## 2026-10-31 正常轮次修订输入读取优化（未重启实盘）
+
+仅tools/robust40/handoff.py +49/-7：Arrow裁行裁列后直接规范化，取消第二遍input_frames复制/日期转换/切片；小批次to_pandas关闭列线程；Pivot先裁检测区间再拼接，避免全历史拼大表；比较时间轴一次定位，末尾裁剪一次完成。无新缓存或格式、不缩小168小时保存范围及停机覆盖、不放宽差异判断。初始化原路径保留，core/startup/live/sections/账户/alpha无本轮修改，不需重建状态。
+
+TDD先复现失败，读取/日志18项及原修订/Arrow网格/失败路由15项通过。真实40m publication1793443200的1276张表新旧索引/dtype/数值严格相等，完整PKL与Arrow基础输入一致，文件测试前后未变。3轮交替读取中位20.72→6.04秒；总计含比较/裁剪/内存序列化43.29→8.38秒。但机器负载波动很大，旧读13.43–39.01、新读5.52–26.55秒，不作为固定提速或稳定P95承诺，也不能与前次4.95秒直接比较。明天继续用现有MODEL_REPLAY日志观察。边界/证据见[读取优化说明](2026-10-31-revision-input-performance.md)，结果research/input_read_optimization/result.json，独立补丁同目录review.patch。未启动/重启、交易、通知或修改生产数据。
+
+## 2026-10-31 MODEL回放结构化日志（未重启实盘）
+
+在tools层使用现有logger输出MODEL_REPLAY单行JSON，按account/stamp/attempt区分正常续算、修订回放、要求重建、初始化和compute。记录旧输入读/当前输入读/比较/复制/恢复/pending写入/计算提交/完整账户流程耗时；修订字段计数只在已有差异矩阵上统计，季度评分记录实际训练与复用数量/各季度原因。提交与后续交易错误分开，无end的中断单列。不新增行情读取、状态文件、阈值或恢复判定，core/startup/sections/alpha零新增修改。
+
+只读tools/summarize_replay_logs.py按attempt去重汇总中位/P95/最大值及未结束尝试。后续优先观察正常输入检查，其次按实测修订频率决定复制和模块复用；跨完整初始化复用模型暂缓（现测训练成本很小）。日志位置、计时口径、命令、限制及优先级见[回放观测说明](2026-10-31-replay-observability.md)。先4项失败再实现；首批17通过，最终路由/生命周期/日志等18通过，32.10秒（批次重叠）；CLI及diff检查通过。未启动/重启/下单/通知或改动生产状态。
+
+## 2026-10-31 MODEL 共同恢复点接入（待人工复核，未重启实盘）
+
+MODEL worker显式设置checkpoint_hours=25，同时保持incremental_lookback_hours=0；子策略16个模拟账户、S3、9个专家及最终MODEL保留有界小时小状态。普通策略默认关闭，5m/15m原lookback路径保留。最近168小时基础行情/成交量/映射/Pivot修订在交易调用前定位；修订前共同点存在时统一恢复、重算及核对目标，失败恢复原完整包，提交后的交易异常保留新计算，进程中断由协调器恢复。旧包/缺恢复点/覆盖不足仍自动初始化，不转换旧数据。
+
+core本轮4文件+33/-4行（配置传递、采集与回退分离、通用截面协议、有界队列合并及再择时历史多空币数保留），startup.py零新增修改；无功能取消。S3原数学不变，checkpoint包装由tools迁回sections，并修复长历史返回误裁4050的问题；MODEL调度和事务留在tools。最近168小时不是全历史审计，外部辅助源/算法变化仍需明确重建。完整差异、性能/空间、审核项见[共同恢复点接入复核](2026-10-31-checkpoint-live-review.md)，独立补丁research/checkpoint_live/review.patch。
+
+TDD红阶段5项失败后实现；长历史S3和再择时统计两个问题分别补失败测试后修复。最终恢复/路由/生命周期46项通过，5m/15m原回退及新共同恢复的state0/state1共18项通过；前批104/35等有重叠。当前40m BTC/ETH Arrow对完整PKL重算52组通过，含已安装C扩展；基本输入PKL/Arrow逐值相同。真实40m的12968小时参考，对修订05:40的一处close从04:40回放至07:40，14子策略、16子账户、10MODEL账户、S3状态/输出全部通过；父权重、delta、最终净值、周度组合最大差0。证据research/checkpoint_live/real40/result.json。使用离线公共币池fixture，参考复用未变化的完整因子/选币，回放实际运行4050 Arrow全链；不是联网/下单验收。未启动startup/交易进程、联网、通知、安装或删除生产状态，alpha未修改。
+
+性能：新增168小时输入检查暖缓存约4.95秒读取+0.67秒比较+0.21秒序列化，另有旧输入读取/落盘；仅checkpoint内核毫秒测量不能代替此成本。当前初始化输入+25点小状态载荷实测37.96MiB/账户、11账户外推约418MiB；完整包约1.23GiB，修订时需要副本且保留一份.previous，11份完整备份另约13.6GiB，失败现场保留。不新增完整小时备份或哈希。本轮已清理自身约10GiB测试缓存/无效产物，保留正确对照包与报告，D盘可用约24.5GiB。
+
+## 2026-10-31 历史修订检查点离线试验（未接入实盘）
+
+已增加tools/robust40/replay.py的有限小状态、S3/模型回放与共同时间点选择；engine新增默认关闭的checkpoint_hours，model增加显式previous训练复用。core/startup/config/accounts/sections/alpha本轮零修改，原生产仍append-only及不一致时完整初始化。没有取消lookback=0保护或打开交易端回放。
+
+真实40m的149个close修订从00:40回放至03:40，9专家+最终账户匹配修订后的完整模拟，固定了子策略输入。当前5m/15m各14个真实权重模拟对照通过；S1/S3实际calc_equity读写回退也通过。最终新试验+当前账户专项15通过，主合同等53通过，补充33通过（批次重叠）；旧账户路径50跳过不计通过。未运行因子/选币/再择时全链路重算验收。
+
+24点存储估计5.89MiB/MODEL账户，11个同规模账户64.74MiB；MODEL正常小时采集约4.4ms，加序列化约26.6ms和缓存写入约2ms；真实三小时MODEL重放1.97s。传统14子策略重放约24h约0.12s/账户，仅模拟内核。训练4个季度117ms/复用95ms，主要收益不在训练。原始记录research/checkpoint_trial/final_model.json和legacy.json。正式接入还需共同snapshot恢复/提交、账户级开关和全链路对拍；详情及人工复核见[检查点试验](2026-10-31-checkpoint-trial.md)。
+
+
+## 2026-10-31 40m 历史价格变化诊断
+
+真实 40m MODEL 与当前 Pivot 在最后168个共同小时内有149个合约close差异，集中于10月31日01:40/02:40/03:40 UTC；其他模拟行情字段一致。上游13:34重新初始化、14:35–14:41重建40m行情后，旧MODEL基准不再匹配。当前40m complete=False且子策略先于MODEL，已有inspect明确要求自动重建，不应强行跳过校验或只改价格。
+
+仅tools/robust40/runtime.py的失败文案补充首个差异的时间/币名/新旧值；成功路径计算、容差、IO与校验范围不变。TDD两项先失败，修改后相关31项通过；真实差异离线复现。core/startup/alpha/配置不改，未删除、安装或重算生产状态，未重启、下单或通知。下一合法40m轮次由既有流程重建，生产成功尚未验收。详见[价格修订定位与恢复边界](2026-10-31-model-price-revision.md)。
+
+
+## 2026-10-31 统计输出恢复名称、历史极值及 UniMMR
+
+仅 core/utils/statistics.py 三处 +8/-1：子策略权重按 config_list 映射 original_name，去掉框架序号，仅改变展示；账户历史最高/最低复用本轮已读取的 equity.csv，包含当前有效值并排除未来时间与非有限值；UniMMR 恢复到基础通知，失败仍显示未知且基础数据先保存。notify=False 且 details=False 不增加请求，其他情况下每轮一次客户端 UniMMR 调用（底层重试保留）。历史极值是本地记录中的账户金额极值，包含出入金影响。
+
+参照 core2.3.1 原报告项恢复展示，无功能取消，不恢复旧历史成交/错误成本/额外划转流程。startup、交易所客户端、模型、配置和 alpha 本轮不改。TDD 新需求5项先失败，第一轮统计专项39通过；不通知模式请求预算后补失败并修复，最终相关19项通过（有重叠），日志research/statistics_summary_final.log。测试全程离线，未通知、重启、下单或修改生产历史。最小补丁research/statistics_summary_review.patch，人工审核见[统计摘要复核](2026-10-31-statistics-summary-review.md)。本条更新下文UniMMR仅在details开启时显示的旧描述。
+
+
+## 2026-10-31 bStocks 保留自动识别与精简初始化规则
+
+按用户要求，手工 black_list 独立保留，不作为 bStocks 来源、不检查重复、不修改模型/回测算法。仅 tools/prewarm_robust40.py 在原自动刷新后拦截首次失败且没有成功记录的初始化；成功空名单允许，已有缓存的失败回退沿用框架原策略。tools/server_robust40.py 的 market_rules.pkl 仅保存两类 symbol_list 和 bstocks，取消未使用规则字段及 deepcopy；子进程读取与 offline_fixture 防误安装检查保留。不新增请求、小时历史或长期共享缓存。
+
+TDD 2 failed/7 passed 后修复，最终相关 16 项通过，含 Windows spawn；网络和通知统一用 fixture 拦截。与本轮开始57文件比较，仅上述两个运行tools变化，core/startup/账户/shared_config逐字节一致，无core功能取消需恢复。本轮未访问交易所、发送通知、重启、交易或改动生产状态。范围与人工复核见[bStocks 自动识别复核](2026-10-31-bstocks-automatic-review.md)，独立补丁research/bstocks_auto_review.patch；此前未提交修改保留。
+
+
+## 2026-10-31 S3 配置日期笔误修复
+
+20/40/55m 账户手工日期均出现不存在的 2025-04-31；按四月底修正为 2025-04-30，实际 UTC 起点分别为 00:20/00:40/00:55。仅改三个账户各一个日期值，不改变 core/startup/tools，不添加自动日期纠正或额外检测。离线调用实际 settings/configured_s3 验证三个账户可解析且 n=720；仅验证配置解析，未完整初始化或重新验收该日期策略。未重启、下单、删除生产状态。此条替代下文“当前日期仍为2026-08-01”的配置状态描述。
+
+
+## 2026-10-31 S3 手工日期与初始化免复制（待人工复核/进程重新加载）
+
+按用户确认，以账户 S3 第四参数为唯一 UTC 日期来源，实际按 00:offset 运行；删除 tools 自动推算/旧日期回退，不做兼容。20/40/55m 仅移除 runtime.s3_origin，原参数日期 2026-08-01 保留并真正生效；旧自动日期包由现有 settings 比较重建，未操作生产 snapshot。初始化前整套 swap PKL 预读取消，长度/覆盖验证复用 MODEL 已加载 raw，正常续算无新增全历史扫描。
+
+初始化已审计的 CandleFileManager PKL 同盘硬链接，跨盘/不支持时复制；BTC 只冻结本 offset 的依赖及 CSV 回退，市值保留所有别名 PKL，其他 loader 普通复制。保留原 ready/文件属性检查，stat 一次取大小/mtime/文件号，无哈希。core/startup/sections/alpha 本轮零新增修改，旧未提交工作保留。硬链接只用于上游删除重建的输出，不能扩展到原地写入的基础 TSManager 分区。
+
+TDD 23 失败后修复，主专项 135 通过、补充 28 通过（有重叠）；S3 oracle 和 16000 小时滚动对拍 29 通过，20/40/55m 在 14050 上游历史越过原起点后用 4050 续算，共 437400 标记与完整计算相等。64 MiB 文件冻结中位 copy 543.74ms / link 23.85ms，仅离线文件基准。状态完整时不因历史清理更新日期；只有重建且覆盖不足才需补历史或人工改日期。推荐速算按初始化下限 14000：R - 553天7小时，向未来取整到 UTC 00:offset；本地 alpha 实际配置14060，本轮未改。当前 CCI2600 的 4050 依赖约束仍保留。
+
+规则、典型场景、最小修改及人工审核见[手工日期与输入冻结](2026-10-31-manual-s3-input-freeze.md)。未启动、重启、下单、通知、安装或删除生产状态；新配置生效后需正常重建，不能把此测试当作新日期整套策略实盘验收。本节替代旧文档中的 full_history 自动日期和初始化全量复制描述。
+
+
+## 2026-10-31 MODEL模拟来源统一（旧包重算，不做兼容）
+
+按用户确认，MODEL与子策略统一从exginfo.lot_size取得模拟单位，取消账户min_qty来源及缺失时多源回退；保留未知/非法单位拦截，单位变化要求重算。初始化与普通预热改用框架公共选币客户端，保留账户bStocks刷新，真实执行的账户权限/数量取整/自动补BNB不变。取消未被续算读取的snapshot model/market_rules.pkl副本及必需文件检查；初始化工作区的冻结公共规则仍供Windows spawn使用。
+
+现有settings比较增加simulation_data_policy口径，20/40/55m旧包均判定配置变化并走既有完整初始化流程，不转换旧手数、不手改complete。离线基准生成不再读取旧bootstrap单位；包校验复用已有子策略状态读取，核对state0/state1与MODEL单位。每轮单位读取至多现货/合约各一次，币名先取并集再归一化，无新网络请求或全历史扫描。
+
+本轮7个运行tools文件和1个对拍工具调整，core/startup/账户/sections/alpha零新增修改；此前未提交修改保留。TDD失败后修复，主专项182项通过，后续跨日及全部5分钟网格等87项通过，初始化/路由等49项通过（批次有重叠）。另隔离MODEL公共客户端的实例市场缓存，避免fork继承账户权限币池；缓存补充专项32项、最终初始化/正常运行两种profile的Windows spawn等5项通过。20/40m Arrow对完整PKL因子重算各78组通过，55m当前无Arrow不计通过。
+
+真实40m的14个子策略完整重算和MODEL初始化通过，共13065小时；末48小时以4050窗口分两次续算，parent/delta/account最大差均0，9个专家及最终模拟状态核对通过，独立加权目标spot/swap差均0。20/40/55m按各自实际S3 origin对拍各64800个样本值均相等。单位准备每轮至多两次小文件读取，本机暖缓存20次中位数12.59ms；验证过程清理了自身7.86GB中间缓存，生产数据保留。详细范围、证据和人工审核见[来源统一复核](2026-10-31-model-sources-review.md)，结果research/model_sources_40m_v1/result.json，独立补丁research/model_sources_review.patch。未运行startup/交易、重启、通知或清理/安装生产snapshot；离线公共市场fixture不代替联网验收。
+
+本条替代下文“MODEL停机续算缺单位修复”中冻结/账户单位优先、仅缺币时回退exginfo的实现描述；先前8小时重放结论只适用于当时版本，不能作为新基准验收。
+
+## 2026-10-31 alpha补算缺少共享exchangeInfo时主动补取
+
+用户要求消除冷启动空档等待：仅core/backfill.py的共享metadata缺失分支改为主动执行一次更新流程，现货/合约各取一次exchangeInfo；浅拷贝handle关闭本次资金费刷新，复用原update_binance_meta，不修改binance_update.py。时间标记使用实际获取时刻，不回溯历史offset；获取成功后立即继续原补算，下次已有完整共享数据不再请求。完整性仍检查两市场共同ready，既无独立offset快照，也无额外重试循环（原接口重试保留）。
+
+获取后重查距下个offset的预算，不足240秒只保留新metadata、推迟重计算；获取失败抛到既有补算错误/冷却处理，不发布半成品、不触发完整初始化。realtime_data/其他core本轮零修改，最近单offset、5分钟调度、提前预热及更新失败保留产物继续保留。TDD先6 failed/3 passed，修复后共享信息/调度/恢复32项通过（2.36秒），日志research/exg_bootstrap_red.log和exg_bootstrap_green.log。未联网实测、启动或重启服务、通知、删除生产数据。此项替代下文“共享数据缺失只等待、不主动请求”的旧状态。
+
+## 2026-10-31 alpha五分钟调度、最近offset补算及提前预热
+
+用户确认每次正常更新/补算/空检查完成后，转入完成时刻之后下一个5分钟点；沿用既有next_run_time与非offset等待边界，不增每分钟探测。core/backfill.py将每次目标数2改1，冷却过滤后按下次到达分钟排序，选择最近即将到来的缺失offset；补算时间仍是已到达的历史边界，不提前产未来ready。
+
+realtime_data.update_all在目标前15秒实际提交1–3个等待目标的预热任务，与metadata准备重叠；metadata成功、到达目标且预热任务返回后再提交真实采集。进程数随币安/Data API/市值启用情况确定，每轮退出释放，不引入常驻池；其他core及因子本轮零修改，共享exchangeInfo继续使用。详细最小范围和人工审核见[调度与预热复核](../../alpha/docs/2026-10-31-dispatch-prewarm.md)。
+
+TDD红阶段5项失败，最终调度/预热/恢复/共享信息30项通过（2.09秒）；实际Windows spawn+模拟采集验证三个独立PID均不早于目标，冷启动约3.96秒延迟，预热后约2.3ms。不是实盘网络性能保证，metadata晚到和不足预热时间仍会延迟。证据research/dispatch_prewarm_final.log、dispatch_prewarm_verify.log及dispatch_prewarm_verify_20261031/result.json。未启动真实服务、联网、通知、重启或删除生产数据，待人工复核及进程重新加载。
+
+## 2026-10-31 alpha最新共享exchangeInfo（替代独立offset快照）
+
+用户确认按当前交易池预热：正常offset沿用原流程更新共享现货/合约exchangeInfo，补算复用最新完整共享数据，不联网、不回溯历史市场状态、不要求与历史run_time相同。core/binance_update.py此前新增22行已全部撤回，与Git HEAD原版一致；core/backfill.py移除独立快照依赖，改读共享文件并检查现货/合约共同ready轮次，仅用于避免半更新混用。临时exg_mgr适配原框架的补算ready，不改写真实共享数据或时间。独立快照目录不再读写，未删除旧生产目录。
+
+realtime_data本轮零修改，已确认的基础周期补算调度、更新失败保留产物继续保留；并行、因子、账户、初始化逻辑不改。首次尚无共享数据则等正常offset，不新增请求。TDD先3 failed/4 passed，修复后共享数据/异常调度/预处理发布20项通过（2.30秒）；日志research/shared_exg_red.log及shared_exg_green.log，未重启或联网。详见[简化实现与人工复核](../../alpha/docs/2026-10-31-shared-exchange-info.md)。本条替代下文所有独立offset快照及历史轮次严格匹配的当前状态描述。
+
+## 2026-10-31 MODEL停机续算缺单位修复（未重启/安装状态）
+
+20m停机后子策略从15:20 UTC补至23:20 UTC，S3在最后两根新增AIUSDT。完整市场exginfo及子策略模拟单位为0.1，但旧MODEL和冻结账户规则不含该币，原MODEL仅从两者取单位而报错；8小时缺口在当前240小时续算容量内。仅tools/robust40/live.py新增缺失单位的小缓存回退，与core.equity读取同源exginfo；保留旧冻结单位/原账户单位优先，不扩大真实交易白名单，未知/非法单位仍拦截并列出市场币名。已知币无额外IO，本次仅多读一次现货元数据，无网络请求。core/startup/alpha/账户本轮零新增修改。
+
+17项TDD先失败，修复后34项MODEL相关专项及23项续算/生命周期专项通过（合计57项）；真实20m离线重放通过重叠核对、9专家及最终账户8小时续算，独立加权目标spot/swap最大差均0，42.41秒含Numba冷启动。未跨新offset日，不代替跨日模型重训验收。生产snapshot全部既有文件大小/mtime不变；未下单、重启、通知、删除或安装状态。当前warmup.complete=False且子策略与MODEL截止不一致，下轮仍依既定协议自动完整初始化，未强行恢复成功标记。证据、影响边界及人工复核见[单位修复复核](2026-10-31-model-instrument-units-review.md)，本轮独立差异research/model_instrument_units_review.patch。
+
+## 2026-10-31 alpha补算仅在基础周期调度点检查
+
+用户要求每5分钟未命中正常offset时才检查补算，正常offset完成后的非整5分钟不检查。仅修改alpha/realtime_data.py非offset分支：先sleep_until_run_time(run_time)，再调用一次maybe_backfill；移除原每轮60秒睡眠和elapsed计时。next_run_time始终返回未来基础周期边界，因此08:20更新于08:22:08结束后等到08:25检查，之后进入08:30，不在08:22/23/24或08:26/27/28重复检查。沿用base_interval，不新增轮次注册表、文件探测或core改动；空档补算本身的时间预算/冷却及更新异常保留产物行为保持。
+
+TDD先复现2 failed/6 passed；修改后调度恢复与exchangeInfo专项13 passed（1.93秒），覆盖正常和报错补算均只在08:25/08:30检查。日志research/backfill_boundary_red.log和backfill_boundary_green.log。文档同步，未启动/重启服务、访问交易所或删除生产数据。
+
+exchangeInfo补充分析：共享exginfo文件每轮覆盖，独立exchange_info_snapshots/<offset>/也只保留该offset最近一轮，不累积每小时历史。补算local_resample_offset扫描磁盘币种目录，K线重采样本身不依赖exchangeInfo；但update_symbol_match需要现货/合约币种列表，preprocess_type_data按exginfo筛选币种且要求对应ready，因此完整预处理补算仍依赖metadata。下一正常offset的增量主要追加新K线，不能保证回头修正旧行的币种映射。可另设计仅预热resample、不发布正式预处理ready的分阶段模式，但本轮未增加该流程，未放宽对应轮次快照要求。
+
+## 2026-10-31 statistics第一阶段（本地已实施，待人工复核/联网验收）
+
+统计先筛目标账户/offset，再校时和一次只读overview；移除统计对update_account_info和旧历史成交补拉的调用，正常交易/自动补BNB不变。现货统一实时市值，原精度保存，未核验成本/盈亏置空；旧账本不修改。基础持仓/权益先原子落盘，额外查询/图表/发送独立失败；同账户OS锁、全局最多2个在途任务、不积压，图片临时路径隔离。默认enabled/notify=True，charts/details/price_impact=False，配置在config.statistics_config；既有下单后等待保留，统计尾部60秒空等移除。
+
+共享交易前snapshot同轮替换并记录observed_at；新market_value字段区分旧成本口径。1h/24h只用目标之前10分钟内有效观察，历史不足/缺价格不伪报零；全清仓仍可估算期初仓位价格影响。每轮历史读2次，14子策略资金曲线读14次，旧逐币成本CSV读0次。100持仓离线函数中位数由363.87ms降到3.05ms，不代表整轮网络耗时。完整专项92项通过；校时顺序复核后32项统计通过，最终有效历史按需ticker路径另做专项。真实子进程锁、跨cwd脚本导入、全5分钟偏移及原交易/BNB回归已覆盖。
+
+本轮core仅statistics.py/statis_func.py及statistics_debug.py兼容修改，startup仅5处统计分发行替换；新通用IO/调度辅助放tools/statistics_runtime.py，未改交易所/账户模型/仓管/因子。划转客户端内部吞错仍存在，charts默认关闭，开启后明确标注完整性未核验；可信成交成本与严格接口成功语义留第二阶段。人工逐项审核表、默认设置、数据兼容及测试边界见[第一阶段复核](2026-10-31-statistics-phase1-review.md)，独立差异research/statistics_phase1_review.patch排除了此前startup/config既有修改。未调用生产接口/通知、未启动实盘或重启、未修改alpha/账户/生产数据，未提交Git。
+
+## 2026-10-31 alpha更新异常不再清目录初始化
+
+用户确认按“正常连接失败/超时在更新循环内恢复、首次启动才完整初始化、保留缺失目录补算”修正。仅修改alpha/realtime_data.py的main：初始化成功后保留initialized标志，更新或调度异常等待60秒后重新计算当前run_time继续更新，不再调用init_history/init_dirs。初始化尚未成功时仍按原60秒重试；不自动把计算/数据错误解释为允许清目录重建。错误日志及既有通知明确区分初始化重试和保留产物继续更新。没有新增core/startup/账户/因子修改，非offset的maybe_backfill及对应exchangeInfo快照逻辑保留。
+
+TDD旧代码5项失败，修复后补充首次调度失败回归；恢复/快照专项最终11项通过（1.90秒），覆盖TimeoutError、ConnectionError、数据错误、调度错误、首次初始化重试和更新失败后补算仍可调用。日志research/realtime_recovery_red.log和realtime_recovery_final.log；既有网络/初始化/交易服务全部用stub替代，未运行真实服务或发送通知。人工复核范围为main中的初始化标志、初始化入口条件、run_time异常日志保护及恢复提示；更新循环热路径仅一个None赋值，初始化标志检查只在进入恢复循环时执行，不加磁盘检查。未重启或删除生产数据；运行中的realtime_data需重新加载代码。本节替代下文“首次正常请求失败仍会重新初始化”的旧状态说明。显式重新启动仍沿用首次初始化语义，未新增运行时重建入口。
+
+## 2026-10-31 alpha exchangeInfo复用（待加载新代码）
+
+按用户要求，正常offset获取的现货/合约exchangeInfo分别保存到exginfo同级的exchange_info_snapshots/<offset>/，每offset保留最近一轮；同run_time重复调用复用已有数据。空档补算不再调用update_binance_meta，而是要求对应offset、精确run_time的两份快照，临时exg_mgr生成映射后继续原流程；无快照则等待，不能用新数据冒充历史快照。既有被删除的旧快照无法追溯恢复，首次启用需等正常轮次获取。资金费不在补算时重复刷新，正常更新保持。
+
+core最小范围为alpha/core/binance_update.py新增22行和既有backfill.py的metadata段；realtime_data、初始化下载、alphaonline core/startup本轮零新增修改。16项离线专项通过，未调用真实接口、重启、部署或删除生产数据。首次正常请求失败后的旧全量初始化行为仍未修改；详见[接口复用与人工审核](../../alpha/docs/2026-10-31-exchange-info-reuse.md)。
+
+## 2026-10-31 statistics审计与优化计划（未实施）
+
+已只读审计statistics.py/statis_func.py及直接调用链，重跑本地ETH三组和实际run调用链，仍复现市值/历史净投入混用与数量不符。新增隔离复现确认40/45/55跨小时成交错组、满1000笔同分组分页异常、清仓后同批重新开仓丢账、基础币手续费成本错误、同小时晚成交丢失、全清仓报告缺失、短历史冒充24h和UTC-naive epoch在本机偏差8小时。合成机制不能证明ETH历史差额具体来源。
+
+计划先修账户先筛选/单次概览、纯只读统计、统一市值/未知成本、时刻和落盘/图片隔离，再处理原始成交ID/分页及可信成本。当前N账户定向统计每次最多N+1次overview，可降至1；不先增加并发。旧净投入不等于剩余成本，数量匹配不足以认定成本可信；历史记录不得直接删掉或按新口径静默解释。详细发现、最小文件范围、性能计数和TDD/人工复核要求见[statistics审计计划](2026-10-31-statistics-audit-plan.md)。仅新增审计文档/隔离研究脚本及输出，未改业务代码、账户、生产数据或alpha，未发送通知/重启/下单。
+
+## 2026-10-30 Binance余额请求-1021
+
+20m余额请求从timestamp到错误响应18.676秒，recvWindow仅10秒、HTTP timeout为30秒。当前代理公共探测首次2.870秒/复用0.229秒，快速样本时钟偏移约340ms；已排除旧timestamp复用及本地限速等待，瞬时网络延迟最符合证据，但历史日志不足以细分代理/上游耗时。校时后的重复堆栈为同一异常重复记录；实际下一次重试成功，整轮干跑完成。
+
+仅新增两处core最小修复：portfolio_margin_client.py余额GET单独设recvWindow=30000（+3/-1），commons.py增加请求耗时/次数/重试成功日志并消除-1021重复堆栈（+7/-3）。订单和其他接口全局窗口10000不变，时间戳更新/校时/重试策略不变，无startup/账户/alpha修改。真实CCXT签名、模拟网络迟到及订单/干跑专项49项通过；未调用私有账户接口、未下单或重启。新增core差异供人工复核，详见[时间戳修复与审核项](2026-10-30-binance-timestamp-review.md)，补丁research/binance_timestamp_core_review.patch。
+
+## 2026-10-30 MODEL取消四分钟计算截止
+
+用户明确要求“允许算完并正常保存”。已移除MODEL同轮数据已齐后的分发时间拦截、trade启动截止和finish_live提交后的超时异常；四分钟仅保留为缺失输入等待上限，已开始的计算继续校验、保存并进入原有后续流程。旧文档的240秒执行窗口约定由本条替代。仅修改tools中的server/worker/initialization_config及live/runtime阶段日志，core/startup新增修改为零，账户和BNB设置不变，未影响alpha。
+
+22:40轮子策略模拟结束后至父权重计算的无日志区间49.863秒；离线剖析发现MODEL模拟冷调用36.357秒、热调用1.053秒，主要是新进程Numba编译。40m状态实际已保存至13:40 UTC且inspect ready，无需因此重新初始化。同输入完整最终账户重放通过，生产state未修改。本轮未优化编译耗时，新增阶段日志便于实跑定位。50项专项通过，4项既有pandas警告，未重启/下单/删除数据。具体改动、时间线及验证边界见[慢轮次完成复核](2026-10-30-model-completion-review.md)。
+
+## 2026-10-30 40m已安装初始化产物核验
+
+用户确认40m初始化完成后，本轮仅核查既有文件及已保存模型的推理结果，未重跑初始化、训练、交易或修改运行代码/账户/alpha。21:40轮次在21:57:49安装完成，共同末根K线起始为2026-10-30 12:40 UTC（北京时间20:40），MODEL区间2025-05-04 00:40至该截止，共13069小时；S3固定起点2025-04-25 00:40 UTC。78个必需文件齐全、complete=True、当前配置一致，snapshot约1.196 GiB，成功scratch已清理。
+
+14个子策略全部历史ratio与MODEL的14个稀疏矩阵逐元素相等，最大差0；子策略资金及手数状态、两份再择时状态共同截止一致。S3保存4050小时/3595766行标记、54个持仓及5个延迟排名，状态参数和起点一致。MODEL保存14列父权重、8个专家视图、9个虚拟账户及最终组合状态、545日周混合权重、S5减仓量与现货/合约目标。4个季度模型（2026-01/04/07/10）已训练并可加载，239/329/362/363个训练日、标签结束早于生效季度；15项特征的2995条有效预测重新推理与保存值差0。初期1704条无分值属于180日训练预热，首个评分日2026-01-01 00:40 UTC。历史S5 delta共8900个非零单元，重新聚合的spot/swap目标最大差均0，末根目标为2个现货、126个合约币种。
+
+当前40m TopK窗口/CCI参数已由用户调整为(168,1000)/(168,1800)/(202,1440)，最长基本依赖3766根，现有4050静态检查通过，补算容量按现有上限为240小时；此前CCI2000超限结论不再适用于本份40m产物。下一轮4050增量的实际选币/手数衔接仍待运行，不能由静态依赖通过替代。
+
+同轮现货/合约Arrow与四个ready均保留，共513/756个record batch，12个当前必需预计算列齐全，截止与snapshot一致。观察到生产端当前发布最长5000根，消费端按4050裁切；未修改alpha，本次未重复C++/PKL因子全币池数值对拍。详细结果research/40m_initialized_snapshot_audit_20261030.json，主要检查日志research/40m_initialized_snapshot_audit_20261030.log。生产snapshot文件大小/mtime在核验前后一致，未写入生产数据。
+
+## 2026-10-30 alpha 因子共享线程池（本地配置已确认使用4线程）
+
+用户随后明确要求“改用4，并确认源码是最新状态”：已将alpha/config.py的precompute_factor_workers改为4；本地无config.json覆盖。当前preprocess.py与已测试、保存的core审核补丁完全一致，未再次被恢复旧版。本轮仅切换配置及更新文档，未重启服务；以下默认0描述为首次交付时状态。
+
+生产者仅修改`core/preprocess.py`两个调度函数（+24/-8）及config中的`precompute_factor_workers`和JSON白名单。现货/合约共用按币种的独立因子池，每批完成后再继续下一批；0保持逐币串行，默认仍为0。模块/参数每轮解析一次，复用已有factor helper；完整历史计算、原始PKL、Arrow裁切、pivot及ready契约保留。realtime_data、alphaonline core/startup、因子/C本轮均未新增修改，没有在线对拍或额外逐币校验。
+
+TDD先复现缺失共享池，最终17项专项通过；冻结55m的360个长历史币种，真实冷启动+两轮增量PKL/Arrow/pivot输出精确匹配。原版增量22.92秒，共享2线程21.33秒、4线程20.35秒（本次样本减少6.9%/11.2%）；峰值采样RSS分别3677/2561/2532MiB。不是1269全币池、Linux或完整交易链验收，不外推此前纯因子39%收益。人工复核表、实测边界及复测命令见[共享线程池复核](2026-10-30-shared-factor-pool-review.md)。
+
+未部署/重启/下单、未删除生产数据。工作中preprocess.py两次被外部恢复旧版，用户确认非主动撤回，已重新应用并通过测试；来源未定位，独立core补丁保存在research/shared_factor_core_review.patch，人工启用前需排除外部覆盖。
+
+## 2026-10-30 初始化链路可靠性复查（仅alphaonline）
+
+按用户“复查类似问题、整体解决”和“限制在alphaonline”的要求，本轮只修改alphaonline的两个tools实现文件及测试/文档；没有新增core/startup/config/账户参数修改，没有修改、编译、重启或写入alpha。未启动交易、初始化服务或删除生产数据。完整范围及证据见[本轮复查](2026-10-30-server-runtime-review.md)。
+
+已统一initialize/compute/trade及Windows spawn的UTF-8输出与子进程继承，初始化分阶段输出及时落盘。新增后台退出监测：完成/失败立即显示在startup日志，失败附最多8KB日志尾部，无需等下个匹配offset；父进程不再长期持有初始化日志句柄。进程创建失败释放句柄且不留下阻断同轮重试的标记。坏旧元数据不会再次阻断重建；S3起点缺失/不合法/串账户或offset/超过截止、snapshot实际截止分钟不匹配均按现有自动重建流程处理，不读取大MODEL做预检。账户暂未就绪的提前返回恢复原完整标记，真正计算异常保留未完成标记。
+
+故障用例先复现再修复；真实GBK重定向子进程、真实后台进程退出和真实Windows spawn均覆盖。主链路/S3/旧策略/初始化相关218项通过，287项为既有pandas FutureWarning；日志research/server_reliability_final_tests.log，git diff --check通过。真实20m已保存版本50次快检中位14.89ms、最大21.02ms，读取元数据11702字节。当前账户与该旧snapshot配置已不同，实际应重建，未将旧包当作当前版本ready。
+
+复查时发现三账户CCI已由用户调整为2000，本轮保留不覆盖；TopK168的基本依赖仍为4166根，尚未满足4050，且还需持仓/补算余量。20m旧snapshot仍记录之前策略池，配置差异会触发完整重建。这些参数/数据验收限制不能以本轮218项通过代替。运行中的startup需重新加载才能使用完整协调器改动，未代用户重启。
+
+## 2026-10-30 40m 后台初始化日志编码退出修复
+
+用户20:40轮次已等齐四个ready并启动后台初始化，但独立日志`data/server_initialization/40m_robust_4h/1793364000.log`记录20:42:10在MultiEquityBacktestConfig第一条debug图标日志处抛UnicodeEncodeError（GBK无法编码U+2139），尚未开始因子/子策略计算。上一轮pivot晚到问题在该次运行已修复；此次是初始化外层进程未设置UTF-8。先前手工20m实跑由调用环境显式设置UTF-8，因此未覆盖startup自动Popen的默认GBK环境。
+
+仅修改两个tools文件：`tools/server_robust40.py`的main在加载框架日志前统一重配stdout/stderr并设置子进程PYTHONIOENCODING；`tools/robust40/server.py`启动initialize时显式传递UTF-8环境。compute/trade既有profile编码设置保留。core/startup不新增修改。真实子进程强制GBK且重定向输出，以实际框架debug图标日志先复现同样堆栈，修复后stdout/stderr UTF-8断言通过；初始化+分流12项通过，git diff --check通过，未执行实盘或完整重算。
+
+主循环在Popen后继续其他账户是既定后台流程；进度写独立日志，进程退出由协调器在后续匹配账户分发时检查。失败目录保留，下个40m新epoch使用新目录重试；新子进程会读取磁盘上已修复的入口，即使当前startup仍持有旧Coordinator代码，入口自身也能完成编码设置。没有删除snapshot、历史行情或失败现场。
+
+## 2026-10-30 55m 同轮 pivot 晚到导致静默跳过
+
+实跑日志19:57:16.420分发55m，但对应1793361300的swap dict ready在19:57:12发布、swap pivot ready到19:57:18才发布。共享startup数据门只等待spot/swap dict，新协调器要求四个ready，却在pivot未齐时静默return；因此55m初始化没有启动，当前也没有有效warmup.pkl。不是无交易信号，也不是本轮CCI依赖拦截。
+
+仅修改`tools/robust40/server.py`：在原240秒执行窗口内每秒检查同一epoch四个ready，齐全后继续；超时输出缺失文件，不延长交易窗口、不使用上一轮pivot。后台初始化中、槽位占用、重复尝试、目录存在、时钟/状态等待和依赖拦截均记录原因；初始化启动/退出写入框架logger，主日志含独立初始化日志路径。core/startup本轮新增修改为零，旧账户仍走原分支。
+
+TDD先复现晚到/超时两项失败，修复后分流专项10项通过（含旧账户、独立偏移、去重与profile守卫），git diff --check通过。未重启、未下单、未删除数据；运行中的startup需重新启动才加载新协调器。55m后续仍需完成完整初始化，4050的CCI2600限制保持原样。
+
+## 2026-10-30 ILLQ 构建入口 GBK 修复
+
+用户执行illq_build.py时，CFFI以系统默认GBK读取已有UTF-8生成文件`_illq_core.c`，在进入编译前报UnicodeDecodeError。仅给illq_core.c源码open指定encoding不足以覆盖CFFI内部读写。构建CLI现于Windows非UTF-8模式自动使用同一解释器`-X utf8`重新执行并传递退出码，MSVC另加`/utf-8`避免C4819编码警告；未修改CFFI安装包、因子数学或core。独立子进程回归先复现同样的GBK错误，修复后通过；复制实际已有生成文件到research隔离目录，强制`-X utf8=0`连续真实编译两次成功，编码回归及新扩展的两项数值oracle共3项通过。日志`research/illq_build_encoding_verify/build_final.log`。生产pyd未替换、服务未重启、历史数据未删除；用户可重新执行原构建命令，再按既定流程启动采集端并等待新Arrow发布。
+
+## 2026-10-30 本地启动旧预热包报错修复
+
+用户实跑startup在prepare_startup报`warmup configuration changed`：活动20/40/55m仍引用旧外部预热包，而该包与当前策略配置不匹配。现按“先在本地服务器跑通”的要求，将三账户runtime替换为`minute / server_init=True / s3_origin='full_history'`，删除旧bootstrap/warmup/state路径引用，由独立worker解析snapshot内状态路径。只改runtime，AST核对其余策略参数、凭据、BNB设置均未变；不修改或放宽旧包校验，不删除旧包。其他账户继续原有流程。
+
+本次新增core/startup修改为零，前轮框架改动仍按[实现复核](2026-10-30-server-initialization-review.md)人工审核。接入测试先复现三个账户未启用的失败，修改后9项启动分流/旧账户/BNB配置检查通过，git diff --check通过。
+
+20m已实际运行initialize→compute，使用本机完整PKL及真实交易所市场规则（非offline_fixture），14子策略、S3、MODEL及聚合/状态配对检查通过。共同区间2025-05-04 00:20至2026-10-30 09:20 UTC，S3固定起点2025-04-25 00:20 UTC。已安装`data/snapshot/20m_robust_4h_MODEL_ROBUST40_V1_20m`，78个必需文件、1.179 GiB，inspect返回ready；成功scratch已清理。实际load_multi_accounts→prepare_startup返回空恢复计划，不再读取旧包。日志`research/local_startup20_initialize.log`，结果`research/local_startup20_result.json`。未启动startup交易循环、未下单，BNB配置未关闭；40/55m本轮仅完成接入配置与分流测试，未完整重算。
+
+用已安装snapshot进行协调器分流检查，4050仍因CCI2600所需5366根被拦截。用户此前要求暂不调参，本次保留该约束；修复扩展后的新Arrow发布/完整4050新增小时对拍也仍待完成。因此初始化已跑通，不代表4050交易已通过。
+
+## 2026-10-30 服务器初始化实现与TDD（待人工审核，未启用）
+
+新增账户级server_init协调器、独立完整PKL worker、严格4050 Arrow模式、通用截面状态接口、无bootstrap MODEL初始化与snapshot安装。活动20/40/55配置未切换，BNB未改，未部署/重启/下单。完整接口、core新增四文件逐项说明、startup变化、状态中断重建的取舍及人工审核清单见 [实现复核](2026-10-30-server-initialization-review.md)。
+
+TDD独立oracle发现并修复S3并列排名依赖输入顺序的问题，已统一稳定币种排序（影响所有使用原section的策略，需重建基准）。生产者ILLQ C另有Inf累加和平方和方差的数值损失，两项均修复；扩展只在research隔离编译，生产二进制未替换。40m全币池16497组审计：旧Arrow的1797组ILLQ失败，其他10152组通过；最终重编译后的6345组ILLQ全部匹配PKL。对拍容差未放宽，golden文件未改；旧C位级golden断言改为独立Python数值oracle，详见复核记录。
+
+最终相关回归195项通过，涵盖旧预热及5/15/20/25/45账户；C扩展6项通过。S3三偏移真实8币约14064小时与4050续算48小时匹配194400个标记。40m完整14子策略→MODEL初始化成功，共同13065小时、4个季度模型；MODEL两次4050续算48小时，parent/delta/account差均0，9个虚拟账户状态通过。snapshot实测1.373GiB，快检读取11.7KB及78次文件检查，中位13.84ms。用户确认暂不修改CCI过滤2600，5366根基本依赖仍超4050，**这些结果不代表4050重新选币/新增手数全链路已通过**，正式验收必须等调参及修复扩展后的新Arrow发布。活动账户未启用新模式。
+
+## 2026-10-30 自动重建与资源复核（方案v2，待开发）
+
+按用户最新要求，[服务器初始化方案](2026-10-30-server-initialization-plan.md)已改为增量数据/状态不满足条件时自动完整重建；若完整PKL/pivot也未ready则等待数据，不能先删状态。允许必要时仅清理本账户snapshot，优先完整重建成功再替换，未执行生产删除。检查改为小元数据+必需文件stat，业务读取时核对实际对象，取消新模式重复全量深检/整包搬运。
+
+S3建议按完整140xx历史解析起点并持久固定，4050续算不移动；重建优先保留旧起点，历史不再覆盖时明确建立新基准，不承诺与从未中断续算完全相同。本次40m完整BTC样本候选起点2025-04-23 00:40 UTC，需全币池验证后采用，未改账户日期。实测当前每offset约7.318 GiB，新增11个80.50 GiB；当前已有3个到12个新增9个65.86 GiB。新长MODEL与临时重建另计，预算建议新增11个预留110–120 GiB；明细research/server_offset_disk_20261030.json。
+
+相对main既有core五文件+41/−4仍有正确性用途；新模式需替换datatools固定历史禁Arrow的适用条件及startup外部包复制/清理/恢复流程，其余保留。实际替代代码与测试应一起交付再人工审查；本轮只调整方案和记录实测，未移除当前仍被活动配置依赖的实现。
+
+## 2026-10-30 服务器首次初始化方案（替代跨机器预热部署，待开发）
+
+用户调整为初始化和交易都在实盘服务器：完全无历史时用独立初始化配置读取140xx完整历史，构建S3截面、子策略模拟及MODEL完整状态，统一纳入账户snapshot；完整匹配状态存在时用正常账户配置的4050 Arrow续算。详见 [当前方案与最小修改候选](2026-10-30-server-initialization-plan.md)。本轮仅修订方案文档，未改运行代码/账户、未启动或下单。
+
+关键待实现：不能仅以snapshot_time判断状态有效；新模式账户必须避开startup默认全量删除snapshot；无bootstrap初始化分支需要新建（当前live/rebuild仍依赖旧bootstrap）；初始化差异配置不能修改S3策略日期和参数；首次长计算结束后核对执行窗口并重新读取账户资产，过期则自动衔接下一合法offset，不发陈旧目标。残缺状态与配置变更不当成“无历史”自动覆盖。用户已选择长依赖通过后续调参缩短，本轮不新增遗漏因子的预计算。core仍以配置/输入/截面接口三个文件为候选，其他入口回调如确需增加须另列人工审核；startup清理和分发同样需审核。
+
+## 2026-10-30 双运行方案审查（待开发与人工审核）
+
+用户改为本地完整14050小时预热、服务器4050根Arrow续算，并计划扩展0/5/…/55分钟。已审查 [原实施计划](2026-10-30-dual-runtime-plan.md)，结论及分阶段开发计划见 [双运行审查](2026-10-30-dual-runtime-review.md)。本轮只新增审查文档和离线诊断日志，未修改运行代码/账户、未部署或重启。
+
+原v2不能直接实施：预热配置比较拒绝14050→4050转换；S3截面增量状态未接入框架；TopK依赖的CCI过滤2600需要超过4050的历史且不在12列预计算中；S3固定日期压缩模型有效历史；恢复长净值与短pivot还需MODEL适配。拒绝以默认warn/1%净值容差代替状态等价。当前三账户已变更ILLQ参数，活动旧预热包均与strategy_pool/precompute_factor_configs不匹配，必须重建；此前匹配与审核结论只适用于当时版本。
+
+拟新增core范围为backtest_config/datatools/select_coin三个文件的通用配置、严格输入和显式截面状态接口；若需要前置恢复回调，real_trading另行提审，不预先纳入。需人工先确认S3日期与成熟模型目标，再开发并验收同包逐小时续算及Linux恢复。alpha311只读复现日志：research/dual_runtime_review_20261030.log；未做完整14050/4050端到端或生产验收。
+
+## 2026-10-29 alpha 采集端多进程日志轮转修复
+
+用户报告 `logs/realtime_data.log` 在午夜轮转时报 `PermissionError: [WinError 32]`，随后每条日志都打印一段 `--- Logging error ---` 堆栈。根因：`ProcessPoolExecutor` 的每个 worker 通过 spawn 重新 import `core/utils/log_kit.py`，模块级 `logger` 也为 `logs/realtime_data.log` 建了 `TimedRotatingFileHandler`；Windows 上还有进程持有句柄时 `os.rename` 必然失败，标准库随后每写一条日志重试一次，于是刷屏。
+
+alpha 侧 `core/utils/log_kit.py` 改动三点：① 只有主进程写 `logs/realtime_data.log` 并轮转，子进程改写当天的 `logs/<name>-worker-<日期>.log`（纯 append，不做 rename，带进程名，主进程启动时清理 7 天前的 worker 日志）；② 轮转 handler 加 `SafeTimedRotatingFileHandler`，rename 失败时恢复 stream、把下次轮转推迟 1 小时、只提示一次，不再抛异常刷堆栈；③ 检测 stdout 是否已被重定向到日志文件本身（`fstat` 比较文件标识，Windows 下 `sys.stdout.name` 只是 `<stdout>`），是则跳过文件 handler 避免双写。`部署命令.md` 的启动命令改为 stdout 重定向到 `logs/realtime_data.console.log`。
+
+验证（alpha311，仅离线模拟，未启动 realtime_data.py、未部署、未重启）：spawn 三个 worker 各写 50 条，子进程 handlers 为 `['FileHandler', 'SimonsConsoleHandler']`、主进程为 `['SafeTimedRotatingFileHandler', 'SimonsConsoleHandler']`；主进程正常轮转成功；把 `rotate` 打成抛 `PermissionError(32)` 后连续 20 条日志无异常、无堆栈、rolloverAt 正常推迟、文件继续写入；`python 脚本 > logs/同名.log` 场景只保留一份内容。alphaonline 的 `core/utils/log_kit.py` 仍是原实现，交易端日志未改动、未验证。
+
+## 2026-10-30 预热包接入与跨小时空仓续算修复
+
+人工审核状态：2026-10-30 用户明确回复“人工审核确认”，本次预热接入及 `core/select_coin.py` 新增 14 行修复已获审核确认。代码和三偏移配置已就绪；本次确认未执行进程重启，完整 startup 重启及首轮实盘运行结果仍待确认。
+
+用户 20m 实跑仍报 Child strategy definition differs。实际加载路径仍是 research/model_robust40_v1/20m/runtime_bootstrap.pkl，活动 S3 的 filter_list 起始日期为 2026-08-01，旧研究基准为 2025-11-28；40/55m 同样存在该差异。此前仅生成预热包，没有为账户添加 warmup_path，因此“有包”不等于已接入。当前 20/40/55m 已改为各自 research/warmup_packages/<分钟>m_20261030_review 的 bootstrap 与 warmup_path，三账户公开配置均与各自包一致；原 state_path、策略参数和 BNB 设置不变（if_use_bnb_burn=True、buy_bnb_value=11、if_transfer_bnb=False）。需要人工审核后完整重启 startup 才会执行成对恢复，仅账户进程的 10s 重试不会触发启动恢复；本次未重启或下单。
+
+只读预检发现当前旧 snapshot 的 S5/S6 与已生成包不一致，不能只切 bootstrap。将 20m 包的 snapshot 恢复到独立目录后，14 子策略历史仓位全部一致；再接 3 小时新行情时，原聚合逻辑却因 S10 无信号且最长持仓仅 1H，遗漏 2026-10-29 22:20 UTC，触发 Child equity time axes differ。新增最小修复为 core/select_coin.py **+14 行**：两个聚合入口的时间起点覆盖 snapshot 后的待续算周期，没有信号的周期保留零权重。无 snapshot 或连续逐小时调用保持原范围，不改信号、回测公式和执行器。
+
+独立小时索引 oracle 先复现 28 failed；修复后覆盖两个聚合算法、空选币/晚到信号、5/15/20/25/40/45/55 分钟及冷启动，初次连同主链路回归共 39 passed。补充日频、单策略 snapshot、UTC 时区及已有回退窗口后，最终时间轴专项 **32 passed**，主链路 **11 passed**。日志 research/snapshot_gap_red.log、snapshot_gap_green.log、snapshot_gap_final.log。真实恢复验证调用 live.prepare 与实际 update_state，在隔离目录成功从 2026-10-29 21:20 推进到 2026-10-30 00:20 UTC，日志 research/verify_snapshot_gap_fix.log。没有放宽定义、时间轴或历史修订检查。人工审核范围见 [接入修复审核](2026-10-30-robust40-prewarm.md)。
+
+40m 首次生成因 D 盘空间不足失败（os error 112，当时剩余约 0.45 MiB）；已仅清理本任务 research/prewarm_20m/55m/40m 对应隔离目录的可重算因子缓存，保留 exginfo、行情副本、子策略结果、snapshot、包和日志，未删生产数据。缓存释放约 17.9 GiB。40m 在新隔离目录重试成功：1,945 根，2026-08-10 00:40 至 2026-10-30 00:40 UTC；全量/24h 续算比较、包内 snapshot 与 MODEL 末根仓位及模拟状态校验通过，日志 research/prewarm_40m_20261030_retry.log。下节为初版交付记录，接入状态以上述最新记录为准。
+
+## 2026-10-30 MODEL 独立偏移预热与 snapshot 同步
+
+已实现 `tools/prewarm_robust40.py`：每次只处理一个账户/偏移，在全新隔离目录冻结已完成的实盘行情，复用原子策略回测与净值处理，再生成同一截止 K 线的 MODEL 基准及完整框架 snapshot。20/40/55m 可分别生成，失败不影响其他目录。预热只查询市场规则，不进入交易入口；不撤单、不下单、不补 BNB，活动账户原 BNB 设置不变。
+
+本轮 core 零修改。startup 仅增加原 snapshot 清理前准备、清理后恢复两个调用点，通过 runtime.warmup_path 显式开启；当前活动账户尚未开启。首次恢复预热包，后续重启保留已推进的完整状态对；配置、分钟、截止时间、末根仓位、再择时状态异常在清理前报错。无该字段的旧策略保持原流程。人工审核范围、既有四处 core 差异、各分钟独立命令与接入步骤见 [预热与人工审核](2026-10-30-robust40-prewarm.md)。
+
+alpha311 离线专项 40 passed / 4 warnings，含 Windows 实际 spawn 输出隔离、20/40/55 恢复、防倒退、配置变化、不完整状态和生成任务隔离；日志 research/prewarm_tests_20261030.log。入口补充其他策略同名字段隔离、dict 关键字写法识别后，预热专项最终 16 passed（research/prewarm_entry_tests_20261030.log）。首次 spawn 检查发现重定向日志 GBK 编码失败，已仅在预热 worker 内修复 UTF-8。本轮没有修改两端 core、重启服务或切换活动账户；真实数据预热结果另见下方记录。
+
+55m 已由当前实盘数据独立生成 `research/warmup_packages/55m_20261030_review`：14 子策略共用有效区间 2026-08-10 00:55 至 2026-10-29 20:55 UTC，共 1,941 根；子策略计算约 465 秒，MODEL 全量/24h 续算对照及打包约 182 秒；parent/delta/account 比较通过。包约 719.7 MiB，已在独立目录验证首次恢复和清理后重启恢复，未写活动 snapshot/state。日志 `research/prewarm_55m_20261030_review.log`。
+
+20m 随后独立生成 `research/warmup_packages/20m_20261030_review`：共同有效区间 2026-08-10 00:20 至 2026-10-29 21:20 UTC，共 1,942 根；子策略计算约 731 秒，MODEL 对照及打包约 174 秒。包约 719.4 MiB，全量/24h 续算比较及真实包首次恢复、清理后重启恢复均通过；日志 `research/prewarm_20m_20261030_review.log`。两份包互不覆盖，没有自动加入活动账户。40m 在本次检查时仍无完整 ready 发布，尚未生成，不能复用其他偏移的包。
+
 ## 2026-10-30 实盘同源基准与历史差异
 
 用户实跑 20m 首次触发 Historical revision in S1 positions。当前无已成功保存的账户 state，实际使用的是由研究子策略缓存生成的 bootstrap。最近共同 168 根比较：S1 每根均不同、989 个权重单元不同、最大绝对差 0.032411；14 子策略中 13 个存在持仓差异，仅 S10 一致，详见 research/live_overlap_diagnosis.json。这是输入持仓实质变化，不能放宽误差阈值或拼接原基准。

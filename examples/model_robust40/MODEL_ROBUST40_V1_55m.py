@@ -17,19 +17,20 @@ account_config = {'apiKey': '',
 
 strategy_name = 'MODEL_ROBUST40_V1_55m'
 
+
+# 本账户独立仓管配置；参数含义及生效状态见docs/model-robust40-parameters.md。
 strategy_config = {'name': 'ModelRobust40Strategy',
  'hold_period': '1H',
- 'params': {'enable_live_hooks': True, 'factor_list': [('Bias', False, 48, 1), ('Bias', False, 144, 1), ('Bias', False, 216, 1)],
-            'parent': {'method': 'native',
-                       'gross_cap': 2.5,
-                       'research_inputs': 'E:/quant/position-mgmt_v2.3.0/research_20261019_cross_strategy/inputs',
-                       'child_returns': 'E:/quant/position-mgmt_v2.3.0/research_20261019_momentum_hedge/tables/CHILD_RETURNS.pkl',
-                       'risk_definitions': ['down', 'up'],
-                       'momentum_60': True,
-                       'conditional_risk_path': 'E:/quant/position-mgmt_v2.3.0/research_20261020_sharpe65/inputs/conditional_beta.pkl',
-                       'factor_list': [('Bias', False, 48, 1),
+ # True：框架在仓位计算前调用prepare_live准备模型/续算状态，
+ #       在聚合及限仓后调用transform_targets核对目标、应用S5修正，并按server_init完成状态交接。
+ # False（或省略）：跳过上述两个扩展入口，仍执行calc_ratio及后续交易流程，不是停单开关。
+ # 当前MODEL依赖这两个入口，必须为True；False会因缺少模型结果或配置不一致而报错。
+ 'params': {'enable_live_hooks': True,
+            'factor_list': [('Bias', False, 48, 1), ('Bias', False, 144, 1), ('Bias', False, 216, 1)],
+            'parent': {'factor_list': [('Bias', False, 48, 1),
                                        ('Bias', False, 144, 1),
                                        ('Bias', False, 216, 1)],
+                       # 生效：S1..S14的初始分配基准，顺序对应本账户strategy_pool。
                        'cap_ratios': [0.457983193277,
                                       0.457983193277,
                                       0.623781512606,
@@ -44,6 +45,7 @@ strategy_config = {'name': 'ModelRobust40Strategy',
                                       0.200163934426,
                                       0.15,
                                       0.32],
+                       # 生效：每个子策略方向，与cap_ratios/strategy_pool一一对应。
                        'direction_list': ['long',
                                           'long',
                                           'long',
@@ -58,7 +60,9 @@ strategy_config = {'name': 'ModelRobust40Strategy',
                                           'short',
                                           'short',
                                           'long'],
+                       # 生效：参与Bias轮动的子策略下标（从0开始）。
                        'rotation_indices': [0, 1],
+                       # 生效：漂移再平衡组；参数交给共享Hybrid策略读取。
                        'dynamic_groups': [{'indices': [3, 13],
                                            'direction': 'long',
                                            'mode': 'both',
@@ -71,9 +75,30 @@ strategy_config = {'name': 'ModelRobust40Strategy',
                                            'period_hours': 3456,
                                            'trigger_threshold': 0.786,
                                            'rebalance_duration_hours': 21}],
+                       # 生效：周期再平衡的时钟锚点（当前MODEL内部为UTC）；不是行情/S3/训练起始日。
                        'rebalance_anchor_time': '2021-01-01 00:00:00',
-                       'short_single_coin_max_ratio': 0.05},
-            'runtime': {'minute': 55,
+                       # 以下五项是历史研究声明，当前MODEL不读取为调参开关；已注释，仅作历史说明；不参与计算及snapshot配置比较。
+                       # 'method': 'native',
+                       # 历史意图：净额后总绝对敞口上限。当前算法固定2.5，修改此字段不会改变上限。
+                       # 'gross_cap': 2.5,
+                       # 历史意图：选择条件beta类型。当前算法固定同时使用up/down。
+                       # 'risk_definitions': ['down', 'up'],
+                       # 历史意图：S5动量基准权重设0.60。当前代码固定执行，不读取此布尔值。
+                       # 'momentum_60': True,
+                       # 历史意图：空头单币上限5%；当前无读取逻辑，不能视为已启用限制。
+                       # 'short_single_coin_max_ratio': 0.05,
+                       # 以下三项仅为旧研究输入路径，已停用且不参与状态比较；部署无需复制E盘，也可删除这些注释。
+                       # 'research_inputs': 'E:/quant/position-mgmt_v2.3.0/research_20261019_cross_strategy/inputs',
+                       # 旧研究：子策略小时收益表，用于离线协方差/收益估计。当前从本轮输入计算。
+                       # 'child_returns': 'E:/quant/position-mgmt_v2.3.0/research_20261019_momentum_hedge/tables/CHILD_RETURNS.pkl',
+                       # 旧研究：预计算条件beta。当前由本offset行情计算；仅保留历史来源说明。
+                       # 'conditional_risk_path': 'E:/quant/position-mgmt_v2.3.0/research_20261020_sharpe65/inputs/conditional_beta.pkl',
+                       },
+            # 运行配置：分钟偏移只维护account_config.hour_offset，不再重复填写runtime.minute。
+            # server_init=True：自动完整初始化/4050续算及snapshot保留。
+            # False：走普通框架入口，不是暂停交易；需另配手工预热/状态路径，否则会报错。
+            # False时clean_start不再按server_init账户自动保留snapshot。
+            'runtime': {
                         'bootstrap_path': 'research/model_robust40_v1/55m/runtime_bootstrap.pkl',
                         'state_path': 'data/robust40_state/ACCOUNT_NAME_55m.pkl'}}}
 

@@ -104,7 +104,7 @@ def compute_holdings_numba_pct(times, symbols, rank_pcts, n_symbols, prev_holdin
                     if available_count > 0:
                         valid_indices = temp_indices[:available_count]
                         valid_rank_pcts = temp_rank_pcts[:available_count]
-                        sorted_order = np.argsort(valid_rank_pcts)
+                        sorted_order = np.argsort(valid_rank_pcts, kind='mergesort')
                         select_count = min(need_count, available_count)
                         for k in range(select_count):
                             j = valid_indices[sorted_order[k]]
@@ -185,7 +185,8 @@ def signal(*args):
         return df
 
     # 按时间排序，确保 numba 函数时间顺序正确
-    df_work = df_work.sort_values('candle_begin_time')
+    # Canonical tie order makes full/prefix/resumed runs independent of row order.
+    df_work = df_work.sort_values(['candle_begin_time', 'symbol', 'is_spot'], kind='stable')
 
     # 一次性计算所有截面的 rank_pct
     df_work['rank_pct'] = df_work.groupby('candle_begin_time', sort=False)[base_factor_name].rank(
@@ -239,7 +240,7 @@ def signal(*args):
         df_first = df_work[df_work['candle_begin_time'] == first_time]
         n_current = len(df_first)
         target_count = max(1, int(n_current * select_pct))
-        first_selected = df_first.sort_values('rank_pct').head(target_count)
+        first_selected = df_first.sort_values('rank_pct', kind='stable').head(target_count)
         for symbol, rank_pct in zip(first_selected['symbol'], first_selected['rank_pct']):
             prev_holdings[symbol_to_id[symbol]] = rank_pct
         # 写回第一期结果，numba 只处理后续期
@@ -292,6 +293,70 @@ def get_factor_list(n):
     ]
 
 
+def signal_with_state(df, params, factor_name, state=None):
+    """Explicit continuation; the legacy full-replay entry remains unchanged.
+
+    Persist eligible rank slices, not elapsed hours: empty sections do not advance
+    the delay queue or liquidate holdings. The first section is not in that queue,
+    matching signal()'s initialization before its numba call.
+    """
+    n, enter, leave, start = params
+    keys = ['candle_begin_time', 'symbol', 'is_spot']
+    base = f'VolumeMaxBias_{n}'
+    if df.empty or base not in df:
+        raise ValueError('Section continuation requires candles and its base factor')
+    if state is not None and (state['version'] != 1 or tuple(state['params']) != tuple(params)):
+        raise ValueError('Section state parameters/version differ')
+    end = df.candle_begin_time.max()
+    if state is not None and end < state['cutoff']:
+        raise ValueError('Section state cannot move backwards')
+    mask = (df[base].notna() & df['是否交易'].eq(1)
+            & df.candle_begin_time.ge(pd.Timestamp(start)))
+    mask &= ~((df.symbol_spot != '') & (df.symbol_swap != '') & df.is_spot.eq(1))
+    work = df.loc[mask].sort_values(['candle_begin_time','symbol','is_spot'],kind='stable').copy()
+    work['rank_pct'] = work.groupby('candle_begin_time')[base].rank(method='min', pct=True)
+    if state is None:
+        df = signal(df, params, factor_name)
+        held, queue, initialized = [], [], False
+    else:
+        df = df.copy()
+        old = state['output'].set_index(keys)[factor_name]
+        df[factor_name] = old.reindex(pd.MultiIndex.from_frame(df[keys])).fillna(0).to_numpy()
+        work = work[work.candle_begin_time > state['cutoff']]
+        held, queue, initialized = list(state['held']), list(state['ranks']), state['initialized']
+    groups = list(work.groupby('candle_begin_time', sort=True))
+    if groups and not initialized:
+        _, first = groups.pop(0)
+        chosen = first.sort_values('rank_pct',kind='stable').head(max(1,int(len(first)*enter)))
+        held = chosen.symbol.tolist()
+        if state is not None:
+            df.loc[first.index, factor_name] = first.symbol.isin(held).astype(int)
+        initialized = True
+    if groups:
+        active = pd.concat([g for _,g in groups])
+        if state is not None:
+            symbols = sorted(set(active.symbol) | set(held) | {s for r in queue for s in r.index})
+            codes = {s:i for i,s in enumerate(symbols)}
+            history = [pd.DataFrame({'symbol':r.index, 'rank_pct':r.values}) for r in queue]
+            frames = history + [g[['symbol','rank_pct']] for _,g in groups]
+            times = np.concatenate([np.full(len(g),i,dtype=np.int64) for i,g in enumerate(frames)])
+            data = pd.concat(frames)
+            previous = np.array([0. if s in held else -1. for s in symbols])
+            result = compute_holdings_numba_pct(times, data.symbol.map(codes).to_numpy(dtype=np.int32),
+                data.rank_pct.to_numpy(dtype=float), len(symbols), previous, enter, leave, len(history), n)
+            df.loc[active.index,factor_name] = result[sum(map(len,history)):]
+        last = groups[-1][1]
+        held = df.loc[last.index].loc[lambda x:x[factor_name].eq(1),'symbol'].tolist()
+        queue += [g.set_index('symbol').rank_pct for _,g in groups]
+    queue = queue[-(n % 11):] if n % 11 else []
+    output = df[keys+[factor_name]].copy()
+    if state is not None:
+        output = pd.concat([state['output'],output]).drop_duplicates(keys,keep='last')
+    output = output[output.candle_begin_time >= end-pd.Timedelta(hours=4049)]
+    return df, dict(version=1, params=tuple(params), cutoff=end, held=held, ranks=queue,
+                    initialized=initialized, output=output)
+
+
 def signal_polars(lf: pl.LazyFrame, params: tuple, factor_name: str) -> pl.LazyFrame:
     """
     Polars 接口适配层：collect → pandas signal() → 结果列追加回 LazyFrame。
@@ -305,3 +370,37 @@ def signal_polars(lf: pl.LazyFrame, params: tuple, factor_name: str) -> pl.LazyF
     # pl.from_pandas 会把 pandas NaN → Polars null（语义更清晰）
     factor_series = pl.from_pandas(df[factor_name].rename(factor_name))
     return lf.with_columns(factor_series)
+
+
+def signal_with_checkpoints(frame, params, column, state=None, hours=25):
+    """Capture S3's small state; its 4050-hour output is stored only once."""
+    if not isinstance(hours,int) or hours < 1:raise ValueError('checkpoint hours must be positive')
+    keys = ['candle_begin_time','symbol','is_spot']
+    times = pd.DatetimeIndex(frame.candle_begin_time.unique()).sort_values()
+    if not len(times):raise ValueError('Empty section input')
+    points = dict(state.get('checkpoints', {})) if state is not None else {}
+    outputs = []
+    if state is None:
+        prefix = times[:max(1,len(times)-hours)]
+        initial, state = signal_with_state(frame[frame.candle_begin_time <= prefix[-1]].copy(), params, column)
+        outputs.append(initial[keys+[column]])
+        del initial
+        if len(times) <= hours:
+            points[state['cutoff']] = {k:v for k,v in state.items() if k not in ('output','checkpoints')}
+    else:
+        if times[-1] < state['cutoff']:raise ValueError('Section state cannot move backwards')
+        if tuple(params) != state['params']:raise ValueError('Section parameters differ')
+        outputs.append(state['output'])
+    empty = state['output'].iloc[:0]
+    for time in times[times > state['cutoff']]:
+        thin = {k:v for k,v in state.items() if k != 'checkpoints'}
+        thin['output'] = empty
+        _, state = signal_with_state(frame[frame.candle_begin_time == time].copy(), params, column, thin)
+        outputs.append(state['output'])
+        points[time] = {k:v for k,v in state.items() if k not in ('output','checkpoints')}
+    output = pd.concat(outputs).drop_duplicates(keys,keep='last')
+    retained = output[output.candle_begin_time >= state['cutoff']-pd.Timedelta(hours=4049)]
+    state = dict(state, output=retained, checkpoints={t:points[t] for t in sorted(points)[-hours:]})
+    result = frame.copy()
+    result[column] = output.set_index(keys)[column].reindex(pd.MultiIndex.from_frame(frame[keys])).fillna(0).to_numpy()
+    return result, state

@@ -1,0 +1,23 @@
+# Direct dependencies validated for this release; Python 3.11 (conda alpha311).
+# Install into the consumer's isolated prefix, never the producer's running env.
+numpy==2.0.2
+pandas==2.2.3
+numba==0.60.0
+llvmlite==0.43.0
+scipy==1.14.1
+pyarrow==17.0.0
+polars==1.36.1
+scikit-learn==1.5.2
+lightgbm==4.7.0
+joblib==1.4.2
+threadpoolctl==3.6.0
+ccxt==4.5.53
+xbx-py11==0.1.23
+matplotlib==3.9.2
+dataframe-image==0.2.4
+plotly==5.24.1
+requests==2.32.3
+tqdm==4.66.5
+psutil==6.0.0
+Pillow==11.0.0
+pytest==9.0.3

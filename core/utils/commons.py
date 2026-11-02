@@ -37,7 +37,8 @@ def retry_wrapper(func, params=None, func_name='', retry_times=5, sleep_seconds=
     """
     if params is None:
         params = {}
-    for _ in range(retry_times):
+    for attempt in range(retry_times):
+        started = time.perf_counter()
         try:
             try:
                 _api_type = func.__closure__[0].cell_contents.api
@@ -47,9 +48,12 @@ def retry_wrapper(func, params=None, func_name='', retry_times=5, sleep_seconds=
                 from core.binance.base_client import BinanceClient
                 params['timestamp'] = int(time.time() * 1000) - BinanceClient.diff_timestamp
             result = func(params=params)
+            if attempt:
+                logger.info(f'{func_name} 重试成功（第{attempt + 1}/{retry_times}次）')
             return result
         except Exception as e:
-            logger.error(f'{func_name} 报错，程序暂停{sleep_seconds}(秒)')
+            logger.error(f'{func_name} 报错（第{attempt + 1}/{retry_times}次，请求耗时'
+                         f'{time.perf_counter() - started:.3f}秒），程序暂停{sleep_seconds}(秒)')
             logger.error(e)
             logger.debug(params)
             msg = str(e).strip()
@@ -58,7 +62,7 @@ def retry_wrapper(func, params=None, func_name='', retry_times=5, sleep_seconds=
                 from core.utils.functions import refresh_diff_time
                 refresh_diff_time()
                 logger.info('======时间刷新成功======')
-            if 'binance Account has insufficient balance for requested action' in msg:
+            elif 'binance Account has insufficient balance for requested action' in msg:
                 logger.warning(f'{func_name} 现货下单资金不足')
                 raise ValueError(func_name, '现货下单资金不足')
             elif '-2022' in msg:

@@ -9,7 +9,7 @@ account_config = {
     # 支持任意时间开始的小时级别K线
     "hour_offset": '55m',  # 分钟偏移设置，可以自由设置时间，配置必须是kline脚本中interval的倍数。默认：0m，表示不偏移。15m，表示每个小时偏移15m下单。
     # ++++ 企业微信机器人功能 ++++
-    "wechat_webhook_url": 'https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=',
+    "wechat_webhook_url": '',
 }
 
 # ====================================================================================================

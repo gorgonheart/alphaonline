@@ -1,1 +1,1 @@
-"""Shared, offline-safe MODEL_ROBUST40 calculations for live and backtest adapters."""
+"""Runtime tools; strategy implementation lives in positions.ModelRobust40Strategy."""

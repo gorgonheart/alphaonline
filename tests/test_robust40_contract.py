@@ -3,10 +3,10 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from tools.robust40.features import coin_features, decision_days, select_quarter_model
-from tools.robust40.execution import apply_s5_delta
-from tools.robust40.parent import solve_sleeves, robust_weekly_mix
-from tools.robust40.rebalance import RebRobust40
+from positions.ModelRobust40Strategy import coin_features, decision_days, select_quarter_model
+from positions.ModelRobust40Strategy import apply_s5_delta
+from positions.ModelRobust40Strategy import solve_sleeves, robust_weekly_mix
+from positions.ModelRobust40Strategy import RebRobust40
 
 
 def candles(n=220, minute=20):
@@ -35,7 +35,7 @@ def test_features_use_research_units_and_timestamp_age():
     pd.testing.assert_frame_equal(coin_features(d.iloc[:180]), f.iloc[:180])
 
 
-@pytest.mark.parametrize('minute', [0, 20, 40, 55])
+@pytest.mark.parametrize('minute', range(0,60,5))
 def test_daily_decisions_follow_each_minute_grid(minute):
     times = pd.date_range(f'2026-10-01 00:{minute:02d}', periods=49, freq='h', tz='UTC')
     days = decision_days(times, minute)
@@ -97,9 +97,10 @@ def test_execution_buffer_and_gross_cap_are_applied_after_netting():
     np.testing.assert_array_equal(swap, [12, -12])
 
 
-def test_virtual_account_resume_preserves_pending_orders_and_fees():
-    from tools.robust40.engine import simulate
-    index = pd.date_range('2026-01-01 00:20', periods=4, freq='h')
+@pytest.mark.parametrize('minute', range(0,60,5))
+def test_virtual_account_resume_preserves_pending_orders_and_fees(minute):
+    from positions.ModelRobust40Strategy import simulate
+    index = pd.date_range(f'2026-01-01 22:{minute:02d}', periods=4, freq='h')
     price = np.array([[100.], [110.], [105.], [120.]])
     args = dict(init_capital=10000., leverages=np.ones(4), spot_lot_sizes=np.ones(1), swap_lot_sizes=np.ones(1),
         spot_c_rate=.001, swap_c_rate=.0006, spot_min_order_limit=10., swap_min_order_limit=5., min_margin_rate=.05,

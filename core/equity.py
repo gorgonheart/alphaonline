@@ -247,7 +247,7 @@ def calc_equity(conf: BacktestConfig, run_time, leverage: float | pd.Series = No
         require_rebalance=require_rebalance,  # 是否需要rebalance
         sim_spot=sim_spot,  # 现货模拟器
         sim_swap=sim_swap,  # 永续合约模拟器
-        lookback_hours=conf.incremental_lookback_hours,  # 增量回退小时数
+        lookback_hours=max(conf.incremental_lookback_hours, getattr(conf, 'checkpoint_hours', 0)),
     )
     logger.ok(f'完成模拟交易，花费时间: {time.perf_counter() - s_time:.3f}秒')
 
@@ -255,6 +255,15 @@ def calc_equity(conf: BacktestConfig, run_time, leverage: float | pd.Series = No
     for snap in snapshot_queue:
         snap['time'] = candle_begin_times.iloc[snap['bar_index']]
         del snap['bar_index']
+
+    if getattr(conf, 'checkpoint_hours', 0):
+        from core.utils.checkpoints import merge_points
+        old_points = state.get('snapshot_queue', [])
+        # A listing changes array layout: old arrays cannot be restored by position.
+        if has_snapshot and any(not pd.Index(state[k]['columns']).equals(r.columns)
+                                for k, r in (('spot', df_spot_ratio), ('swap', df_swap_ratio))):
+            old_points = []
+        snapshot_queue = merge_points(old_points, snapshot_queue, conf.checkpoint_hours)
 
     if state_name == 'state0':
         # 保存模拟交易的状态，只有在原始模拟时候才有效
@@ -291,8 +300,14 @@ def calc_equity(conf: BacktestConfig, run_time, leverage: float | pd.Series = No
     account_df['long_short_ratio'] = account_df['long_pos_value'] / (account_df['short_pos_value'] + 1e-8)
     account_df['leverage_ratio'] = (account_df['long_pos_value'] + account_df['short_pos_value']) / account_df['equity']
     account_df.set_index('candle_begin_time', inplace=True)
-    account_df['symbol_long_num'] = df_spot_ratio[df_spot_ratio > 0].count(axis=1) + df_swap_ratio[df_swap_ratio > 0].count(axis=1)
-    account_df['symbol_short_num'] = df_spot_ratio[df_spot_ratio < 0].count(axis=1) + df_swap_ratio[df_swap_ratio < 0].count(axis=1)
+    counts = {
+        'symbol_long_num': df_spot_ratio[df_spot_ratio > 0].count(axis=1) + df_swap_ratio[df_swap_ratio > 0].count(axis=1),
+        'symbol_short_num': df_spot_ratio[df_spot_ratio < 0].count(axis=1) + df_swap_ratio[df_swap_ratio < 0].count(axis=1),
+    }
+    for name, values in counts.items():
+        # Timed accounts only simulate the new suffix; retain prefix statistics.
+        values = values.reindex(account_df.index)
+        account_df[name] = values.fillna(account_df[name]) if name in account_df else values
     account_df.reset_index(inplace=True)
 
     if df_swap_ratio.empty and df_spot_ratio.empty:

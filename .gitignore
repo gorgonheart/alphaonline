@@ -19,3 +19,20 @@ build/
 core.zip
 .tmp-*/
 都江堰中性策略精心随机_26_v3/
+
+# Machine credentials/configuration and local operating artifacts
+config.json
+accounts.local.json
+*.pem
+*.key
+.claude/
+.workbuddy/
+.pytest_cache/
+.vscode/
+research/
+equitymerger/
+accounts backup/
+*.nbc
+*.nbi
+*.bundle
+.numba_cache/

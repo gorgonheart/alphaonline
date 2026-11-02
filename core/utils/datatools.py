@@ -263,12 +263,16 @@ def read_and_merge_bmac_data(conf: BacktestConfig, symbol_type: str, df: pd.Data
     t0 = time.perf_counter()
     # 在裁切之前补算：新版有状态动量的初始 EMA/异常历史必须与生产者一致。
     from core.factor import calc_factor_vals
-    for name, params in _full_history_factors(conf).items():
+    mode = getattr(conf, 'input_mode', 'auto')
+    factors = conf.precompute_factor_configs if mode == 'full_pkl' else _full_history_factors(conf)
+    for name, params in factors.items():
         missing = [p for p in params if f'{name}_{p}' not in df.columns]
         if missing:
             df = df.assign(**calc_factor_vals(df, name, missing))
     required_start = getattr(conf, 'required_history_start', None)
-    if isinstance(required_start, (str, pd.Timestamp)):
+    if mode == 'full_pkl':
+        pass  # Initialization consumes the entire frozen raw publication.
+    elif mode != 'arrow_strict' and isinstance(required_start, (str, pd.Timestamp)):
         # Stateful research children need the fixed initialization interval.
         # Preserve all retained PKL history; an Arrow tail cannot initialize it.
         origin = pd.Timestamp(required_start)
@@ -304,9 +308,15 @@ def load_bmac_data(symbol_type, run_time, conf: BacktestConfig):
     # 快路径：Arrow 快照（文件名内嵌 ts，天然校验 run_time）
     t_fetch = time.time()
     required_start = getattr(conf, 'required_history_start', None)
-    fixed_history = isinstance(required_start, (str, pd.Timestamp))
+    mode = getattr(conf, 'input_mode', 'auto')
+    fixed_history = mode == 'full_pkl' or (mode != 'arrow_strict' and isinstance(required_start, (str, pd.Timestamp)))
     arrow_dict = None if fixed_history else read_arrow_market_dict_for_run_time(bmac_data_path, symbol_type, run_time)
-    required_columns = {f'{name}_{p}' for name, params in _full_history_factors(conf).items() for p in params}
+    factors = conf.precompute_factor_configs if mode == 'arrow_strict' else _full_history_factors(conf)
+    required_columns = {f'{name}_{p}' for name, params in factors.items() for p in params}
+    if mode == 'arrow_strict' and (not arrow_dict or any(
+            not required_columns.issubset(frame.columns) for frame in arrow_dict.values()
+            if frame is not None and not frame.empty)):
+        raise ValueError('Arrow publication unavailable or missing required precomputed columns; initialize from full PKL')
     if arrow_dict is not None and required_columns and any(
             frame is not None and not frame.empty and not required_columns.issubset(frame.columns)
             for frame in arrow_dict.values()):

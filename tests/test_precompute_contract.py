@@ -15,9 +15,9 @@ from core.utils.arrow_reader import read_arrow_market_dict
 
 
 @pytest.mark.parametrize('declared,present,reuse', [(True, True, True), (True, False, False), (False, True, False)])
-def test_published_factors_are_reused_or_recomputed(tmp_path, monkeypatch, declared, present, reuse):
+def test_published_factors_are_reused_or_recomputed(tmp_path, monkeypatch, declared, present, reuse, producer_root):
     import core.select_coin as select
-    path = Path('D:/alpha/core/arrow_publish.py')
+    path = producer_root/'core/arrow_publish.py'
     if not path.exists():
         pytest.skip('需要数据框架 Arrow 发布器')
     spec = importlib.util.spec_from_file_location('producer_arrow_publish', path)
@@ -45,10 +45,9 @@ def test_published_factors_are_reused_or_recomputed(tmp_path, monkeypatch, decla
     assert fallback.call_count == (0 if reuse else 1)
 
 
-def test_c_factors_survive_publication_and_consumer_selection(tmp_path, monkeypatch):
+def test_c_factors_survive_publication_and_consumer_selection(tmp_path, monkeypatch, producer_root):
     """隔离进程加载生产者，避免两个项目同名 core/factors/config 包互相污染。"""
     import core.select_coin as select
-    producer_root = Path('D:/alpha')
     if not (producer_root / 'core/arrow_publish.py').exists():
         pytest.skip('需要本地数据框架及其 C 扩展')
     script = r'''
