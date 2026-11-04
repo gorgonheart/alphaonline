@@ -53,6 +53,8 @@ def test_other_paths_keep_history_requirement(mode):
 def test_server_accounts_do_not_maintain_unused_history_date(minute):
     import ast
     path = Path(__file__).resolve().parents[1] / 'accounts' / f'{minute}m_robust_4h.py'
+    if not path.exists():
+        path = Path(__file__).resolve().parents[1]/'tests/fixtures/model_accounts'/path.name
     tree = ast.parse(path.read_text(encoding='utf-8-sig'))
     assert not any(isinstance(n, ast.Assign) and any(
         isinstance(t, ast.Name) and t.id == 'required_history_start' for t in n.targets

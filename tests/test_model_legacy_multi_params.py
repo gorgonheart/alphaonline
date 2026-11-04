@@ -45,6 +45,8 @@ def model_parameters():
     root = Path(__file__).resolve().parents[1]
     for offset in [20, 40, 55]:
         path = root / f'accounts/{offset}m_robust_4h.py'
+        if not path.exists():
+            path = Path(__file__).resolve().parents[1]/'tests/fixtures/model_accounts'/path.name
         visit(assignment(path, 'strategy_pool'))
         visit(assignment(path, 'strategy_config'))
     assert all(result.values())

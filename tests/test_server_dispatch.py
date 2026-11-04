@@ -60,6 +60,8 @@ def test_active_accounts_route_to_server_initialization_without_old_package(minu
     from tools.robust40.warmup import prepare_startup
     root = Path(__file__).resolve().parents[1]
     account = root/'accounts'/f'{minute}m_robust_4h.py'
+    if not account.exists():
+        account = Path(__file__).resolve().parents[1]/'tests/fixtures/model_accounts'/account.name
     values, options = server.settings(account)
     assert server.enabled(account)
     assert options == dict(minute=minute, server_init=True)

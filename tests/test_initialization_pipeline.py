@@ -27,6 +27,8 @@ def test_actual_offset_pools_load_independently(minute):
     from core.model.backtest_config import BacktestConfig
     from core.model.strategy_config import PosStrategyConfig
     path=Path(__file__).resolve().parents[1]/'accounts'/f'{minute}m_robust_4h.py'
+    if not path.exists():
+        path = Path(__file__).resolve().parents[1]/'tests/fixtures/model_accounts'/path.name
     values,options=settings(path)
     assert options['minute']==minute
     assert configured_s3(values,minute)[0].minute==minute

@@ -13,6 +13,8 @@ ROOT = Path(__file__).resolve().parents[1]
 @pytest.mark.parametrize('minute', [20, 40, 55])
 def test_account_owns_full_strategy_parameters(minute):
     path = ROOT/'accounts'/f'{minute}m_robust_4h.py'
+    if not path.exists():
+        path = Path(__file__).resolve().parents[1]/'tests/fixtures/model_accounts'/path.name
     tree = ast.parse(path.read_text(encoding='utf-8-sig'))
     node = next(n for n in tree.body if isinstance(n, ast.Assign) and
                 isinstance(n.targets[0], ast.Name) and n.targets[0].id == 'strategy_config')
