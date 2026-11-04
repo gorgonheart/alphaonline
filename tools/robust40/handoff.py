@@ -89,16 +89,20 @@ def read_inputs(run_time, minute, end, start=None, initializing=False, raw_swap=
     from config import bmac_data_path
     from core.utils.datatools import read_bmac_market_pivot
     from .offline import canonical
-    if not initializing and raw_swap is None:
+    from core.utils.arrow_reader import arrow_snapshot_path
+    if raw_swap is None and (not initializing or all(
+            arrow_snapshot_path(bmac_data_path,k,run_time).exists() for k in ('spot','swap'))):
         # Arrow already projects the required rows/columns: normalize that result
         # in place, rather than sending 1,000+ tiny frames through input_frames again.
         out={}
         for kind in ('spot','swap'):
-            source=read_arrow_tail(bmac_data_path,kind,run_time,end,start,indexed=True)
+            with telemetry.phase(f'revision_arrow_{kind}_s'):
+                source=read_arrow_tail(bmac_data_path,kind,run_time,end,start,indexed=True)
             if not source:raise ValueError(f'Missing same-round {kind} Arrow for revision checks')
             out.update({f'raw/{kind}/{canonical(s)}':f for s,f in source.items()})
-        out.update(input_frames({},pivots,end,start) if pivots is not None else
-                   read_pivot_inputs(bmac_data_path,minute,end,start))
+        with telemetry.phase('revision_pivot_s'):
+            out.update(input_frames({},pivots,end,start) if pivots is not None else
+                       read_pivot_inputs(bmac_data_path,minute,end,start))
         return out
     raw = {}
     for kind in ('spot','swap'):
@@ -131,6 +135,7 @@ def read_arrow_tail(root, kind, run_time, end, start=None, indexed=False, column
             raise ValueError('Arrow symbol metadata differs from record batch count')
         columns=['candle_begin_time']+[c for c in (RAW_COLUMNS if columns is None else columns)
                                       if c != 'candle_begin_time' and c in reader.schema.names]
+        data_columns=[c for c in columns if not indexed or c!='candle_begin_time']
         for i,symbol in enumerate(names):
             batch=reader.get_batch(i)
             idx=utc_times(batch.column('candle_begin_time').to_numpy())
@@ -139,10 +144,11 @@ def read_arrow_tail(root, kind, run_time, end, start=None, indexed=False, column
             # for sparse histories. Revision checks keep their time window.
             left=max(0,right-tail) if tail is not None else idx.searchsorted(start)
             if right<=left:continue
-            frame=batch.select(columns).slice(int(left),int(right-left)).to_pandas(use_threads=False)
+            frame=batch.select(data_columns).slice(int(left),int(right-left)).to_pandas(use_threads=False)
             if indexed:
-                frame.pop('candle_begin_time')
-                frame.index=idx[left:right].rename('candle_begin_time')
+                # The time index already exists. Do not convert a duplicate
+                # timestamp column or retain its full-history backing buffer.
+                frame.index=idx[left:right].copy(deep=True).rename('candle_begin_time')
                 if not frame.index.is_unique:raise ValueError('Duplicate revision input time')
                 if 'first_candle_time' in frame:
                     frame['first_candle_time']=utc_times(frame.first_candle_time).to_numpy()

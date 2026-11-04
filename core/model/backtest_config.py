@@ -101,7 +101,7 @@ class BacktestConfig:
         self.input_mode = conf.get('input_mode', 'auto')
         self.section_state = conf.get('section_state', False)
         self.checkpoint_hours = conf.get('checkpoint_hours', 0)
-        if self.input_mode not in ('auto', 'full_pkl', 'arrow_strict'):
+        if self.input_mode not in ('auto', 'full_pkl', 'arrow_strict', 'arrow_full_strict'):
             raise ValueError('Unknown market input mode')
         if self.required_history_start is not None:
             pd.Timestamp(self.required_history_start)  # Validate explicit UTC-naive origin.
@@ -761,7 +761,7 @@ class MultiEquityBacktestConfig:
 
         return resampled_df.reset_index(inplace=False, drop=False)
 
-    def process_equities(self, run_time: datetime, hour_offset: str = '0m'):
+    def process_equities(self, run_time: datetime, hour_offset: str = '0m', *, inputs=None):
         """
         聚合资金曲线结果到系统中
         :param run_time: 运行时间
@@ -775,7 +775,8 @@ class MultiEquityBacktestConfig:
         for conf in configs:
             # ====处理资金曲线
             equity_path = conf.get_final_equity_path()
-            equity_df = pd.read_csv(equity_path, parse_dates=['candle_begin_time'], index_col=0)
+            equity_df = (pd.read_csv(equity_path, parse_dates=['candle_begin_time'], index_col=0)
+                         if inputs is None else inputs[conf.name]['equity'][['candle_begin_time','equity']].copy())
 
             # 1. 进行周期转换
             equity_df = self.transfer_equity_period(equity_df, hour_offset=hour_offset, unified_time=conf.unified_time)
@@ -806,13 +807,17 @@ class MultiEquityBacktestConfig:
                 self.end_time = end_time
 
             # ====处理选币仓位结果
-            spot_df = pd.read_pickle(conf.get_snapshot_folder() / f'ratio_spot.pkl')
-            swap_df = pd.read_pickle(conf.get_snapshot_folder() / f'ratio_swap.pkl')
+            if inputs is None:
+                spot_df = pd.read_pickle(conf.get_snapshot_folder() / f'ratio_spot.pkl')
+                swap_df = pd.read_pickle(conf.get_snapshot_folder() / f'ratio_swap.pkl')
+            else:
+                spot_df, swap_df = inputs[conf.name]['ratios']
 
             ratio_dfs.append((spot_df, swap_df))
 
             # 保存到本地
-            equity_df.to_pickle(get_file_path(self.factory.result_folder, conf.name, 'equity_df.pkl'))
+            if inputs is None:
+                equity_df.to_pickle(get_file_path(self.factory.result_folder, conf.name, 'equity_df.pkl'))
 
         # 需要对其所有资金曲线数据的长度
         for idx, df in enumerate(equity_dfs):
@@ -921,7 +926,7 @@ class MultiEquityBacktestConfig:
 
         return rebalance_df.round(self.pos_ratio_precision)
 
-    def calc_ratios(self):
+    def calc_ratios(self, *, timing_inputs=None):
         logger.info(f'开始计算选币仓位...')
         # 计算选币仓位，这里是按照持仓周期resample之后的index
         ratios = self.strategy.calc_ratios(self.equity_dfs)
@@ -964,7 +969,10 @@ class MultiEquityBacktestConfig:
         # 叠加一下再择时的杠杆（如有）
         for idx, conf in enumerate(self.factory.config_list):
             leverage_path = conf.get_result_folder() / '再择时动态杠杆.csv'
-            if leverage_path.exists():
+            if timing_inputs is not None and conf.name in timing_inputs:
+                leverages = timing_inputs[conf.name]
+                df_ratio[idx] = df_ratio[idx].mul(leverages.reindex(df_ratio.index).astype(float), axis=0)
+            elif timing_inputs is None and leverage_path.exists():
                 logger.debug(f'⌛️ 加载`{conf.name}`再择时动态杠杆: {leverage_path}')
                 leverages = pd.read_csv(leverage_path, index_col='candle_begin_time', encoding='utf-8-sig',
                                         parse_dates=['candle_begin_time'])

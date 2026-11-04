@@ -59,7 +59,8 @@ assert config.is_simulate=='dry_run'
     assert result.returncode==0,result.stdout+result.stderr
 
 
-def test_timeseries_pool_explicit_spawn_preserves_values(tmp_path,monkeypatch):
+@pytest.mark.parametrize('column_limit',[1,80])
+def test_timeseries_pool_explicit_spawn_preserves_values(tmp_path,monkeypatch,column_limit):
     import core.select_coin as select
     from concurrent.futures import ProcessPoolExecutor
     methods=[]
@@ -69,6 +70,7 @@ def test_timeseries_pool_explicit_spawn_preserves_values(tmp_path,monkeypatch):
         return ProcessPoolExecutor(*args,**kwargs)
     monkeypatch.setattr(select,'ProcessPoolExecutor',executor)
     monkeypatch.setattr(select,'job_num',2)
+    monkeypatch.setattr(select,'factor_col_limit',column_limit)
     monkeypatch.setattr(select,'get_snapshot_time',lambda _:None)
     def path(*parts,**kwargs):
         p=tmp_path.joinpath(*parts);p.parent.mkdir(parents=True,exist_ok=True);return p
@@ -78,12 +80,13 @@ def test_timeseries_pool_explicit_spawn_preserves_values(tmp_path,monkeypatch):
         is_spot=0,close=np.arange(6,dtype=float)+10,avg_price_1m=10.,symbol_spot='',symbol_swap=s,
         **{'是否交易':1})) for s in ('AAUSDT','BBUSDT')]
     pd.to_pickle(frames,path('data','cache','all_candle_df_list.pkl'))
-    conf=SimpleNamespace(name='deployment_probe',factor_col_name_list=['Bias (2)_2'],
-        factor_params_dict={'Bias (2)':[2]},precompute_factor_configs={},min_kline_num=0,
+    conf=SimpleNamespace(name='deployment_probe',factor_col_name_list=['Bias (2)_2','Bias (2)_3'],
+        factor_params_dict={'Bias (2)':[2,3]},precompute_factor_configs={},min_kline_num=0,
         has_section_factor=False,strategy_list=[],is_day_period=False,avg_price_col='avg_price_1m',
         section_depend_factor_col_name_list=[],max_hold_period='1H',lookback_days=0,incremental_lookback_hours=0)
     select.calc_factors(conf)
-    assert methods==['spawn']
-    output=pd.read_parquet(path('data','cache','factor_Bias (2)_2.parquet'))
-    expected=np.tile((frames[0].close/frames[0].close.rolling(2,min_periods=1).mean()-1).to_numpy(),2)
-    np.testing.assert_array_equal(output['Bias (2)_2'],expected)
+    assert methods==['spawn']*(2 if column_limit==1 else 1)
+    for n in (2,3):
+        output=pd.read_parquet(path('data','cache',f'factor_Bias (2)_{n}.parquet'))
+        expected=np.tile((frames[0].close/frames[0].close.rolling(n,min_periods=1).mean()-1).to_numpy(),2)
+        np.testing.assert_array_equal(output[f'Bias (2)_{n}'],expected)

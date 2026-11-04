@@ -14,8 +14,14 @@ import pandas as pd
 import polars as pl
 from numba import njit
 
+# 仅限制首次状态构建的临时表大小；不改变信号窗口、S3日期或恢复点数量。
+_INITIALIZATION_BLOCK_HOURS = 168
 
-@njit
+# 已对拍：可独立按声明的依赖列计算，不修改其他截面的输入。
+shared_input_safe = True
+
+
+@njit(cache=True)
 def compute_holdings_numba_pct(times, symbols, rank_pcts, n_symbols, prev_holdings,
                                select_pct=0.10, threshold_pct=0.9, active_start_time_id=0, _d=1):
     """
@@ -169,7 +175,7 @@ def signal(*args):
             & time_mask
             & (df['是否交易'] == 1)
     )
-    df_work = df[mask].copy()
+    df_work = df.loc[mask, get_state_input_columns(args[1])]
 
     # 过滤：去掉现货&合约域的现货
     con = (df_work['symbol_spot'] != '') & (df_work['symbol_swap'] != '') & (df_work['is_spot'] == 1)
@@ -293,6 +299,12 @@ def get_factor_list(n):
     ]
 
 
+def get_state_input_columns(params):
+    """状态计算的最小输入；不把无关价格和其他因子复制到Pandas。"""
+    return ['candle_begin_time', 'symbol', 'is_spot', 'symbol_spot', 'symbol_swap',
+            '是否交易', f'VolumeMaxBias_{params[0]}']
+
+
 def signal_with_state(df, params, factor_name, state=None):
     """Explicit continuation; the legacy full-replay entry remains unchanged.
 
@@ -313,8 +325,6 @@ def signal_with_state(df, params, factor_name, state=None):
     mask = (df[base].notna() & df['是否交易'].eq(1)
             & df.candle_begin_time.ge(pd.Timestamp(start)))
     mask &= ~((df.symbol_spot != '') & (df.symbol_swap != '') & df.is_spot.eq(1))
-    work = df.loc[mask].sort_values(['candle_begin_time','symbol','is_spot'],kind='stable').copy()
-    work['rank_pct'] = work.groupby('candle_begin_time')[base].rank(method='min', pct=True)
     if state is None:
         df = signal(df, params, factor_name)
         held, queue, initialized = [], [], False
@@ -322,32 +332,49 @@ def signal_with_state(df, params, factor_name, state=None):
         df = df.copy()
         old = state['output'].set_index(keys)[factor_name]
         df[factor_name] = old.reindex(pd.MultiIndex.from_frame(df[keys])).fillna(0).to_numpy()
-        work = work[work.candle_begin_time > state['cutoff']]
         held, queue, initialized = list(state['held']), list(state['ranks']), state['initialized']
-    groups = list(work.groupby('candle_begin_time', sort=True))
-    if groups and not initialized:
-        _, first = groups.pop(0)
+        mask &= df.candle_begin_time > state['cutoff']
+    # 首次的完整持仓已由signal算出；只需末尾排名重建有界队列，不再次分组整段历史。
+    eligible_times = pd.DatetimeIndex(df.loc[mask, 'candle_begin_time'].unique()).sort_values()
+    if state is None and len(eligible_times):
+        initialized = True
+        last_mask = mask & df.candle_begin_time.eq(eligible_times[-1])
+        selected = df.loc[last_mask & df[factor_name].eq(1), keys+[base]].sort_values(keys,kind='stable')
+        if len(eligible_times) == 1:
+            selected = selected.sort_values(base,kind='stable')
+        held = selected.symbol.tolist()
+        tail_times = eligible_times[1:][-(n % 11):] if n % 11 else eligible_times[:0]
+        mask &= df.candle_begin_time.isin(tail_times)
+    work = df.loc[mask, keys+[base]].sort_values(keys,kind='stable')
+    work['rank_pct'] = work.groupby('candle_begin_time')[base].rank(method='min', pct=True)
+    if len(work) and not initialized:
+        first_time = work.candle_begin_time.iloc[0]
+        first = work[work.candle_begin_time.eq(first_time)]
         chosen = first.sort_values('rank_pct',kind='stable').head(max(1,int(len(first)*enter)))
         held = chosen.symbol.tolist()
-        if state is not None:
-            df.loc[first.index, factor_name] = first.symbol.isin(held).astype(int)
+        df.loc[first.index, factor_name] = first.symbol.isin(held).astype(int)
         initialized = True
-    if groups:
-        active = pd.concat([g for _,g in groups])
+        work = work[work.candle_begin_time.ne(first_time)]
+    if len(work):
         if state is not None:
-            symbols = sorted(set(active.symbol) | set(held) | {s for r in queue for s in r.index})
+            symbols = sorted(set(work.symbol) | set(held) | {s for r in queue for s in r.index})
             codes = {s:i for i,s in enumerate(symbols)}
             history = [pd.DataFrame({'symbol':r.index, 'rank_pct':r.values}) for r in queue]
-            frames = history + [g[['symbol','rank_pct']] for _,g in groups]
-            times = np.concatenate([np.full(len(g),i,dtype=np.int64) for i,g in enumerate(frames)])
+            frames = history + [work[['symbol','rank_pct']]]
+            times = np.concatenate([np.full(len(g),i,dtype=np.int64) for i,g in enumerate(history)] +
+                                   [pd.factorize(work.candle_begin_time,sort=False)[0]+len(history)])
             data = pd.concat(frames)
             previous = np.array([0. if s in held else -1. for s in symbols])
             result = compute_holdings_numba_pct(times, data.symbol.map(codes).to_numpy(dtype=np.int32),
                 data.rank_pct.to_numpy(dtype=float), len(symbols), previous, enter, leave, len(history), n)
-            df.loc[active.index,factor_name] = result[sum(map(len,history)):]
-        last = groups[-1][1]
-        held = df.loc[last.index].loc[lambda x:x[factor_name].eq(1),'symbol'].tolist()
-        queue += [g.set_index('symbol').rank_pct for _,g in groups]
+            df.loc[work.index,factor_name] = result[sum(map(len,history)):]
+            last = work[work.candle_begin_time.eq(work.candle_begin_time.iloc[-1])]
+            held = df.loc[last.index].loc[lambda x:x[factor_name].eq(1),'symbol'].tolist()
+        # 只为最后n%11个有效截面创建Series，空截面不推进延迟队列。
+        if n % 11:
+            tail_times = work.candle_begin_time.drop_duplicates().iloc[-(n % 11):]
+            tail = work[work.candle_begin_time.isin(tail_times)]
+            queue += [g.set_index('symbol').rank_pct for _,g in tail.groupby('candle_begin_time',sort=True)]
     queue = queue[-(n % 11):] if n % 11 else []
     output = df[keys+[factor_name]].copy()
     if state is not None:
@@ -365,7 +392,9 @@ def signal_polars(lf: pl.LazyFrame, params: tuple, factor_name: str) -> pl.LazyF
     算子，采用 collect-once 模式。调用方（calc_cross_sections_polars）已将
     lf 的根节点设为内存 DataFrame，此处 collect() 无磁盘 I/O。
     """
-    df = lf.collect().to_pandas()
+    columns = get_state_input_columns(params)
+    if factor_name in lf.collect_schema().names():columns.append(factor_name)
+    df = lf.select(columns).collect().to_pandas()
     df = signal(df, params, factor_name)
     # pl.from_pandas 会把 pandas NaN → Polars null（语义更清晰）
     factor_series = pl.from_pandas(df[factor_name].rename(factor_name))
@@ -379,12 +408,33 @@ def signal_with_checkpoints(frame, params, column, state=None, hours=25):
     times = pd.DatetimeIndex(frame.candle_begin_time.unique()).sort_values()
     if not len(times):raise ValueError('Empty section input')
     points = dict(state.get('checkpoints', {})) if state is not None else {}
+    # 初次计算已保留原行索引，直接写回列，避免完整历史MultiIndex和四列拼接副本。
+    # 重复键/索引继续使用原按键对齐语义；此检查替代后面的全量drop_duplicates。
+    direct = state is None and column not in frame and frame.index.is_unique and not frame.duplicated(keys).any()
+    result = frame.copy(deep=False)
+    if direct:result[column] = 0
     outputs = []
     if state is None:
         prefix = times[:max(1,len(times)-hours)]
-        initial, state = signal_with_state(frame[frame.candle_begin_time <= prefix[-1]].copy(), params, column)
-        outputs.append(initial[keys+[column]])
-        del initial
+        if direct:
+            # 按完整时间截面分块，只跨块传递held/ranks；不重复计算时序因子。
+            # 排序的是整数行号，避免对整张Pandas宽表排序/复制。
+            codes = times.get_indexer(frame.candle_begin_time)
+            order = np.argsort(codes,kind='stable')
+            bounds = np.searchsorted(codes[order], np.arange(len(times)+1))
+            for start in range(0,len(prefix),_INITIALIZATION_BLOCK_HOURS):
+                stop = min(start+_INITIALIZATION_BLOCK_HOURS,len(prefix))
+                part = frame.iloc[order[bounds[start]:bounds[stop]]].copy(deep=False)
+                thin = None if state is None else dict(state,output=state['output'].iloc[:0])
+                initial, state = signal_with_state(part,params,column,thin)
+                result.loc[initial.index,column] = initial[column].to_numpy()
+            del part, initial, codes, order, bounds, thin
+            outputs.append(result.loc[result.candle_begin_time.between(
+                times[-1]-pd.Timedelta(hours=4049),prefix[-1]),keys+[column]])
+        else:
+            initial, state = signal_with_state(frame.loc[frame.candle_begin_time <= prefix[-1]].copy(deep=False), params, column)
+            outputs.append(initial[keys+[column]])
+            del initial
         if len(times) <= hours:
             points[state['cutoff']] = {k:v for k,v in state.items() if k not in ('output','checkpoints')}
     else:
@@ -396,11 +446,66 @@ def signal_with_checkpoints(frame, params, column, state=None, hours=25):
         thin = {k:v for k,v in state.items() if k != 'checkpoints'}
         thin['output'] = empty
         _, state = signal_with_state(frame[frame.candle_begin_time == time].copy(), params, column, thin)
+        if direct:result.loc[state['output'].index, column] = state['output'][column].to_numpy()
         outputs.append(state['output'])
         points[time] = {k:v for k,v in state.items() if k not in ('output','checkpoints')}
-    output = pd.concat(outputs).drop_duplicates(keys,keep='last')
-    retained = output[output.candle_begin_time >= state['cutoff']-pd.Timedelta(hours=4049)]
+    if direct:
+        retained = pd.concat(outputs)
+    else:
+        output = pd.concat(outputs).drop_duplicates(keys,keep='last')
+        retained = output[output.candle_begin_time >= state['cutoff']-pd.Timedelta(hours=4049)]
+        result[column] = output.set_index(keys)[column].reindex(pd.MultiIndex.from_frame(frame[keys])).fillna(0).to_numpy()
     state = dict(state, output=retained, checkpoints={t:points[t] for t in sorted(points)[-hours:]})
-    result = frame.copy()
-    result[column] = output.set_index(keys)[column].reindex(pd.MultiIndex.from_frame(frame[keys])).fillna(0).to_numpy()
     return result, state
+
+
+def signal_block(frame, params, column, state=None, *, checkpoint_start=None, checkpoint_hours=0):
+    """Advance S3 on a complete time block, recording only the final restore range.
+
+    The original kernels and snapshot schema remain authoritative. Earlier blocks
+    run once in bulk; only the final checkpoint hours use hourly captures.
+    """
+    source = frame.select(get_state_input_columns(params)).to_pandas()
+    if '_row' in frame:
+        source.index = pd.Index(frame['_row'].to_numpy().astype('int64'))
+    cached = None
+    if state is not None:
+        if state['version'] != 1 or tuple(state['params']) != tuple(params):
+            raise ValueError('Section state parameters/version differ')
+        keys = ['candle_begin_time', 'symbol', 'is_spot']
+        past = source[source.candle_begin_time <= state['cutoff']]
+        if len(past):
+            cached = pd.DataFrame({column: state['output'].set_index(keys)[column].reindex(
+                pd.MultiIndex.from_frame(past[keys])).fillna(0).to_numpy()}, index=past.index)
+            source = source[source.candle_begin_time > state['cutoff']]
+        if source.empty:
+            return frame.with_columns(pl.from_pandas(cached[column]).cast(pl.Int64)), state
+    if checkpoint_start is None or not checkpoint_hours:
+        result, state = signal_with_state(source, params, column, state)
+    else:
+        prefix = source[source.candle_begin_time < checkpoint_start]
+        recent = source[source.candle_begin_time >= checkpoint_start]
+        pieces = []
+        if len(prefix):
+            result, state = signal_with_state(prefix, params, column, state)
+            pieces.append(result[[column]])
+        if len(recent):
+            result, state = signal_with_checkpoints(recent, params, column, state, checkpoint_hours)
+            pieces.append(result[[column]])
+        result = pd.concat(pieces).sort_index()
+    if cached is not None:
+        result = pd.concat([cached, result[[column]]]).sort_index()
+    return frame.with_columns(pl.from_pandas(result[column].rename(column)).cast(pl.Int64)), state
+
+
+def finalize_block_state(state, *, checkpoint_start=None, checkpoint_hours=0):
+    """Retain the original S3 output index/order in a freshly built snapshot."""
+    if checkpoint_start is None:
+        return state
+    # Whole-history S3 stores an input-ordered prefix, then hourly checkpoint
+    # outputs. This is S3's schema, not a requirement on other section factors.
+    output = state['output']
+    past = output.candle_begin_time < checkpoint_start
+    output = pd.concat([output.loc[past].sort_index(kind='stable'),
+                        output.loc[~past].sort_values('candle_begin_time', kind='stable')])
+    return dict(state, output=output)

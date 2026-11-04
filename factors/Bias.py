@@ -21,3 +21,15 @@ def signal(*args):
     df[factor_name] = bias.pct_change(n)
 
     return df
+
+
+def signal_multi_params(df, param_list) -> dict:
+    ret = dict()
+    if not param_list:
+        return ret
+    close = df['close']
+    for param in param_list:
+        ma = close.rolling(param, min_periods=1).mean()
+        bias = close / ma
+        ret[param] = bias.pct_change(param)
+    return ret

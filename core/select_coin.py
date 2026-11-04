@@ -125,6 +125,16 @@ def calc_factors_by_candle(candle_df, conf: BacktestConfig, factor_col_name_list
             continue  # 当该因子不需要计算的时候直接返回
 
         declared = precompute_set.get(factor_name, set())
+        if getattr(conf, 'input_mode', 'auto') == 'arrow_full_strict':
+            for param in factor_param_list:
+                if param in declared:
+                    col = f'{factor_name}_{param}'
+                    if col not in candle_df:
+                        raise ValueError(f'Full Arrow precomputed column removed before calculation: {col}')
+                    factor_series_dict[col] = candle_df[col].values
+            factor_param_list = [p for p in factor_param_list if p not in declared]
+            if not factor_param_list:
+                continue
         needed_cols = [f'{factor_name}_{p}' for p in factor_param_list]
         use_precompute = (
             bool(declared)
@@ -263,12 +273,111 @@ def process_candle_df_return_polars(candle_df: pd.DataFrame, conf: BacktestConfi
     return idx, pl.from_pandas(factor_df)
 
 
-def calc_factors(conf: BacktestConfig):
+def iter_candle_descriptors(conf,run_time):
+    """Small immutable tasks: path/batch/market, never a full-market frame."""
+    import json
+    import pyarrow as pa
+    import config
+    from core.utils import datatools as data
+    from core.utils.functions import is_trade_symbol
+    from core.utils.arrow_reader import arrow_snapshot_path,ArrowReadError
+    required={f'{name}_{p}' for name,params in conf.precompute_factor_configs.items() for p in params}
+    for kind in ('swap','spot'):
+        if {kind,'mix'}.isdisjoint(conf.select_scope_set) and {kind}.isdisjoint(conf.order_first_set):continue
+        path=arrow_snapshot_path(config.bmac_data_path,kind,run_time)
+        allowed=set(data.get_dummy_client().get_market_info(kind).get('symbol_list',[]))
+        with pa.memory_map(str(path),'r') as source:
+            reader=pa.ipc.open_file(source)
+            if getattr(conf, 'input_mode', 'auto') == 'arrow_full_strict' and (reader.schema.metadata or {}).get(b'full_history')!=b'1':raise ArrowReadError('Full history Arrow required')
+            if required-set(reader.schema.names):raise ArrowReadError('Missing precomputed columns')
+            symbols=json.loads(reader.schema.metadata[b'symbols'])
+            if len(symbols)!=reader.num_record_batches:raise ArrowReadError('Arrow symbol count differs')
+            for index,symbol in enumerate(symbols):
+                if (not allowed or symbol in allowed) and is_trade_symbol(symbol,conf.black_list,conf.white_list):
+                    yield str(path),index,kind
+
+
+def process_descriptor(descriptor,conf,columns,index,run_time):
+    """Executed in the existing factor worker; preprocessing math is unchanged."""
+    import pyarrow as pa
+    from core.utils import datatools as data
+    path,batch,kind=descriptor
+    with pa.memory_map(path,'r') as source:
+        table=pa.ipc.open_file(source).get_batch(batch)
+        if getattr(conf, 'input_mode', 'auto') != 'arrow_full_strict':
+            limit=max(5000, conf.get_kline_num()+conf.min_kline_num+1)
+            table=table.slice(max(0, table.num_rows-limit))
+        frame=table.to_pandas(use_threads=False)
+    _,frame=data.read_and_merge_bmac_data(conf,kind,frame,run_time,align_fn=data.align_spot_swap_mapping_fast)
+    if frame is None or frame.empty:return index,pl.DataFrame()
+    return _factor_symbol(frame,conf,columns,index)
+
+
+
+def _factor_symbol(frame, conf, columns, index):
+    """Keep legacy parameter shards independent, including mutable factor hooks."""
+    limit = len(columns) if getattr(conf, 'input_mode', 'auto') == 'arrow_full_strict' else factor_col_limit
+    limit = max(1, limit)
+    result = None
+    for start in range(0, max(1, len(columns)), limit):
+        names = columns[start:start+limit]
+        source = frame.copy(deep=True) if len(columns) > limit else frame
+        _, part = process_candle_df_return_polars(source, conf, names, index)
+        if result is None:
+            result = part
+        elif part.height != result.height:
+            raise ValueError('Factor shards changed row count')
+        elif part.height:
+            result = result.with_columns(part.select([name for name in names if name in part.columns]))
+    return index, result
+
+
+def _calc_factor_blocks(conf, run_time, store):
+    """Shared producer: bounded coin tasks, one conversion, downstream time blocks."""
+    import config
+    from core.utils.functions import iter_preprocessed_candles
+    from core.utils.factor_data import ordered_results
+    strict = getattr(conf, 'input_mode', 'auto') in ('arrow_full_strict', 'arrow_strict')
+    source = iter_candle_descriptors(conf, run_time) if strict else iter_preprocessed_candles(conf, run_time)
+    function = process_descriptor if strict else _factor_symbol
+    columns = conf.factor_col_name_list
+    size = getattr(config, 'factor_symbol_batch_size', 32)
+    if size < 1:
+        raise ValueError('factor_symbol_batch_size must be positive')
+    args = ((frame, conf, columns, index, run_time) if strict else (frame, conf, columns, index)
+            for index, frame in enumerate(source))
+    gate = getattr(config, 'compute_gate', None)
+    started = time.perf_counter()
+    batch, shard = [], 0
+    with ProcessPoolExecutor(max_workers=job_num, mp_context=multiprocessing.get_context('spawn')) as pool:
+        for _, result in ordered_results(pool, function, args, max_pending=2*job_num, before_submit=gate):
+            if result.height:
+                batch.append(result)
+            del result
+            if len(batch) == size:
+                store.append(pl.concat(batch), shard)
+                batch.clear()
+                shard += 1
+        if batch:
+            store.append(pl.concat(batch), shard)
+            batch.clear()
+    if not store.rows:
+        raise ValueError('Direct factor output is empty')
+    logger.info(f'FACTOR_BLOCKS rows={store.rows} elapsed={time.perf_counter()-started:.3f}s (read/compute/write)')
+    return store
+
+
+def calc_factors(conf: BacktestConfig, *, run_time=None, store=None):
     """
     选币因子计算，考虑到大因子回测的场景，我们引入chunk的概念，会把所有factor切成多分，然后分别计算
     :param conf:       账户信息
     :return:
     """
+    if store is not None:
+        return _calc_factor_blocks(conf, run_time, store)
+    if getattr(conf, 'input_mode', 'auto') == 'arrow_full_strict':
+        from tools.streaming_factors import calc_factors as calc_streaming
+        return calc_streaming(conf)
     # ====================================================================================================
     # 1. ** k线数据整理及参数准备 **
     # - is_use_spot: True的时候，使用现货数据和合约数据;
@@ -309,12 +418,13 @@ def calc_factors(conf: BacktestConfig):
         # Polars may already own native threads: explicit spawn is safe on Linux
         # as well as Windows and retains each worker's normal configuration load.
         with ProcessPoolExecutor(max_workers=job_num, mp_context=multiprocessing.get_context('spawn')) as executor:
-            futures = [executor.submit(
-                process_candle_df_return_polars, candle_df, conf, factor_col_name_list, candle_idx
-            ) for candle_idx, candle_df in enumerate(candle_df_list)]
-
-            for future in tqdm(as_completed(futures), total=len(candle_df_list), desc='🧮 时序因子计算'):
-                idx, factor_pl = future.result()
+            from tools.bounded_pool import iter_results
+            arguments = ((df, conf, factor_col_name_list, idx) for idx, df in enumerate(candle_df_list))
+            import config
+            gate = getattr(config, 'compute_gate', None)
+            results = iter_results(executor, process_candle_df_return_polars, arguments,
+                                   max_pending=job_num if gate else 2*job_num, before_submit=gate)
+            for idx, factor_pl in tqdm(results, total=len(candle_df_list), desc='🧮 时序因子计算'):
                 all_factor_pl_list[idx] = factor_pl
         t_multiprocess = time.time() - t_mp_start
 
@@ -443,12 +553,60 @@ def load_all_factors(conf: BacktestConfig):
     return factor_df.to_pandas(), min_candle_time
 
 
-def calc_cross_sections(conf: BacktestConfig):
+def _calc_section_blocks(conf, store):
+    """Read each section family's dependencies once; keep legacy mutation local.
+
+    Native and pandas adapters are selected per family. The pandas parameter
+    loop intentionally carries changes to base columns into the next parameter,
+    just like calc_cross_sections_pandas; families never share mutable frames.
+    """
+    import config
+    from core.utils.section_state import run_section
+    gate = getattr(config, 'compute_gate', None)
+    for name, parameters in conf.section_params_dict.items():
+        factor = FactorHub.get_by_name(name)
+        parameters = [p for p in parameters if f'{name}_{p}' in conf.factor_col_name_list]
+        if not parameters:
+            continue
+        if hasattr(factor, 'signal_block'):
+            from core.utils.section_state import run_section_blocks
+            for params in parameters:
+                dependencies = [f'{n}_{p}' for n, p in factor.get_factor_list(params)]
+                inputs = factor.get_state_input_columns(params) if hasattr(factor, 'get_state_input_columns') else [*KLINE_COLS, *dependencies]
+                run_section_blocks(conf, factor, store, inputs, params, f'{name}_{params}')
+            continue
+        if gate:
+            gate()
+        dependencies = list(dict.fromkeys(f'{n}_{p}' for param in parameters
+                                          for n, p in factor.get_factor_list(param)))
+        base = list(dict.fromkeys([*KLINE_COLS, *dependencies]))
+        frame = store.read_history(['_row', *base])
+        native = hasattr(factor, 'signal_polars')
+        source = frame.lazy() if native else frame.select(base).to_pandas()
+        for params in parameters:
+            column = f'{name}_{params}'
+            result = run_section(conf, factor, source, params, column, polars=native)
+            output = result.collect() if native else pl.from_pandas(result)
+            keys = ['_row'] if native else ['candle_begin_time', 'symbol']
+            if len(output) != len(frame) or not output.select(keys).equals(frame.select(keys)):
+                raise ValueError('Section output row order differs from dependencies')
+            pieces = store._partition(frame.select('_row', 'candle_begin_time').with_columns(output[column]))
+            store.add_section(column, {key[0]: part.select('_row', column) for key, part in pieces.items()})
+            # Preserve side effects within a family, but drop only its output.
+            source = result.select(['_row', *base]) if native else result[base]
+            del pieces, output, result
+        del source, frame
+    return store.sections, store.section_columns
+
+
+def calc_cross_sections(conf: BacktestConfig, *, store=None):
     """
     截面因子计算，自动选择 Polars 或 Pandas 路径
     :param conf:       账户信息
     :return:
     """
+    if store is not None:
+        return _calc_section_blocks(conf, store)
     section_params_dict = conf.section_params_dict
     # 如果没有配置截面因子，那么直接跳过后续
     if not section_params_dict:
@@ -641,6 +799,128 @@ def calc_cross_sections_pandas(conf: BacktestConfig):
 # - select_coins: 选币，循环策略调用 `select_coins_by_strategy`
 # ======================================================================================
 # region 选币相关函数
+def _selection_input_filters(strategy):
+    """Original eligibility predicate, shared by whole and block preparation."""
+    select_scope = strategy.select_scope
+    order_first = strategy.order_first
+    filters = [pl.col('是否交易') == 1]
+
+    if select_scope == 'spot':
+        filters.append(pl.col('is_spot') == 1)
+    elif select_scope == 'swap':
+        filters.append(pl.col('is_spot') == 0)
+    else:  # mix 混合
+        both_not_null = (pl.col('symbol_spot') != '') & (pl.col('symbol_swap') != '')
+        order_first_symbol = pl.col('is_spot') == (1 if order_first == 'spot' else 0)
+        filters.append(~both_not_null | order_first_symbol)
+
+    for col in strategy.factor_columns:
+        filters.append(pl.col(col).is_not_null())
+    filters.append(pl.col('symbol').is_not_null())
+
+    return pl.all_horizontal(filters)
+
+
+def _mixed_selection_history(store, strategy, start):
+    """Preserve full-history tie order without sorting/copying a wide panel.
+
+    Apply exactly the original eligibility predicate before sorting. Sorting
+    narrow source row numbers reproduces the legacy source order and time/symbol
+    permutation, including unmapped duplicate symbols. Gather one column at a
+    time and drop its old buffer immediately; no second full panel stays alive.
+    """
+    columns = list(dict.fromkeys([*KLINE_COLS, *strategy.factor_columns]))
+    predicate = _selection_input_filters(strategy)
+    if start is not None:
+        predicate &= pl.col('candle_begin_time') >= start
+    parts = []
+    for key in store.block_keys():
+        parts.append(store.read_block(key, ['_row', *columns]).filter(predicate))
+    frame = pl.concat(parts)
+    del parts
+    order = (frame.select('_row', 'candle_begin_time', 'symbol').with_row_index('_source')
+             .sort('_row').sort(['candle_begin_time', 'symbol'])['_source'])
+    frame.drop_in_place('_row')
+    return pl.DataFrame([frame.drop_in_place(column).gather(order) for column in columns])
+
+
+def select_factor_blocks(configs, store, directory, *, workers, start=None):
+    """Sort narrow keys once, project bounded strategy groups, spill small results.
+
+    Input blocks always contain a complete market. This entry is restricted to
+    standard stateless selection; custom/entry_exit callers retain the legacy
+    full-history entry. The caller owns final selection paths and store cleanup.
+    """
+    from pathlib import Path
+    from concurrent.futures import ThreadPoolExecutor
+    import config
+    jobs = [(i, j, conf, strategy) for i, conf in enumerate(configs)
+            for j, strategy in enumerate(conf.strategy_list)]
+    if any(getattr(s, 'use_custom_func', False) or getattr(s, 'select_mode', 'standard') == 'entry_exit'
+           for _, _, _, s in jobs):
+        raise ValueError('Block selection requires standard strategies')
+    if workers < 1:
+        raise ValueError('workers must be positive')
+    directory = Path(directory)
+    directory.mkdir(exist_ok=False)
+    paths = {i: {j: [] for j in range(len(conf.strategy_list))} for i, conf in enumerate(configs)}
+    # Mixed markets can retain both rows for the same timestamp/symbol when
+    # exchange mappings are absent. The original unstable sorts then depend on
+    # the full input length; time blocks cannot preserve that physical order.
+    # Keep this selection on its original full-history input, one strategy at a
+    # time, while still sharing factor/section computation with other strategies.
+    mixed = [job for job in jobs if job[3].select_scope == 'mix']
+    jobs = [job for job in jobs if job[3].select_scope != 'mix']
+    for i, j, conf, strategy in mixed:
+        frame = _mixed_selection_history(store, strategy, start)
+        result = process_strategy_thread(strategy, conf.get_result_folder(), False, conf.unified_time,
+            factor_source=frame.lazy(), return_result=True, source_sorted=True)
+        if result is not None and len(result):
+            target = directory/f'{i}-{j}-0.ipc'
+            result.write_ipc(target, compression='lz4')
+            paths[i][j].append(target)
+        del frame, result
+        gc.collect()
+    if not jobs:
+        return paths
+    # Adjacent groups reuse similar factors without keeping every strategy's
+    # union resident. Task width and native thread budget remain independent.
+    ordered = sorted(jobs, key=lambda job: tuple(sorted(job[3].factor_columns)))
+    # Full-market trials: 16 jobs amortize projection without retaining all 43.
+    group_size = 16
+    groups = [ordered[i:i+group_size] for i in range(0, len(ordered), group_size)]
+    gate = getattr(config, 'compute_gate', None)
+    first_key = None if start is None else (pd.Timestamp(start).value - store.minute*60*10**9)//(store.hours*3600*10**9)
+    with ThreadPoolExecutor(max_workers=workers) as pool:
+        for number, key in enumerate(store.block_keys()):
+            if first_key is not None and key < first_key:
+                continue
+            if gate:
+                gate()
+            order = store.row_order(key, start=start) if start is not None else store.row_order(key)
+            if not len(order):
+                continue
+            for group in groups:
+                columns = list(dict.fromkeys([*KLINE_COLS, *[c for _, _, _, s in group for c in s.factor_columns]]))
+                frame = store.read_block(key, columns, order=order)
+                def compute(job):
+                    i, j, conf, strategy = job
+                    result = process_strategy_thread(strategy, conf.get_result_folder(), False, conf.unified_time,
+                        factor_source=frame.lazy(), return_result=True, source_sorted=True)
+                    if result is None or not len(result):
+                        return i, j, None
+                    target = directory/f'{i}-{j}-{number}.ipc'
+                    result.write_ipc(target, compression='lz4')
+                    return i, j, target
+                for i, j, path in pool.map(compute, group):
+                    if path is not None:
+                        paths[i][j].append(path)
+                del frame, compute
+                gc.collect()
+            del order
+    return paths
+
+
 def calc_select_factor_rank(lf: pl.LazyFrame, factor_column: str = '因子', ascending: bool = True) -> pl.LazyFrame:
     """
     计算因子排名 (LazyFrame 版本)
@@ -873,9 +1153,12 @@ def preload_all_factor_data(strategy_list: List[StrategyConfig]) -> None:
     _GLOBAL_FACTOR_LF = merged_df.lazy()
 
 
-def process_strategy_thread(stg_conf: StrategyConfig, result_folder: Path, is_silent=False, unified_time='2017-01-01'):
+def process_strategy_thread(stg_conf: StrategyConfig, result_folder: Path, is_silent=False, unified_time='2017-01-01',
+                            *, factor_source=None, return_result=False, source_sorted=False):
     """
     多线程版本的策略处理函数（使用全局 LazyFrame 零拷贝列投影）
+    factor_source/return_result仅供工具层分块输入及收集；默认保持原全量读取、落盘行为。
+    source_sorted仅用于调用方已按candle_begin_time、symbol排序的内存块；过滤保持该顺序。
     """
     import logging
     global _GLOBAL_FACTOR_LF
@@ -890,25 +1173,13 @@ def process_strategy_thread(stg_conf: StrategyConfig, result_folder: Path, is_si
     select_scope = stg_conf.select_scope
     order_first = stg_conf.order_first
 
-    filters = [pl.col('是否交易') == 1]
+    filters = _selection_input_filters(stg_conf)
 
-    if select_scope == 'spot':
-        filters.append(pl.col('is_spot') == 1)
-    elif select_scope == 'swap':
-        filters.append(pl.col('is_spot') == 0)
-    else:  # mix 混合
-        both_not_null = (pl.col('symbol_spot') != '') & (pl.col('symbol_swap') != '')
-        order_first_symbol = pl.col('is_spot') == (1 if order_first == 'spot' else 0)
-        filters.append(~both_not_null | order_first_symbol)
-
-    for col in stg_conf.factor_columns:
-        filters.append(pl.col(col).is_not_null())
-    filters.append(pl.col('symbol').is_not_null())
-
-    factor_lf = (_GLOBAL_FACTOR_LF
+    factor_lf = ((_GLOBAL_FACTOR_LF if factor_source is None else factor_source)
                  .select(required_cols)
-                 .filter(pl.all_horizontal(filters))
-                 .sort(['candle_begin_time', 'symbol']))
+                 .filter(filters))
+    if factor_source is None or not source_sorted:
+        factor_lf = factor_lf.sort(['candle_begin_time', 'symbol'])
 
     logger.debug(f'[{stg_conf.name}] 选币数据准备完成，消耗时间：{time.time() - s:.2f}s')
 
@@ -918,6 +1189,7 @@ def process_strategy_thread(stg_conf: StrategyConfig, result_folder: Path, is_si
     stg_select_result = result_folder / f'{stg_conf.get_fullname(as_folder_name=True)}.pkl'
 
     if result_df.is_empty():
+        if return_result:return None
         pd.DataFrame(columns=SELECT_RES_COLS).to_pickle(stg_select_result)
         logger.setLevel(logging.DEBUG)
         return
@@ -939,6 +1211,7 @@ def process_strategy_thread(stg_conf: StrategyConfig, result_folder: Path, is_si
     result_df = result_df.filter(pl.col('offset').is_in(stg_conf.offset_list))
 
     if result_df.is_empty():
+        if return_result:return None
         pd.DataFrame(columns=SELECT_RES_COLS).to_pickle(stg_select_result)
         logger.setLevel(logging.DEBUG)
         return
@@ -970,6 +1243,7 @@ def process_strategy_thread(stg_conf: StrategyConfig, result_folder: Path, is_si
         pl.col('order_first').cast(pl.Categorical),
     ])
 
+    if return_result:return result_df.select(SELECT_RES_COLS)
     result_df.select(SELECT_RES_COLS).to_pandas().to_pickle(stg_select_result)
 
     logger.debug(f'[{strategy_name}] 耗时: {(time.time() - s):.2f}s')
@@ -1008,7 +1282,9 @@ def select_coin_with_conf(conf: BacktestConfig, multi_process=True, silent=True)
 
     # 多线程模式（推荐）：预加载数据 + 线程池共享（零拷贝列投影）
     try:
-        with ThreadPoolExecutor(max_workers=min(max(job_num // 2, 1), 10)) as executor:
+        import config
+        inner_threads = getattr(config, 'select_coin_inner_threads', min(max(job_num // 2, 1), 10))
+        with ThreadPoolExecutor(max_workers=inner_threads) as executor:
             futures = [
                 executor.submit(process_strategy_thread, stg, result_folder, silent, conf.unified_time)
                 for stg in conf.strategy_list
@@ -1081,18 +1357,18 @@ def transfer_swap(select_coin, df_swap):
     return select_coin
 
 
-def concat_select_results(conf: BacktestConfig) -> None:
+def concat_select_results(conf: BacktestConfig, *, frames=None, persist_result=True):
     """
     聚合策略选币结果，形成综合选币结果
     :param conf:
     :return:
     """
     # 如果是纯多头现货模式，那么就不转换合约数据，只下现货单
-    all_select_result_df_list = []  # 全量选币结果
+    all_select_result_df_list = list(frames) if frames is not None else []
     result_folder = conf.get_result_folder()
     select_result_path = result_folder / '选币结果.pkl'
 
-    for strategy in conf.strategy_list:
+    for strategy in conf.strategy_list if frames is None else ():
         stg_select_result = result_folder / f'{strategy.get_fullname(as_folder_name=True)}.pkl'
         # 如果文件不存在，就跳过
         if not os.path.exists(stg_select_result):
@@ -1108,8 +1384,9 @@ def concat_select_results(conf: BacktestConfig) -> None:
 
     # 如果没有任何策略的选币结果，就直接返回
     if not all_select_result_df_list:
-        pd.DataFrame(columns=SELECT_RES_COLS).to_pickle(select_result_path)
-        return None
+        empty = pd.DataFrame(columns=SELECT_RES_COLS)
+        if persist_result:empty.to_pickle(select_result_path)
+        return None if frames is None else empty
 
     # 聚合选币结果
     all_select_result_df = pd.concat(all_select_result_df_list, ignore_index=True, copy=False)
@@ -1117,14 +1394,14 @@ def concat_select_results(conf: BacktestConfig) -> None:
     gc.collect()
 
     if all_select_result_df.empty:
-        all_select_result_df.to_pickle(select_result_path)
-        return None
+        if persist_result:all_select_result_df.to_pickle(select_result_path)
+        return None if frames is None else all_select_result_df
 
     if not conf.has_snapshot:
         all_stg_select_first_time = all_select_result_df.groupby('strategy')['candle_begin_time'].first().max()
         all_select_result_df = all_select_result_df[all_select_result_df['candle_begin_time'] >= all_stg_select_first_time]
-    all_select_result_df.to_pickle(select_result_path)
-    if conf.lookback_days:
+    if persist_result:all_select_result_df.to_pickle(select_result_path)
+    if conf.lookback_days and persist_result:
         all_select_result_df[
             all_select_result_df['candle_begin_time'] > all_select_result_df['candle_begin_time'].max() - pd.Timedelta(days=conf.lookback_days)
         ].to_csv(result_folder / '选币结果.csv', encoding='utf-8-sig', index=False)
@@ -1146,22 +1423,22 @@ def concat_select_results(conf: BacktestConfig) -> None:
     return all_select_result_df
 
 
-def transfer_spot_to_swap(conf: BacktestConfig) -> pd.DataFrame:
+def transfer_spot_to_swap(conf: BacktestConfig, *, selection=None, market=None) -> pd.DataFrame:
     """
     将现货策略的选币结果，转换成对应的合约策略的选币结果，来节省手续费
     """
     select_result_path = conf.get_result_folder() / '选币结果.pkl'
-    if not select_result_path.exists():
+    if selection is None and not select_result_path.exists():
         logger.warning('没有生成选币文件，直接返回')
         return pd.DataFrame(columns=SELECT_RES_COLS)
-    all_select_result_df = pd.read_pickle(select_result_path)
+    all_select_result_df = pd.read_pickle(select_result_path) if selection is None else selection
 
     # 不是纯多，且是现货策略
     # 筛选一下选币结果，判断其中的 优先下单标记是什么
     cond1 = all_select_result_df['order_first'] == 'swap'  # 优先下单合约
     cond2 = all_select_result_df['is_spot'] == 1  # 当前币种是现货
     if not all_select_result_df[cond1 & cond2].empty:
-        all_kline_df = pd.read_parquet(get_file_path(*ALL_KLINE_PATH_TUPLE))
+        all_kline_df = pd.read_parquet(get_file_path(*ALL_KLINE_PATH_TUPLE)) if market is None else market
         # 将含有现货的币种，替换掉其中close价格
         df_swap = all_kline_df[(all_kline_df['is_spot'] == 0) & (all_kline_df['symbol_spot'] != '')]
         no_transfer_df = all_select_result_df[~(cond1 & cond2)]
@@ -1169,7 +1446,7 @@ def transfer_spot_to_swap(conf: BacktestConfig) -> pd.DataFrame:
         all_select_result_df = pd.concat([no_transfer_df, all_select_result_df], ignore_index=True)
 
     # 删除选币文件，如果要保留可以注释
-    if not conf.is_reserved('select'):
+    if selection is None and not conf.is_reserved('select'):
         select_result_path.unlink()
 
     return all_select_result_df

@@ -15,6 +15,10 @@ from types import SimpleNamespace
 ROOT=Path(__file__).resolve().parents[3]
 sys.path.insert(0,str(ROOT))
 
+# Before pandas/Polars imports and before fork/spawn: descendants inherit limits.
+from tools.robust40.resources import configure_process
+configure_process(sys.argv[1] if len(sys.argv) > 1 else '')
+
 
 def configure_output():
     os.environ['PYTHONIOENCODING']='utf-8'
@@ -25,7 +29,7 @@ def configure_output():
 def apply_profile(config, origin, snapshot, initializing):
     import pandas as pd
     from tools.robust40.server import configured_s3, cutoff
-    from tools.robust40.initialization_config import LIVE_BARS, MODEL_JOB_NUM, CHECKPOINT_POINTS
+    from tools.robust40.initialization_config import LIVE_BARS, MODEL_JOB_NUM, CHECKPOINT_POINTS, INITIALIZATION, RESOURCE_POLICY
     from tools.robust40.warmup import account_minute
     configured,_=configured_s3({'strategy_pool':config.strategy_pool},account_minute(config.account_config))
     if cutoff(origin)!=configured:raise ValueError('S3 saved/profile origin differs from configured date; rebuild required')
@@ -42,7 +46,7 @@ def apply_profile(config, origin, snapshot, initializing):
             return tuple(parts) if isinstance(value,tuple) else parts
         return value
     config.strategy_pool=resolve(config.strategy_pool)
-    config.input_mode='full_pkl' if initializing else 'arrow_strict'
+    config.input_mode='arrow_full_strict' if initializing else 'arrow_strict'
     config.section_state=True
     config.checkpoint_hours=CHECKPOINT_POINTS
     config.required_history_start=None
@@ -54,7 +58,23 @@ def apply_profile(config, origin, snapshot, initializing):
                    bootstrap_path=str(snapshot/'model/unused_bootstrap.pkl'))
     # Applied before core imports, including each Windows-spawned factor worker.
     config.job_num=MODEL_JOB_NUM
+    config.backtest_job_num=min(MODEL_JOB_NUM, RESOURCE_POLICY[
+        'initialization_backtest_workers' if initializing else 'trading_backtest_workers'])
+    config.select_coin_inner_threads=1
+    from tools.robust40.resources import wait_for_window, phase
+    config.compute_gate=wait_for_window if initializing else None
+    config.compute_phase=phase if initializing else None
+    config.selection_pool_runner=None
+    if initializing and INITIALIZATION['selection_block_hours'] > 0:
+        from tools.streaming_selection import run_pool
+        config.selection_pool_runner=run_pool
+        # 共享一块输入，不复制整个策略池；转换/读取仍受MODEL总上限约束。
+        config.select_coin_inner_threads=min(2,MODEL_JOB_NUM)
     if initializing:
+        config.selection_block_hours=INITIALIZATION['selection_block_hours']
+        config.factor_symbol_batch_size=INITIALIZATION['factor_symbol_batch_size']
+        config.factor_col_limit=INITIALIZATION['factor_col_limit']
+        config.cross_section_chunk_size=INITIALIZATION['cross_section_chunk_size']
         config.is_debug=True;config.is_simulate='debug'
         config.error_webhook_url=''
 
@@ -98,7 +118,45 @@ if os.environ.get('ROBUST40_SERVER_WORKER'):
     configure_worker()
 
 
-def initialize(account,workspace,stamp,destination):
+def prepare(account, workspace, stamp, destination):
+    """Preload code, then bind only a complete publication; no scratch before ready."""
+    import time
+    import pandas as pd
+    from tools.robust40 import server
+    from tools.robust40.resources import PREFIXES
+    from tools.robust40.initialization_config import DATA_READY_WAIT_SECONDS
+    values, options = server.settings(account)
+    os.environ['X3S_TRADING_ACCOUNT'] = str(account)
+    import config
+    # Reused by the freezing/controller phase; compute retains its isolated root.
+    # No history scan, model fit or exchange request occurs in this preparation.
+    from core.model.backtest_config import MultiEquityBacktestConfig
+    prepared_conf = MultiEquityBacktestConfig().factory.generate_all_factor_config()
+    minute = options['minute']
+    folder = config.bmac_data_path/f'{minute}m'
+    print(f'{account.stem}: 初始化代码准备完成，等待同轮四ready；未创建正式工作目录', flush=True)
+    while not all((folder/f'{prefix}{stamp}.ready').is_file() for prefix in PREFIXES):
+        remaining = stamp+DATA_READY_WAIT_SECONDS-time.time()
+        if remaining <= 0:
+            print(f'{account.stem}: 准备阶段等待ready超时；未修改snapshot', flush=True)
+            return False
+        time.sleep(min(1., remaining))
+    if server.settings(account)[0] != values:
+        raise ValueError('Configuration changed during initialization preparation; retry with new configuration')
+    from tools.robust40.handoff import recover_interrupted
+    # Do not hold this lock while the later compute subprocess acquires it.
+    with server.account_lock(destination):
+        recover_interrupted(destination)
+        status, reason = server.inspect(destination, account.stem, values,
+                                        pd.Timestamp(stamp, unit='s')-pd.Timedelta(hours=1))
+    if status != 'rebuild':
+        print(f'{account.stem}: 准备期间状态已更新，取消本次初始化；status={status}', flush=True)
+        return False
+    initialize(account, workspace, stamp, destination, prepared_conf=prepared_conf)
+    return True
+
+
+def initialize(account,workspace,stamp,destination,prepared_conf=None):
     import pandas as pd
     from tools.robust40.market_inputs import freeze_inputs, freeze_extra, latest_ready, prepare_public_market
     from tools.robust40 import server
@@ -115,13 +173,14 @@ def initialize(account,workspace,stamp,destination):
     print(f'{account.stem}: 冻结同轮完整行情和外部输入，publication={stamp}',flush=True)
     # Preserve public host settings before the spawned worker imports config;
     # otherwise a Linux deployment could fall back to the Windows default path.
-    public={k:getattr(config,k) for k in ('realtime_data_path','factor_col_limit','lookback_days','incremental_lookback_hours')}
+    public={k:getattr(config,k) for k in ('realtime_data_path','factor_col_limit','lookback_days','incremental_lookback_hours','shared_factor_pipeline')}
     (workspace/'config.json').write_text(json.dumps(public),encoding='utf8')
-    freeze_inputs(config.bmac_data_path,config.bmac_exginfo_path,workspace/'frozen_market',minute,stamp,ready)
+    freeze_inputs(config.bmac_data_path,config.bmac_exginfo_path,workspace/'frozen_market',minute,stamp,ready,
+                  full_arrow=True)
     # Freeze auxiliary factor inputs actually requested by this strategy as well.
     from core.model.backtest_config import MultiEquityBacktestConfig
     from core.utils.factor_hub import FactorHub
-    conf=MultiEquityBacktestConfig().factory.generate_all_factor_config()
+    conf=prepared_conf if prepared_conf is not None else MultiEquityBacktestConfig().factory.generate_all_factor_config()
     extras={key for name in conf.factor_params_dict for key in getattr(FactorHub.get_by_name(name),'extra_data_dict',{})}
     for name in extras:
         loader,path=config.data_source_dict[name]
@@ -166,11 +225,29 @@ def compute(account,workspace,stamp,destination):
     acct=SimpleNamespace(name=account.stem,hour_offset=f'{minute}m',hour_offset_minute=minute,
         leverage=config.leverage,rebalance_mode=SimpleNamespace(**config.account_config['rebalance_mode']))
     run=(pd.Timestamp(stamp,unit='s')+pd.Timedelta(hours=config.utc_offset)).to_pydatetime()
-    mef.backtest_strategies(run)
-    mef.process_equities(run,acct.hour_offset)
-    live.prepare(mef,acct,run)
-    spot,swap=mef.apply_position_limits(*mef.agg_pos_ratio(mef.calc_ratios()))
+    from tools.robust40.resources import phase
+    from tools.robust40.initialization_config import INITIALIZATION
+    from tools import initialization_pipeline
+    inputs=None
+    if (config.shared_factor_pipeline or INITIALIZATION.get('data_pipeline',False)) and initialization_pipeline.supported(mef.factory,INITIALIZATION['selection_block_hours']):
+        inputs=initialization_pipeline.run(mef,run,minute)
+    else:
+        with phase('initialization.child_backtests'):
+            mef.backtest_strategies(run)
+        with phase('initialization.equity_inputs'):
+            mef.process_equities(run,acct.hour_offset)
+    with phase('initialization.model'):
+        if inputs is None:live.prepare(mef,acct,run)
+        else:live.prepare(mef,acct,run,inputs=inputs)
+    with phase('initialization.target_aggregation'):
+        ratios=mef.calc_ratios() if inputs is None else mef.calc_ratios(timing_inputs=inputs['timing'])
+        spot,swap=mef.apply_position_limits(*mef.agg_pos_ratio(ratios))
     live.validate_targets(spot,swap,mef.strategy)
+    # The on-disk round-trip remains mandatory; release old full matrices before
+    # reading the serialized bundle rather than validating the in-memory copy.
+    del mef,inputs,ratios,spot,swap
+    import gc
+    gc.collect()
     bundle=pd.read_pickle(snapshot/'model/state.pkl')
     end=validate_snapshot(snapshot,bundle)
     for p in (snapshot/'sections').glob('*.pkl'):
@@ -234,7 +311,7 @@ def main():
     # before framework loggers wrap stdout (Windows redirected streams use GBK).
     configure_output()
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument('mode',choices=['initialize','compute','trade'])
+    p.add_argument('mode',choices=['prepare','initialize','compute','trade'])
     p.add_argument('--account',required=True)
     p.add_argument('--stamp',required=True,type=int)
     p.add_argument('--workspace')
@@ -249,10 +326,18 @@ def main():
             raise ValueError('Worker root/publication differs from its profile')
     from tools.robust40 import server
     from tools.robust40 import telemetry
-    if a.mode=='initialize':
-        with telemetry.round_log(account.stem,a.stamp,kind='initialize'):
-            initialize(account,Path(a.workspace).resolve(),a.stamp,Path(a.destination).resolve())
-            telemetry.record(initialization_completed=True)
+    if a.mode=='prepare':
+        destination=Path(a.destination).resolve()
+        with server.account_lock(destination.with_name(destination.name+'.initialization')):
+            with telemetry.round_log(account.stem,a.stamp,kind='initialize'):
+                completed=prepare(account,Path(a.workspace).resolve(),a.stamp,destination)
+                telemetry.record(initialization_completed=completed)
+    elif a.mode=='initialize':
+        destination=Path(a.destination).resolve()
+        with server.account_lock(destination.with_name(destination.name+'.initialization')):
+            with telemetry.round_log(account.stem,a.stamp,kind='initialize'):
+                initialize(account,Path(a.workspace).resolve(),a.stamp,destination)
+                telemetry.record(initialization_completed=True)
     elif a.mode=='compute':
         with server.account_lock(a.destination):
             with telemetry.round_log(account.stem,a.stamp,kind='compute'):

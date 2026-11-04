@@ -1,5 +1,6 @@
 
 import numpy as np
+import pandas as pd
 
 def signal(*args):
     df = args[0]
@@ -13,5 +14,16 @@ def signal(*args):
     df[factor_name] = np.where(symbol_normalized == n_normalized, 1, np.nan)
 
     return df
+
+
+def signal_multi_params(df, param_list) -> dict:
+    ret = dict()
+    if not param_list:
+        return ret
+    symbol_normalized = df['symbol'].str.replace('-', '', regex=False)
+    for param in param_list:
+        n_normalized = param.replace('-', '')
+        ret[param] = pd.Series(np.where(symbol_normalized == n_normalized, 1, np.nan), index=df.index)
+    return ret
 
 #󠀂󠁥󠀹󠁢󠁥󠀹󠁡󠁥󠀵󠀸󠁤󠀹󠁡󠁥󠀸󠀸󠀷󠁢󠀴󠀲󠀰󠀳󠀳󠀳󠀲󠀳󠀲󠀳󠀹󠀳󠀷󠁿

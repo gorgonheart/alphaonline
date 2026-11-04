@@ -121,13 +121,7 @@ def simu_timing(conf: BacktestConfig, run_time):
         exit()
     account_df = pd.read_pickle(state0_equity_path)
 
-    # 检查哪个动态杠杆方法有实现，优先使用 get_dynamic_leverage_for_dataframe
-    if conf.timing.impl_flags.get('dynamic_leverage_for_dataframe', False):
-        leverages = conf.timing.get_dynamic_leverage_for_dataframe(account_df)
-    elif conf.timing.impl_flags.get('dynamic_leverage', False):
-        leverages = conf.timing.get_dynamic_leverage(account_df['equity'])
-    else:
-        raise NotImplementedError(f'择时信号 {conf.timing.name} 必须实现 dynamic_leverage 或 dynamic_leverage_for_dataframe 方法之一')
+    leverages = calc_timing_leverages(conf, account_df)
     logger.debug(f'⏰ 完成再择时杠杆计算，已花费时间{time.time() - s_time:.3f}秒')
 
     account_df = calc_equity(conf, run_time, leverage=leverages * conf.leverage, state_name='state1')
@@ -139,9 +133,29 @@ def simu_timing(conf: BacktestConfig, run_time):
     return account_df
 
 
+def calc_timing_leverages(conf, account_df):
+    """Shared retiming mathematics; caller owns reporting and second simulation."""
+
+    # 检查哪个动态杠杆方法有实现，优先使用 get_dynamic_leverage_for_dataframe
+    if conf.timing.impl_flags.get('dynamic_leverage_for_dataframe', False):
+        leverages = conf.timing.get_dynamic_leverage_for_dataframe(account_df)
+    elif conf.timing.impl_flags.get('dynamic_leverage', False):
+        leverages = conf.timing.get_dynamic_leverage(account_df['equity'])
+    else:
+        raise NotImplementedError(f'择时信号 {conf.timing.name} 必须实现 dynamic_leverage 或 dynamic_leverage_for_dataframe 方法之一')
+    return leverages
+
+
+def _wait_for_compute_window():
+    import config
+    if gate := getattr(config, 'compute_gate', None):
+        gate()
+
+
 def _step4_worker(conf, multi_process):
     """Step 4 并行 worker（直接运行，PPE 退出后内存自动释放，等价于 mem_save_exe 效果）"""
     from core.utils.log_kit import logger
+    _wait_for_compute_window()
     logger.info(f'{conf.name}的{len(conf.strategy_list)}个子策略选币')
     select_coins(conf, multi_process=multi_process)
 
@@ -149,14 +163,16 @@ def _step4_worker(conf, multi_process):
 def _step5_worker(conf, max_candle_time, has_snapshot):
     """Step 5 并行 worker（直接运行，PPE 退出后内存自动释放，等价于 mem_save_exe 效果）"""
     from core.utils.log_kit import logger
+    _wait_for_compute_window()
     conf.has_snapshot = has_snapshot
     logger.debug(f"[{conf.name}] 聚合{len(conf.strategy_list)}个子策略")
-    return step5_aggregate_select_results(conf, max_candle_time, save_final_result=True)
+    step5_aggregate_select_results(conf, max_candle_time, save_final_result=True)
 
 
 def _step6_worker(conf, run_time):
     """Step 6 并行 worker（模块级函数，Windows multiprocessing 可 pickle）"""
     from core.utils.log_kit import logger
+    _wait_for_compute_window()
     logger.debug(f"🔃 聚合{conf.name}的{len(conf.strategy_list)}个子策略，并计算资金曲线...")
     return step6_simulate_performance(conf, run_time)
 
@@ -171,6 +187,125 @@ def _step6_worker(conf, run_time):
 # 6. 添加下一个每一个周期需要卖出的币的信息
 # 7. 计算资金曲线
 # ====================================================================================================
+def supports_factor_blocks(factory):
+    """Custom callbacks and entry/exit strategies retain their full-history path."""
+    from core.utils.factor_hub import FactorHub
+    if any(s.use_custom_func or s.select_mode == 'entry_exit'
+           for conf in factory.config_list for s in conf.strategy_list):
+        return False
+    # An arbitrary signal_polars may mutate base columns or differ from signal.
+    # Only reviewed sections opt into independent projection/dispatch.
+    names = {name for conf in factory.config_list for name in getattr(conf, 'section_params_dict', {})}
+    return all(getattr(FactorHub.get_by_name(name), 'shared_input_safe', False) for name in names)
+
+
+def _run_block_stage(function, *args, _polars_threads=1, **kwargs):
+    """Release native allocations at stage boundaries; never fork Polars threads."""
+    import multiprocessing
+    import os
+    # Native pools initialize during imports, before a pool initializer can run.
+    # This coordinator is serial; restore its environment even when a stage fails.
+    names = ('POLARS_MAX_THREADS', 'PMT_STAGE_POLARS_THREADS', 'OMP_NUM_THREADS',
+             'OPENBLAS_NUM_THREADS', 'MKL_NUM_THREADS', 'NUMBA_NUM_THREADS')
+    previous = {name: os.environ.get(name) for name in names}
+    try:
+        for name in names:
+            os.environ[name] = str(max(1, int(_polars_threads))) if name in names[:2] else '1'
+        with ProcessPoolExecutor(max_workers=1, mp_context=multiprocessing.get_context('spawn')) as pool:
+            return pool.submit(function, *args, **kwargs).result()
+    finally:
+        for name, value in previous.items():
+            if value is None:
+                os.environ.pop(name, None)
+            else:
+                os.environ[name] = value
+
+
+def _produce_factor_store(conf, run_time, store):
+    calc_factors(conf, run_time=run_time, store=store)
+    return store
+
+
+def prepare_factor_selection(factory, run_time, *, directory):
+    """Common initialization/continuation/replay front half, with caller-owned spill.
+
+    Input history is preserved for factors/sections. Only selection is cropped
+    by the original snapshot/holding/lookback rule. Returned factors remain alive
+    for the final spot/swap mapping consumer; the caller must close the store.
+    """
+    from pathlib import Path
+    import config
+    from core.utils.factor_data import FactorBlocks, compute_phase
+    from core.select_coin import select_factor_blocks
+    if not supports_factor_blocks(factory):
+        raise ValueError('Shared factor selection requires standard strategies')
+    directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=False)
+    conf = factory.generate_all_factor_config()
+    apply_bstocks_black_list(conf)
+    store = FactorBlocks(directory/'factors', hours=getattr(config, 'selection_block_hours', 2016),
+                         minute=run_time.minute)
+    phase = getattr(config, 'compute_phase', None) or compute_phase
+    try:
+        with phase('initialization.direct_factors'):
+            store = _run_block_stage(_produce_factor_store, conf, run_time, store)
+        budget = max(1, config.job_num)
+        with phase('initialization.sections'):
+            store.sections, store.section_columns = _run_block_stage(calc_cross_sections, conf, store=store,
+                _polars_threads=min(2, budget))
+        snapshot = get_snapshot_time(conf.name)
+        start = None if not snapshot else pd.to_datetime(snapshot).replace(tzinfo=None) - max(
+            pd.Timedelta(conf.max_hold_period), pd.Timedelta(days=conf.lookback_days),
+            pd.Timedelta(hours=conf.incremental_lookback_hours))
+        store.selection_start = start
+        # One strategy at a time; its Polars operators use the common CPU budget.
+        # Concurrent Python tasks share one native pool and increase live panels.
+        with phase('initialization.selection'):
+            paths = _run_block_stage(select_factor_blocks, factory.config_list, store,
+                directory/'selected', workers=1, start=start, _polars_threads=budget)
+        return store, paths
+    except BaseException:
+        # This store owns only scratch created here, not any public input/state.
+        store.close()
+        raise
+
+
+def persist_block_selections(configs, paths):
+    """Retain original per-strategy reporting/aggregation files and no factor copy."""
+    import polars as pl
+    from core.select_coin import SELECT_RES_COLS
+    for i, conf in enumerate(configs):
+        for j, strategy in enumerate(conf.strategy_list):
+            parts = paths[i][j]
+            result = (pl.concat([pl.read_ipc(p, memory_map=False) for p in parts]).to_pandas()
+                      if parts else pd.DataFrame(columns=SELECT_RES_COLS))
+            result.to_pickle(conf.get_result_folder()/f'{strategy.get_fullname(as_folder_name=True)}.pkl')
+            del result
+            for path in parts:
+                path.unlink()
+
+
+def _prepare_shared_reports(factory, run_time):
+    from core.select_coin import KLINE_COLS, ALL_KLINE_PATH_TUPLE, get_file_path
+    from core.utils.factor_data import temporary_gc
+    store, paths = prepare_factor_selection(factory, run_time,
+        directory=get_file_path('data', 'cache', 'shared_compute', as_path_type=True))
+    try:
+        persist_block_selections(factory.config_list, paths)
+        # Original consumers still need prices/mappings and their report columns.
+        # There is no second copy of factor columns or whole candle input.
+        with temporary_gc():
+            rows = store.read_history(KLINE_COLS, start=getattr(store, 'selection_start', None))
+            try:
+                rows.write_parquet(get_file_path(*ALL_KLINE_PATH_TUPLE))
+            finally:
+                del rows
+    finally:
+        store.close()
+    (store.directory.parent/'selected').rmdir()
+    store.directory.parent.rmdir()
+
+
 def run_backtest_multi(factory: BacktestConfigFactory, run_time):
     # ====================================================================================================
     # 1. 准备工作
@@ -183,6 +318,10 @@ def run_backtest_multi(factory: BacktestConfigFactory, run_time):
     iter_results_folder.mkdir(parents=True, exist_ok=True)
 
     conf_list = factory.config_list
+    import config
+    # 默认保留原4进程；资源受限的worker可统一覆盖选币、聚合和模拟上限。
+    pool_workers = min(len(conf_list), getattr(config, 'backtest_job_num', 4))
+    gate = getattr(config, 'compute_gate', None)
     for index, conf in enumerate(conf_list):
         logger.debug(f'ℹ️ 策略{index + 1}｜共{len(conf_list)}个')
         logger.debug(f'{conf.get_fullname()}')
@@ -203,44 +342,54 @@ def run_backtest_multi(factory: BacktestConfigFactory, run_time):
     # 提前并入 black_list 才能保证子进程里的数据过滤/选币判断同样生效
     apply_bstocks_black_list(conf_all)
 
-    # 读取数据
-    # 针对现货策略和非现货策略读取的逻辑完全不同。
-    # - 如果是纯合约模式，只需要读入 swap 数据并且合并即可
-    # - 如果是现货模式，需要读入 spot 和 swap 数据并且合并，然后添加 tag
-    mem_save_exe(load_realtime_data, conf_all, run_time)  # 串行方式，完全等价
-    logger.ok(f'完成读取数据中心数据，花费时间：{time.time() - s_time:.3f}秒')
+    if getattr(config, 'shared_factor_pipeline', False) and supports_factor_blocks(factory):
+        _prepare_shared_reports(factory, run_time)
+    else:
+        # 读取数据
+        # 针对现货策略和非现货策略读取的逻辑完全不同。
+        # - 如果是纯合约模式，只需要读入 swap 数据并且合并即可
+        # - 如果是现货模式，需要读入 spot 和 swap 数据并且合并，然后添加 tag
+        if gate:gate()
+        mem_save_exe(load_realtime_data, conf_all, run_time)  # 串行方式，完全等价
+        logger.ok(f'完成读取数据中心数据，花费时间：{time.time() - s_time:.3f}秒')
 
-    # ====================================================================================================
-    # 3. 计算因子
-    # ====================================================================================================
-    divider('时序因子计算', sep='-')
-    s_time = time.time()
-    mem_save_exe(calc_factors, conf_all)  # 执行时序因子计算
-    logger.ok(f'完成计算时序因子，花费时间：{time.time() - s_time:.3f}秒，累计时间：{(time.time() - r_time):.3f}秒')
+        # ====================================================================================================
+        # 3. 计算因子
+        # ====================================================================================================
+        divider('时序因子计算', sep='-')
+        s_time = time.time()
+        if gate:gate()
+        mem_save_exe(calc_factors, conf_all)  # 执行时序因子计算
+        logger.ok(f'完成计算时序因子，花费时间：{time.time() - s_time:.3f}秒，累计时间：{(time.time() - r_time):.3f}秒')
 
-    # 计算截面因子
-    s_time = time.time()
-    divider(f'截面因子计算', sep='-')
-    mem_save_exe(calc_cross_sections, conf_all)  # 执行截面因子计算
-    logger.ok(f'完成计算截面因子，花费时间：{time.time() - s_time:.3f}秒，累计时间：{(time.time() - r_time):.3f}秒')
+        # 计算截面因子
+        s_time = time.time()
+        divider(f'截面因子计算', sep='-')
+        if gate:gate()
+        mem_save_exe(calc_cross_sections, conf_all)  # 执行截面因子计算
+        logger.ok(f'完成计算截面因子，花费时间：{time.time() - s_time:.3f}秒，累计时间：{(time.time() - r_time):.3f}秒')
 
 
-    # ====================================================================================================
-    # 4. 选币
-    # - 注意：选完之后，每一个策略的选币结果会被保存到硬盘
-    # ====================================================================================================
-    divider('选币', sep='-')
-    s_time = time.time()
-    logger.debug(f'注意：这个过程时间久，和包含的策略及子策略数量、选币数量有关...')
-    # LPT（最长任务优先）：子策略多的 conf 先提交，减少尾部等待
-    _multi_process = bool(get_snapshot_time(conf_all.name))
-    _sorted4 = sorted(conf_list, key=lambda c: len(c.strategy_list), reverse=True)
-    with ProcessPoolExecutor(max_workers=min(len(conf_list), 4)) as executor:
-        futures = {executor.submit(_step4_worker, conf, _multi_process): conf for conf in _sorted4}
-        for f in as_completed(futures):
-            f.result()  # 捕获异常；任务完成即释放，不等整批
+        # ====================================================================================================
+        # 4. 选币
+        # - 注意：选完之后，每一个策略的选币结果会被保存到硬盘
+        # ====================================================================================================
+        divider('选币', sep='-')
+        s_time = time.time()
+        logger.debug(f'注意：这个过程时间久，和包含的策略及子策略数量、选币数量有关...')
+        # LPT（最长任务优先）：子策略多的 conf 先提交，减少尾部等待
+        _multi_process = bool(get_snapshot_time(conf_all.name))
+        _sorted4 = sorted(conf_list, key=lambda c: len(c.strategy_list), reverse=True)
+        if pool_runner := getattr(config, 'selection_pool_runner', None):
+            # 可选工具层共享输入；独立子进程退出后释放整池选币内存。
+            mem_save_exe(pool_runner, _sorted4, multi_process=_multi_process)
+        else:
+            with ProcessPoolExecutor(max_workers=pool_workers) as executor:
+                futures = {executor.submit(_step4_worker, conf, _multi_process): conf for conf in _sorted4}
+                for f in as_completed(futures):
+                    f.result()  # 捕获异常；任务完成即释放，不等整批
 
-    logger.ok(f'完成选币，花费时间：{time.time() - s_time:.3f}秒，累计时间：{(time.time() - r_time):.3f}秒')
+        logger.ok(f'完成选币，花费时间：{time.time() - s_time:.3f}秒，累计时间：{(time.time() - r_time):.3f}秒')
 
     # ====================================================================================================
     # 5. 针对选币结果进行聚合
@@ -253,7 +402,7 @@ def run_backtest_multi(factory: BacktestConfigFactory, run_time):
     # LPT 排序，子策略多的先做
     _has_snapshot = bool(get_snapshot_time(conf_all.name))
     _sorted5 = sorted(conf_list, key=lambda c: len(c.strategy_list), reverse=True)
-    with ProcessPoolExecutor(max_workers=min(len(conf_list), 4)) as executor:
+    with ProcessPoolExecutor(max_workers=pool_workers) as executor:
         futures = {executor.submit(_step5_worker, conf, max_candle_time, _has_snapshot): conf for conf in _sorted5}
         for f in as_completed(futures):
             f.result()  # 捕获异常；PPE 退出后内存自动释放
@@ -270,7 +419,7 @@ def run_backtest_multi(factory: BacktestConfigFactory, run_time):
     # LPT 排序 + as_completed：长任务先提交，完成即收割，不等整批
     _sorted6 = sorted(conf_list, key=lambda c: len(c.strategy_list), reverse=True)
     equity_map = {}
-    with ProcessPoolExecutor(max_workers=min(len(conf_list), 4)) as executor:
+    with ProcessPoolExecutor(max_workers=pool_workers) as executor:
         futures = {executor.submit(_step6_worker, conf, run_time): conf for conf in _sorted6}
         for f in as_completed(futures):
             conf = futures[f]

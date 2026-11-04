@@ -22,3 +22,17 @@ def signal(*args):
     df[factor_name] = df['fr'].rolling(n, min_periods=1).max().abs()
 
     return df
+
+
+def signal_multi_params(df, param_list) -> dict:
+    ret = dict()
+    if not param_list:
+        return ret
+    # 旧调度会连续改写 funding_fee；脏字符串转出的 NaN/零会在下一参数
+    # 再次前填。用局部 Series 保留这项参数顺序语义，不修改共享输入。
+    funding = df['funding_fee']
+    for param in param_list:
+        funding = funding.replace(0, pd.NA).fillna(method='ffill')
+        funding = pd.to_numeric(funding, errors='coerce')
+        ret[param] = funding.rolling(param, min_periods=1).max().abs()
+    return ret

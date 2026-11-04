@@ -12,6 +12,10 @@ Author: 邢不行
 import polars as pl
 
 
+# 已对拍：可独立按声明的依赖列计算，不修改其他截面的输入。
+shared_input_safe = True
+
+
 def signal(*args):
     df = args[0]
     n = args[1]

@@ -1,12 +1,32 @@
 # MODEL_ROBUST40 部署与维护
 
+## 2026-11-04 当前发布收尾（优先于下文历史记录）
+
+本轮临时线上监控已清理，当前版本已完成离线验证，提交以本地main记录为准，未发布或重启生产。共享因子/截面/选币及GC/日期优化已在Ubuntu测试；下文“新流程尚未发布/尚未验收”均为对应历史时间状态。详细范围、开关、监控归档与当前服务器状态见[发布收尾](2026-11-04-release-readiness.md)。
+
+**当前生产有旧逐文件修改和账户改名，不可直接套用下文首次安装或干净Git update示例。** 现有服务器25m账户、私有配置和有效状态需保留，不能用本地20/40/55账户覆盖。测试机已由用户切换none，正式机仍dry_run；本轮不改变模式。业务统计和必要MODEL日志保留。
+
+
+2026-11-03：初始化独立数据编排已完成本地实现及三组全历史计时，尚未发布。完整中位耗时772.8→622.5秒，但Windows提交峰值从约5.71GiB升至7.69—8.03GiB；保持`INITIALIZATION.data_pipeline=False`、`factor_symbol_batch_size=16`保留原入口。
+新入口只用于空快照的完整初始化：同轮Arrow描述→完整币种时序→统一时间块/币种分片→截面/S3→块选币→内存聚合模拟→MODEL→原snapshot验收安装。
+正式部署必须同时包含 `tools/initialization_data.py`、`tools/initialization_pipeline.py`、两份streaming模块、MODEL和已审核的四个core接口；不能只复制入口文件。
+正常4050续算和回放仍消费原snapshot格式。回退入口用`data_pipeline=False`，不因此删除已验证snapshot；详见[本轮复核与测试记录](2026-11-03-initialization-data-refactor-review.md)。
+
+已验证的新流程组合是`data_pipeline=True`、`factor_symbol_batch_size=32`、`selection_block_hours=2016`、`MODEL_JOB_NUM=4`。正式启用前先在Ubuntu隔离目录用同轮完整输入作A/B，不触发trade：核对完整snapshot，再记录现有4.5GiB目标/5GiB上限/12GiB swap下的anon/file/swap、IO等待和整轮时间。Windows Job成功不等于Linux容量通过，不能直接套用本机19.4%的改善。
+
+上线时只部署审核后的代码和功能配置，不部署`research/initialization_refactor_20261103`、临时IPC或测试snapshot。源账户参数继续独立维护；现有有效snapshot无需因本次存储编排修改而清空。若服务器版本与本地实施前基准不一致，先核对依赖，不能整体覆盖core。此前C长因子与Python重算的少量超容差差异仍见原审计，本轮没有更改上游数值实现。
+
+2026-11-02 20:54发布更新：用户已确认core并发布alphatrade，启用[整池共享列缓存](2026-11-02-shared-selection-review.md)，tools/robust40/initialization_config.py中selection_block_hours=2016，0可关闭；正常4050续算不变。MemoryHigh固定4.5GiB、Max5GiB（扣监督预留）、SwapMax12GiB，取消按5分钟窗口降至2GiB。首次生成约4.70GiB临时缓存，不随snapshot部署。alpha2经追加授权恢复完整Arrow并重启，alpha/alphatrade1未动。具体部署范围、验证和回退见[发布记录](2026-11-02-alphatrade-shared-release.md)，资源规则见[实际压力调度复核](2026-11-02-pressure-selection-review.md)；下文忙闲窗口表述为历史状态。
+
+2026-11-02本地后续：自动初始化已改为全长度Arrow直接复用长因子、16币分批计算短因子；alpha需配套 `publish_kline_num=0`，正常续算仍4050。新增core及生产者修改待人工审核，尚未部署，见[全长度Arrow复核与容量](2026-11-02-full-arrow-initialization-review.md)。下文完整PKL初始化/16列分片是历史路径，手工预热仍保留。
+
 2026-11-02发布状态：已部署 `/home/ubuntu/alphatrade` 并通过Ubuntu离线验收，保持停止。机器路径、凭据隔离、Git更新和回滚以[DEPLOYMENT](DEPLOYMENT.md)为当前入口；下文保留MODEL功能说明及各次历史实施记录。
 
 更新：2026-10-31，已按用户纠正撤销“公共仓管参数文件”方案。每个offset完全可以不同，所有原账户配置继续在各自accounts文件中维护。当前方案是服务器完整PKL初始化、4050 Arrow续算、按账户/offset独立保存状态。
 
 账户每个字段是否实际生效、E盘研究文件用途及部署依赖，见 [参数说明](model-robust40-parameters.md)。不要将历史声明误当成已经接通的配置开关。
 
-本轮未部署、重启、下单、通知或删除生产数据。core、startup、signals、factors、sections、alpha均无本轮新增修改；既有框架定制保持。
+上述目录整理没有新增框架修改。11月2日后续资源窗口实现新增core/startup最小适配，尚待人工复核及部署，见[资源窗口复核](2026-11-02-initialization-resource-review.md)。本轮未更新或重启生产服务、下单、通知或删除生产数据。
 
 ## 1. 目录和配置归属
 
@@ -23,7 +43,7 @@
 
 仓管内部特征用于季度分类器，不是框架选币factor插件；它们和模型、专家、S5减仓、虚拟账户、续算、目标变换合在同一个positions文件内。原共享 `HybridRotationDriftStrategy.py` 保留，传统策略继续使用原实现。
 
-工具只读取账户参数执行运行适配，没有新增策略参数配置。当前功能设置：统一MODEL_JOB_NUM=4（初始化、续算和手工预热共用，仅MODEL worker覆盖全局并发），完整历史下限14000，续算4050，ready等待240秒，恢复点25，修订输入168小时。这些是处理资源/窗口配置，不是收益权重或训练超参数。
+工具只读取账户参数执行运行适配，没有新增策略参数配置。当前本地MODEL_JOB_NUM=4为总上限；时序因子最多4进程，选币/聚合/模拟初始化最多1、续算最多3，选币内部1线程。初始化及手工预热因子分片16列、截面分片1组，正常续算沿用主机分片设置。完整历史下限14000，续算4050，ready等待240秒，恢复点25，修订输入168小时。Linux自动初始化额外使用忙时2GiB回收目标/独占4.5GiB/5GiB最后防线和跨两个安装目录的单初始化槽位；手工预热没有自动资源组。上一批低内存core改动已确认，本批新增准入钩子、选币内部线程限制、取消无用矩阵回传及startup预准备仍需人工复核，详见[资源窗口复核](2026-11-02-initialization-resource-review.md)。小样本与后续优化依据保留在[并发评估](2026-11-02-model-parallel-next-stage-review.md)。
 
 ## 2. 仓管单文件阅读顺序与调用
 
@@ -118,6 +138,8 @@ clean_start=True仍保留server_init账户完整snapshot及对应备份路径；
 
 ## 2026-11-01 因子进程内存峰值修复
 
+以下为11月1日历史实施记录；当前本地并发值及11月2日的core改动以本指南前面的资源设置和低内存复核文档为准，不将下面的4进程解释为当前默认。
+
 用户提供的20m 09:20轮次日志显示multiprocessing.connection接收任务时MemoryError，随后BrokenProcessPool；差异预检正常、计算未提交。此前只有初始化限制4进程，正常续算继承config.job_num=os.cpu_count()，本机20。初次修复添加LIVE_JOB_NUM=4，现已统一为tools/robust40/initialization_config.py中的MODEL_JOB_NUM=4；worker的apply_profile在框架导入前设置共同并发，Windows spawn子进程同样执行。该数值是资源设置，不是策略参数，不改变数学或因子列；但会减少并行度，实际延迟需观察。其他共享job_num的MODEL计算阶段也受此设置影响。
 
 core、startup、全局config、传统策略、alpha均无本次修改。不取消失败后的不完整状态检查；本次失败可能已部分写入子策略/S3，不能仅把complete改为True继续交易。按现有规则下一轮自动完整初始化，不手工删除snapshot。资源调整自身不要求重建。新worker加载新值，已运行进程不会热更新；本次没有重启或下单。
@@ -137,3 +159,15 @@ core、startup、全局config、传统策略、alpha均无本次修改。不取�
 Ubuntu应使用本机alpha311、可写本地NUMBA_CACHE_DIR及同一服务用户，在新进程验证hit/miss；不要部署Windows缓存/.pyd，不在worker运行中清缓存。源文件改变后首次编译正常，编译缓存不属于snapshot，不需要清理业务数据。具体命令及人工审核见[Ubuntu缓存复核](2026-11-01-hybrid-cache-ubuntu-review.md)。
 
 **Ubuntu整套流程尚未验收**：时序池没有显式mp_context，Python3.11 Linux fork与Polars组合需另行审核显式spawn及配置继承；本轮没有修改core/startup。这与Hybrid缓存改造分开验收。逐因子热点与后续最小修改清单见[时序因子审计](2026-11-01-timeseries-factor-audit.md)。
+
+## 2026-11-03 共享因子/选币入口（本地离线验收完成，尚未启用）
+
+本轮新增的是框架功能配置，不放到accounts。默认shared_factor_pipeline=False；可在机器config.json设置同名布尔值。它控制初始化、正常续算、补缺口与修订回放的共同前半程；后续交易仍由原入口消费本轮计算结果，不新建历史下单流程。
+
+旧INITIALIZATION.data_pipeline保留原含义。shared=False且data_pipeline=True仍运行本轮以前的初始化工具实现；shared=True才采用新core。关闭shared即可退出新流程，无需清空snapshot；若同时修改过批次或旧data_pipeline开关，还应恢复它们的部署前值。未知截面/custom/entry_exit自动保留原框架适配；混合市场只保留原完整选币调用，因子与截面仍可共用。
+
+性能测试使用MODEL_JOB_NUM=4、factor_symbol_batch_size=32、selection_block_hours=2016。正式默认批次仍为16；不能拿32的结果当成16的实测。Linux MemoryHigh4.5GiB、MemoryMax5GiB、SwapMax12GiB不变。Windows进程树提交量与Linux anon/file/swap口径不同，不可互换。因子worker各原生线程1；截面最多2个Polars线程；纯市场选币1个Python任务、Polars使用job_num预算。通用阶段也约束OMP/OpenBLAS/MKL/Numba并恢复协调进程环境，不仅限MODEL账户。
+
+部署审核需同步本轮共同core、sections与tools兼容边界，不能只拷贝初始化脚本。源文件精确清单及相对本轮前工作区的独立差异在research/shared_compute_20261103/task-review-files.json、task-review.diff；两者不包含其他历史未提交工作。生产账户参数、S3日期、BNB、rebalance和资金曲线数学未在本轮改动。
+
+此段不授权部署或启用。完整离线性能及四场景结论见[共享计算复核](2026-11-03-shared-compute-review.md)，最终31文件719通过/71缺真实文件跳过、10组成对全流程通过；暖初始化约快7.2%、连续两轮4050约快8.3%、回放约快10.1%，只代表所列Windows样本及配置。Ubuntu隔离验证和实际服务操作需另有明确授权。不要同步研究目录、基准源码副本、Windows编译缓存或测试snapshot到生产目录。

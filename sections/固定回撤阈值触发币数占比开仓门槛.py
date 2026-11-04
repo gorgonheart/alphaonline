@@ -2,6 +2,20 @@ import numpy as np
 import polars as pl
 
 
+# 已对拍：可独立按声明的依赖列计算，不修改其他截面的输入。
+shared_input_safe = True
+
+
+def get_state_input_columns(params):
+    return ['candle_begin_time', '是否交易', 'is_spot', 'symbol_spot',
+            'symbol_swap', f'当前回撤_{params[0]}']
+
+
+def signal_block(frame, params, factor_name, state=None):
+    """Count the full market at each timestamp, independent of adjacent blocks."""
+    return signal_polars(frame.lazy(), params, factor_name).collect(), None
+
+
 def signal(*args):
     df = args[0]
     window, threshold, max_pct = args[1]

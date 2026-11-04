@@ -18,8 +18,10 @@ def initialize(*args):
     logger.debug('ℹ️ 初始化中文正常')
     print('stderr：初始化正常', file=sys.stderr, flush=True)
 worker.initialize = initialize
+from pathlib import Path
+temporary=Path(__file__).resolve().parent
 sys.argv = ['server_robust40.py', 'initialize', '--account', 'unused.py',
-            '--workspace', 'unused', '--destination', 'unused', '--stamp', '1']
+            '--workspace', str(temporary/'work'), '--destination', str(temporary/'snapshots/acct'), '--stamp', '1']
 worker.main()
 ''', encoding='utf-8')
     env = dict(os.environ, PYTHONPATH=str(root), PYTHONIOENCODING='gbk', X3S_USE_FILE_LOGGING='0')
@@ -45,7 +47,8 @@ def test_initializer_uses_only_market_calls_and_preserves_host_settings(tmp_path
     monkeypatch.setattr(server,'settings',lambda p:(values,{'minute':40}))
     stamp=int(pd.Timestamp('2026-10-30 09:40',tz='UTC').timestamp())
     monkeypatch.setattr(warm,'latest_ready',lambda *a:(stamp,1))
-    def freeze(source,exg,destination,*args):
+    def freeze(source,exg,destination,*args,**kwargs):
+        assert kwargs == {'full_arrow':True}
         (destination/'40m').mkdir(parents=True)
         (destination/'exginfo').mkdir()
         frame=pd.DataFrame({'candle_begin_time':pd.date_range(end='2026-10-30 08:40',periods=14064,freq='h',tz='UTC')})

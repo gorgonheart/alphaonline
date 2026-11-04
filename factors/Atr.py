@@ -1,3 +1,5 @@
+import pandas as pd
+
 eps = 1e-8
 
 
@@ -39,3 +41,20 @@ def get_parameter():
         param_list.append(n)
 
     return param_list
+
+
+def signal_multi_params(df, param_list) -> dict:
+    """共享 TR，保留原窗口、首根与 NaN 语义，不写入行情。"""
+    ret = dict()
+    if not param_list:
+        return ret
+    close = df['close']
+    previous_close = close.shift(1)
+    tr = pd.concat([df['high'] - df['low'],
+                    abs(df['high'] - previous_close),
+                    abs(df['low'] - previous_close)], axis=1).max(axis=1)
+    for param in param_list:
+        atr = tr.rolling(param, min_periods=1).mean()
+        middle = close.rolling(param, min_periods=1).mean()
+        ret[param] = atr / (middle + eps)
+    return ret

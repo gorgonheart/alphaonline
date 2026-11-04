@@ -73,13 +73,28 @@ def freeze_extra(source, destination, loader, minute):
         raise ValueError(f'Factor input changed during freeze: {source}')
 
 
-def freeze_inputs(source, exginfo, destination, minute, stamp, ready_time):
+def freeze_inputs(source, exginfo, destination, minute, stamp, ready_time, *, full_arrow=False):
     folder = source/f'{minute}m'
     target = destination/f'{minute}m'
     target.mkdir(parents=True, exist_ok=False)
     files = []
     for kind in ('spot', 'swap'):
-        for pattern in (f'{kind}_dict_batch*.pkl', f'market_pivot_{kind}_*.pkl'):
+        if full_arrow:
+            import pyarrow as pa
+            path = folder/f'{kind}_dict_{stamp}.arrow'
+            if not path.is_file():
+                raise ValueError(f'Missing full-history Arrow: {path}; alpha publish_kline_num=0 required')
+            # Header-only check: no historical conversion or factor computation.
+            with pa.memory_map(str(path), 'r') as src:
+                metadata = pa.ipc.open_file(src).schema.metadata or {}
+                if metadata.get(b'full_history') != b'1':
+                    raise ValueError(f'{path.name}: full-history Arrow required; alpha publish_kline_num=0')
+            files.append(path)
+        # Full Arrow supplies factors, MODEL raw features and revision tails.
+        # Keep PKL batches only for the explicitly selected legacy PKL input.
+        patterns=[f'market_pivot_{kind}_*.pkl']
+        if not full_arrow:patterns.insert(0,f'{kind}_dict_batch*.pkl')
+        for pattern in patterns:
             found = sorted(folder.glob(pattern))
             if not found:raise ValueError(f'Missing input: {pattern}')
             files.extend(found)

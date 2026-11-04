@@ -240,10 +240,70 @@ class Coordinator:
                 except OSError:tail='无法读取初始化日志'
                 logger.error(f'{Path(account).stem}: 初始化失败，退出码={code}；日志：{log}\n{tail}')
             else:
-                logger.info(f'{Path(account).stem}: 初始化完成；下一合法offset继续状态检查；日志：{log}')
+                logger.info(f'{Path(account).stem}: 初始化任务结束（完成或准备取消以任务日志为准）；下一合法offset继续状态检查；日志：{log}')
         thread=Thread(target=report,daemon=True,name=f'init-{Path(account).stem}')
         thread.start()
         return thread
+
+    def _reap(self):
+        for key,(process,handle) in list(self.jobs.items()):
+            if process.poll() is not None:
+                handle.close();del self.jobs[key]
+
+    def prepare(self,accounts,run_time,market):
+        """Cheap local preflight before the shared ready gate; no market reads."""
+        self._reap()
+        if self.jobs:return
+        for account in accounts:
+            if not enabled(account):continue
+            account=Path(account).resolve();values,options=settings(account)
+            if run_time.minute!=options['minute']:continue
+            destination=location(self.root,account,values)
+            # A running owner may have an intentionally incomplete snapshot.
+            try:
+                with account_lock(destination.with_name(destination.name+'.initialization')), account_lock(destination):
+                    status,reason=inspect(destination,account.stem,values,
+                        pd.Timestamp(run_time.timestamp(),unit='s')-pd.Timedelta(hours=1))
+            except OSError:continue
+            if status=='rebuild':
+                self._launch(account,run_time,values,reason,'prepare',market)
+                if self.jobs:return
+
+    def _launch(self,account,run_time,values,reason,mode,market):
+        import os
+        import subprocess
+        import sys
+        from core.utils.log_kit import logger
+        from .resources import supervisor_command
+        stamp=int(run_time.timestamp())
+        if self.jobs:
+            logger.info(f'{account.stem}: 等待初始化槽位；当前账户：{[p.stem for p in self.jobs]}')
+            return
+        token=(stamp,reason,repr(values))
+        if self.attempts.get(account)==token:return
+        work=self.root/'data/server_initialization'/account.stem/str(stamp)
+        if work.exists():
+            self.attempts[account]=token
+            logger.info(f'{account.stem}: 本轮初始化目录已存在，保留现场并跳过；目录：{work}')
+            return
+        work.parent.mkdir(parents=True,exist_ok=True)
+        handle=(work.parent/f'{stamp}.log').open('a',encoding='utf8')
+        cmd=[sys.executable,str(self.root/'tools/robust40/cli/server_robust40.py'),mode,'--account',str(account),
+             '--stamp',str(stamp),'--workspace',str(work),'--destination',str(location(self.root,account,values))]
+        cmd=supervisor_command(cmd,stamp,self.root,market)
+        env=dict(os.environ,PYTHONIOENCODING='utf-8')
+        env.pop('ROBUST40_SERVER_WORKER',None)
+        env.pop('ROBUST40_WARMUP_WORKER',None)
+        env['X3S_TRADING_ACCOUNT']=str(account)
+        try:
+            process=subprocess.Popen(cmd,cwd=self.root,stdout=handle,stderr=subprocess.STDOUT,env=env)
+        except BaseException:
+            handle.close();raise
+        self.attempts[account]=token
+        self.jobs[account]=(process,handle)
+        handle.close()
+        self._monitor(account,process,Path(handle.name))
+        logger.info(f'{account.stem}: {reason}; 启动后台初始化/{mode}；日志：{handle.name}')
 
     def command(self,account,run_time,market):
         import json
@@ -259,10 +319,7 @@ class Coordinator:
         minute=options['minute'];stamp=int(run_time.timestamp())
         if values['account']['hour_offset']!=f'{minute}m' or run_time.minute!=minute:
             raise ValueError('Account and runtime offset differ')
-        for key,(process,handle) in list(self.jobs.items()):
-            code=process.poll()
-            if code is not None:
-                handle.close();del self.jobs[key]
+        self._reap()
         if account in self.jobs:
             logger.info(f'{account.stem}: 初始化仍在后台运行；日志：{self.jobs[account][1].name}')
             return None,None
@@ -315,31 +372,5 @@ class Coordinator:
                 env=dict(os.environ,ROBUST40_SERVER_WORKER=json.dumps(payload),PYTHONIOENCODING='utf-8')
                 return [sys.executable,str(self.root/'tools/robust40/cli/server_robust40.py'),'trade','--account',str(account),'--stamp',str(stamp)],env
             except (OSError,ValueError,pa.ArrowException):reason='Arrow unavailable or incomplete'
-        if self.jobs:
-            logger.info(f'{account.stem}: 等待初始化槽位；当前账户：{[p.stem for p in self.jobs]}')
-            return None,None
-        token=(stamp,reason,repr(values))
-        if self.attempts.get(account)==token:
-            logger.info(f'{account.stem}: 本轮相同原因已尝试初始化，不重复启动')
-            return None,None
-        work=self.root/'data/server_initialization'/account.stem/str(stamp)
-        if work.exists():
-            self.attempts[account]=token
-            logger.info(f'{account.stem}: 本轮初始化目录已存在，保留现场并跳过；目录：{work}')
-            return None,None
-        work.parent.mkdir(parents=True,exist_ok=True)
-        handle=(work.parent/f'{stamp}.log').open('a',encoding='utf8')
-        cmd=[sys.executable,str(self.root/'tools/robust40/cli/server_robust40.py'),'initialize','--account',str(account),
-             '--stamp',str(stamp),'--workspace',str(work),'--destination',str(destination)]
-        try:
-            process=subprocess.Popen(cmd,cwd=self.root,stdout=handle,stderr=subprocess.STDOUT,
-                                     env=dict(os.environ,PYTHONIOENCODING='utf-8'))
-        except BaseException:
-            handle.close()
-            raise
-        self.attempts[account]=token
-        self.jobs[account]=(process,handle)
-        handle.close()  # Child owns its inherited descriptor; no parent-side log lock.
-        self._monitor(account,process,Path(handle.name))
-        logger.info(f'{account.stem}: {reason}; 启动后台初始化，主循环继续；计算进度见日志：{handle.name}')
+        self._launch(account,run_time,values,reason,'initialize',market)
         return None,None

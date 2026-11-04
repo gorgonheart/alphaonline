@@ -9,6 +9,8 @@
 
 Author: 邢不行
 """
+import pandas as pd
+
 extra_data_dict = {
     'coin-btc': ['btc_close']
 }
@@ -34,3 +36,17 @@ def signal(*args):
     df[factor_name] = corr
 
     return df
+
+
+def signal_multi_params(df, param_list) -> dict:
+    ret = dict()
+    if not param_list:
+        return ret
+    if 'btc_close' in df.columns:
+        indicator2 = df['btc_close'].pct_change().fillna(0)
+    else:
+        indicator2 = pd.Series(0, index=df.index)
+    indicator1 = df['close'].pct_change()
+    for param in param_list:
+        ret[param] = indicator1.rolling(param, min_periods=1).corr(indicator2)
+    return ret

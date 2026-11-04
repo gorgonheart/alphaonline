@@ -78,7 +78,8 @@ def create_ratio_snapshot(conf: BacktestConfig, ratio_df: pd.DataFrame, symbol_t
     return ratio_df
 
 
-def calc_equity(conf: BacktestConfig, run_time, leverage: float | pd.Series = None, state_name: str = None, account_name: str = ''):
+def calc_equity(conf: BacktestConfig, run_time, leverage: float | pd.Series = None, state_name: str = None, account_name: str = '',
+                *, ratio_inputs=None, market_inputs=None, ratio_outputs=None):
     """
     计算回测结果的函数
     :param conf: Account 配置
@@ -90,7 +91,12 @@ def calc_equity(conf: BacktestConfig, run_time, leverage: float | pd.Series = No
     # ====================================================================================================
     # 1. 读入下单资金占比数据
     # ====================================================================================================
-    if account_name:
+    # Optional read-only inputs for initialization; defaults retain live I/O.
+    if ratio_inputs is not None:
+        df_spot_ratio, df_swap_ratio = (d.copy(deep=False) for d in ratio_inputs)
+        df_spot_ratio.index = pd.to_datetime(df_spot_ratio.index, utc=True)
+        df_swap_ratio.index = pd.to_datetime(df_swap_ratio.index, utc=True)
+    elif account_name:
         df_spot_ratio = pd.read_pickle(runtime_folder / 'df_spot_ratio.pkl')
         df_swap_ratio = pd.read_pickle(runtime_folder / 'df_swap_ratio.pkl')
     else:
@@ -109,13 +115,13 @@ def calc_equity(conf: BacktestConfig, run_time, leverage: float | pd.Series = No
     #     return
 
     hour_offset = f'{run_time.minute}m'
-    pivot_dict_spot = read_bmac_market_pivot(hour_offset, 'spot')
-    pivot_dict_swap = read_bmac_market_pivot(hour_offset, 'swap')
+    pivot_dict_spot = read_bmac_market_pivot(hour_offset, 'spot') if market_inputs is None else dict(market_inputs['pivots']['spot'])
+    pivot_dict_swap = read_bmac_market_pivot(hour_offset, 'swap') if market_inputs is None else dict(market_inputs['pivots']['swap'])
     # pivot_dict_spot = pd.read_pickle(bmac_data_path / hour_offset / 'market_pivot_spot.pkl')
     # pivot_dict_swap = pd.read_pickle(bmac_data_path / hour_offset / 'market_pivot_swap.pkl')
 
-    df_exginfo_spot = read_bmac_exginfo('spot').set_index('symbol')
-    df_exginfo_swap = read_bmac_exginfo('swap').set_index('symbol')
+    df_exginfo_spot = (read_bmac_exginfo('spot') if market_inputs is None else market_inputs['units']['spot']).set_index('symbol')
+    df_exginfo_swap = (read_bmac_exginfo('swap') if market_inputs is None else market_inputs['units']['swap']).set_index('symbol')
 
     # ====================================================================================================
     # 3. 根据缓存的状态，恢复模拟交易的状态
@@ -269,6 +275,8 @@ def calc_equity(conf: BacktestConfig, run_time, leverage: float | pd.Series = No
         # 保存模拟交易的状态，只有在原始模拟时候才有效
         df_spot_ratio = create_ratio_snapshot(conf, df_spot_ratio, 'spot', rollback_time=rollback_time)
         df_swap_ratio = create_ratio_snapshot(conf, df_swap_ratio, 'swap', rollback_time=rollback_time)
+        if ratio_outputs is not None:
+            ratio_outputs.extend((df_spot_ratio, df_swap_ratio))
 
     # ====================================================================================================
     # 3. 回测结果汇总，并输出相关文件

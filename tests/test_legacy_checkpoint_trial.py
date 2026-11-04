@@ -44,6 +44,11 @@ def test_real_legacy_snapshot_restore_and_rewrite_matches_full(tmp_path,monkeypa
     root=Path(__file__).resolve().parents[1]
     source=root/'data/snapshot'/account/child
     if not source.exists():pytest.skip('Local saved account is unavailable')
+    market_root=producer_root/'data/preprocess_1h_resample'/account.split('-')[0]
+    missing=[market_root/f'market_pivot_{kind}_2026.pkl' for kind in ('spot','swap')
+             if not (market_root/f'market_pivot_{kind}_2026.pkl').is_file()]
+    if missing:
+        pytest.skip('Saved-account oracle lacks matching market history: '+', '.join(map(str,missing)))
     lots=pd.read_pickle(source/'lots_state0.pkl')
     ratios={k:pd.read_pickle(source/f'ratio_{k}.pkl').tail(240) for k in ('spot','swap')}
     index=ratios['swap'].index;assert ratios['spot'].index.equals(index)

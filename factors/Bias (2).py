@@ -10,3 +10,14 @@ def signal(*args):
     del df['ma']
 
     return df
+
+
+def signal_multi_params(df, param_list) -> dict:
+    ret = dict()
+    if not param_list:
+        return ret
+    close = df['close']
+    for param in param_list:
+        ma = close.rolling(param, min_periods=1).mean()
+        ret[param] = close / ma - 1
+    return ret

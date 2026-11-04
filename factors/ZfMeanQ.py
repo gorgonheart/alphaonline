@@ -13,3 +13,14 @@ def signal(*args):
     df[factor_name] = df['振幅均值'].rolling(n, min_periods=1).rank(ascending=True, pct=True)
 
     return df
+
+
+def signal_multi_params(df, param_list) -> dict:
+    ret = dict()
+    if not param_list:
+        return ret
+    amplitude = (df['high'] - df['low']) / df['open']
+    for param in param_list:
+        mean = amplitude.rolling(param, min_periods=1).mean()
+        ret[param] = mean.rolling(param, min_periods=1).rank(ascending=True, pct=True)
+    return ret

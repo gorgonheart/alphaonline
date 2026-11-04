@@ -14,6 +14,10 @@ import pandas as pd
 import polars as pl
 
 
+# 已对拍：可独立按声明的依赖列计算，不修改其他截面的输入。
+shared_input_safe = True
+
+
 def _historical_pandas_signal(*args):
     df = args[0]
 
@@ -92,15 +96,7 @@ def get_factor_list(params):
     ]
 
 
-def signal_polars(lf: pl.LazyFrame, params: tuple, factor_name: str) -> pl.LazyFrame:
-    """
-    Polars 版本的 TopKTo2K 截面因子计算
-
-    :param lf: 全量 K 线数据 (LazyFrame)
-    :param params: (n, base_factor, base_window)
-    :param factor_name: 因子列名
-    :return: 添加了因子列的 LazyFrame
-    """
+def _rank_block(lf, params):
     n = params[0]
     base_factor = params[1]
     base_window = params[2]
@@ -149,6 +145,12 @@ def signal_polars(lf: pl.LazyFrame, params: tuple, factor_name: str) -> pl.LazyF
         (pl.col('_rank') <= pl.col('_top_k')).cast(pl.Int32).alias('_is_top_now'),
     ])
 
+    return lf
+
+
+def _finish_window(lf, params, factor_name):
+    n = params[0]
+    top_raw = 0.1
     # 5) 过去 n 根 K 线内是否曾进入过前 top_raw
     # 使用 cumsum 和 shift 实现滚动窗口
     lf = lf.with_columns([
@@ -196,3 +198,23 @@ def signal_polars(lf: pl.LazyFrame, params: tuple, factor_name: str) -> pl.LazyF
     lf = lf.drop([c for c in tmp_cols if c in lf.collect_schema().names()])
 
     return lf
+
+
+def signal_polars(lf: pl.LazyFrame, params: tuple, factor_name: str) -> pl.LazyFrame:
+    """Original whole-history entry; shared expressions also serve block callers."""
+    return _finish_window(_rank_block(lf, params), params, factor_name)
+
+
+def signal_block(frame, params, factor_name, state=None):
+    """Carry only n prior observations per symbol/market, not full price history.
+
+    Rank the complete current cross sections before prepending prior indicators.
+    A missing hour does not advance the rolling window; an actual null row does.
+    """
+    columns = ['symbol', 'is_spot', '_rank', '_market_size', '_is_top_now']
+    ranked = _rank_block(frame.lazy(), params).select(columns).collect()
+    combined = ranked if state is None else pl.concat([state['tail'], ranked])
+    output = _finish_window(combined.lazy(), params, factor_name).select(factor_name).collect().tail(len(frame))
+    n = params[0]
+    tail = combined.group_by(['symbol', 'is_spot'], maintain_order=True).tail(n) if n else combined.head(0)
+    return frame.with_columns(output[factor_name]), {'tail': tail}

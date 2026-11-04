@@ -24,3 +24,13 @@ def signal(*args):
     df[factor_name] = df['circulating_mcap']
 
     return df
+
+
+def signal_multi_params(df, param_list) -> dict:
+    ret = dict()
+    if not param_list:
+        return ret
+    circulating_mcap = df['circulating_supply'] * df['close']
+    for param in param_list:
+        ret[param] = circulating_mcap
+    return ret

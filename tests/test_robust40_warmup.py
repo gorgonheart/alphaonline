@@ -179,6 +179,11 @@ def test_startup_handoff_surrounds_original_cleanup():
 
 def test_worker_spawn_keeps_framework_paths_isolated(tmp_path):
     root = Path.cwd()
+    import json
+    workspace=tmp_path/'workspace'
+    (workspace/'producer/preprocess_1h_resample').mkdir(parents=True)
+    (workspace/'producer/exginfo').mkdir()
+    (workspace/'config.json').write_text(json.dumps({'realtime_data_path':str(workspace/'producer')}),encoding='utf8')
     account = next((root/'examples/model_robust40').glob('*20m*.py'))
     script = tmp_path/'spawn_check.py'
     script.write_text('''import os
@@ -202,15 +207,19 @@ def check():
     from tools.robust40.initialization_config import MODEL_JOB_NUM
     from core import select_coin
     assert config.job_num == select_coin.job_num == MODEL_JOB_NUM
+    assert config.backtest_job_num == 1
+    assert config.factor_col_limit == select_coin.factor_col_limit == 16
     return 'isolated'
 
 if __name__ == '__main__':
     assert check() == 'isolated'
     with ProcessPoolExecutor(max_workers=1) as pool:
         assert pool.submit(check).result() == 'isolated'
+    print('WARMUP_PROFILE_OK',flush=True)
 ''', encoding='utf8')
     env = dict(os.environ, PYTHONPATH=str(root), X3S_TRADING_ACCOUNT=str(account),
                ROBUST40_WARMUP_WORKER='1', ROBUST40_WARMUP_WORKSPACE=str(tmp_path/'workspace'))
     result = subprocess.run([sys.executable, str(script)], env=env, capture_output=True, text=True,
                             encoding='utf8', errors='replace', timeout=60)
     assert result.returncode == 0, result.stdout + result.stderr
+    assert 'WARMUP_PROFILE_OK' in result.stdout

@@ -12,6 +12,19 @@ Author: 邢不行
 import polars as pl
 
 
+# 已对拍：可独立按声明的依赖列计算，不修改其他截面的输入。
+shared_input_safe = True
+
+
+def get_state_input_columns(params):
+    return ['candle_begin_time', f'当前回撤_{params}']
+
+
+def signal_block(frame, params, factor_name, state=None):
+    """Each timestamp is a complete market; no history or state is required."""
+    return signal_polars(frame.lazy(), params, factor_name).collect(), None
+
+
 def signal(*args):
     df = args[0]
     n = args[1]

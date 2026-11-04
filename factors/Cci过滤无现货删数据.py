@@ -17,16 +17,16 @@ def signal(*args):
 
     return df
 
-# def signal_multi_params(df, param_list) -> dict:
-#     ret = dict()
 
-#     tp = (df['high'] + df['low'] + df['close']) / 3
-#     for param in param_list:
-#         n = int(param)
-
-#         ma = tp.rolling(window=n, min_periods=1).mean()
-#         md = abs(tp - ma).rolling(window=n, min_periods=1).mean()*0.015
-
-
-#         ret[str(param)] = (tp - ma) / md
-#     return ret
+def signal_multi_params(df, param_list) -> dict:
+    ret = dict()
+    if not param_list:
+        return ret
+    tp = (df['high'] + df['low'] + df['close']) / 3
+    cond = (df['symbol_swap'] == '') | (df['symbol_spot'] == '')
+    tp = tp.mask(cond.fillna(False))
+    for param in param_list:
+        ma = tp.rolling(window=param, min_periods=1).mean()
+        md = abs(tp - ma).rolling(window=param, min_periods=1).mean()
+        ret[param] = (tp - ma) / (md * 0.015)
+    return ret

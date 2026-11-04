@@ -132,7 +132,7 @@ def test_profile_changes_only_execution_and_explicit_origin(tmp_path):
         incremental_lookback_hours=0,data_config={},strategy_config={'params':{'runtime':{}}},
         black_list=['X'],simulator_config={'fee':.001},account_config={'buy_bnb_value':11,'hour_offset':'20m'})
     apply_profile(config,'2026-08-01 00:20',tmp_path,True)
-    assert config.input_mode=='full_pkl' and config.section_state
+    assert config.input_mode=='arrow_full_strict' and config.section_state
     assert config.strategy_pool[0]['filter_list'][0][1]==(720,.1,.9,'20260801T002000')
     assert config.black_list==['X'] and config.simulator_config=={'fee':.001}
     assert config.account_config['buy_bnb_value']==11

@@ -264,13 +264,18 @@ def read_and_merge_bmac_data(conf: BacktestConfig, symbol_type: str, df: pd.Data
     # 在裁切之前补算：新版有状态动量的初始 EMA/异常历史必须与生产者一致。
     from core.factor import calc_factor_vals
     mode = getattr(conf, 'input_mode', 'auto')
+    if mode == 'arrow_full_strict':
+        missing = {f'{name}_{p}' for name, params in conf.precompute_factor_configs.items()
+                   for p in params} - set(df.columns)
+        if missing:
+            raise ValueError(f'{symbol}: missing full Arrow precomputed columns {sorted(missing)}')
     factors = conf.precompute_factor_configs if mode == 'full_pkl' else _full_history_factors(conf)
     for name, params in factors.items():
         missing = [p for p in params if f'{name}_{p}' not in df.columns]
         if missing:
             df = df.assign(**calc_factor_vals(df, name, missing))
     required_start = getattr(conf, 'required_history_start', None)
-    if mode == 'full_pkl':
+    if mode in ('full_pkl', 'arrow_full_strict'):
         pass  # Initialization consumes the entire frozen raw publication.
     elif mode != 'arrow_strict' and isinstance(required_start, (str, pd.Timestamp)):
         # Stateful research children need the fixed initialization interval.
@@ -310,7 +315,10 @@ def load_bmac_data(symbol_type, run_time, conf: BacktestConfig):
     required_start = getattr(conf, 'required_history_start', None)
     mode = getattr(conf, 'input_mode', 'auto')
     fixed_history = mode == 'full_pkl' or (mode != 'arrow_strict' and isinstance(required_start, (str, pd.Timestamp)))
-    arrow_dict = None if fixed_history else read_arrow_market_dict_for_run_time(bmac_data_path, symbol_type, run_time)
+    # Keep the original 5000-row publication window for 4050 consumers; larger
+    # custom windows retain their requested history and mapping warmup as well.
+    arrow_rows = max(5000, conf.get_kline_num()+conf.min_kline_num+1) if hasattr(conf, 'get_kline_num') else 5000
+    arrow_dict = None if fixed_history else read_arrow_market_dict_for_run_time(bmac_data_path, symbol_type, run_time, arrow_rows)
     factors = conf.precompute_factor_configs if mode == 'arrow_strict' else _full_history_factors(conf)
     required_columns = {f'{name}_{p}' for name, params in factors.items() for p in params}
     if mode == 'arrow_strict' and (not arrow_dict or any(

@@ -16,7 +16,7 @@ from datetime import datetime
 
 import pandas as pd
 
-from config import is_debug, error_webhook_url
+from config import is_debug, is_simulate, error_webhook_url
 from core.account_manager import init_system
 from core.real_trading import run_by_account
 from core.utils.dingding import send_wechat_work_msg
@@ -56,8 +56,9 @@ def main() -> datetime | None:
         logger.debug('🐞调试模式 - 不更新账户信息')
         is_ready = True
     else:
-        account_config.bn.reset_max_leverage()  # 重置页面杠杆（新币可能会没有被设置过）
-        is_ready = account_config.update_account_info(is_operate=True)
+        if is_simulate != 'dry_run':
+            account_config.bn.reset_max_leverage()  # 重置页面杠杆（新币可能会没有被设置过）
+        is_ready = account_config.update_account_info(is_operate=is_simulate != 'dry_run')
     if is_ready is None or not is_ready:
         logger.info(f'{account_config.name} 更新没有准备好，跳过当前账户')
         return None

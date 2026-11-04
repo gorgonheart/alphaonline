@@ -324,7 +324,7 @@ class AccountConfig:
         if self.use_spot:  # 如果使用现货实盘，需要读取现货交易对信息和持仓信息
             spot_position = account_overview.get('spot_assets', {}).get('spot_position_df', pd.DataFrame())
             # =小额资产转换
-            if self.if_transfer_bnb:
+            if self.if_transfer_bnb and is_operate:
                 self.bn.transfer_bnb_for_dust_spot(dust_spot)
         elif self.account_type == AccountType.STANDARD:  # 不使用现货实盘，设置现货价值为默认值0
             spot_equity = 0

@@ -32,3 +32,17 @@ def signal(*args):
 
 
     return df
+
+
+def signal_multi_params(df, param_list) -> dict:
+    ret = dict()
+    if not param_list:
+        return ret
+    candle_series = pd.to_datetime(pd.Series(df['candle_begin_time']))
+    time_deltas = candle_series - candle_series.iloc[0]
+    total_hours = time_deltas.dt.total_seconds() / 3600
+    cond = (df['symbol_swap'] == '') | (df['symbol_spot'] == '')
+    values = total_hours.mask(cond.fillna(False))
+    for param in param_list:
+        ret[param] = values
+    return ret

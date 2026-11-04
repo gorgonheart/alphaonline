@@ -95,8 +95,19 @@ def coin_features(df):
         out['taker24'] = np.nan
     funding = df['funding_fee'] if 'funding_fee' in df else pd.Series(np.nan, index=df.index)
     out['funding24'] = funding.rolling(24, min_periods=20).sum()
-    times = pd.to_datetime(df['candle_begin_time'])
-    first = pd.to_datetime(df['first_candle_time']) if 'first_candle_time' in df else times.iloc[0]
+    # Arrow inputs are already typed. Re-parsing samples repeated timestamps
+    # for pandas' string cache, boxing thousands of Python dates per symbol.
+    times = df['candle_begin_time']
+    if not (isinstance(times.dtype, pd.DatetimeTZDtype) or
+            isinstance(times.dtype, np.dtype) and times.dtype.kind == 'M'):
+        times = pd.to_datetime(times)
+    if 'first_candle_time' in df:
+        first = df['first_candle_time']
+        if not (isinstance(first.dtype, pd.DatetimeTZDtype) or
+                isinstance(first.dtype, np.dtype) and first.dtype.kind == 'M'):
+            first = pd.to_datetime(first)
+    else:
+        first = times.iloc[0]
     out['age_days'] = (times-first).dt.total_seconds()/86400
     return out.replace([np.inf, -np.inf], np.nan)
 
@@ -1173,7 +1184,11 @@ def register_execution():
 # 10. 框架输入、父权重及目标一致性校验
 
 def _frame(frame):
-    out = rename_columns(frame.copy())
+    # Only labels are normalized here. Numeric consumers select/reindex before
+    # writing, so a private header avoids two copies of every market matrix.
+    out = frame.copy(deep=False)
+    out.columns = [canonical(c) for c in out.columns]
+    if not out.columns.is_unique:raise ValueError('Canonical instrument names collide')
     out.index = utc_index(out.index)
     return out
 
@@ -1214,21 +1229,19 @@ def build_context(equities, ratios, leverage, pivots, sizes, minute, simulator):
     index = pd.DatetimeIndex(equities[0].candle_begin_time)
     if any(not index.equals(pd.DatetimeIndex(d.candle_begin_time)) for d in equities):
         raise ValueError('Child equity time axes differ')
-    pairs = [];columns = set()
+    # Collect labels first, then convert one child at a time. Keeping fourteen
+    # aligned dense copies until CSR conversion doubled the initialization peak.
+    columns = sorted({kind+':'+canonical(s) for pair in ratios
+                      for kind,frame in zip(('spot','swap'),pair) for s in frame.columns})
+    mapping = {c: i for i, c in enumerate(columns)}
+    matrices = []
     for pair in ratios:
-        item = {}
+        matrix = sparse.csr_matrix((len(index), len(columns)))
         for kind, frame in zip(('spot', 'swap'), pair):
             frame = _frame(frame)
             if not index.isin(frame.index).all():raise ValueError('Child ratios missing equity bars')
             frame = frame.loc[index]
             if frame.isna().any().any():raise ValueError('Invalid child ratios')
-            item[kind] = frame;columns.update(kind+':'+s for s in frame.columns)
-        pairs.append(item)
-    columns = sorted(columns);mapping = {c: i for i, c in enumerate(columns)}
-    matrices = []
-    for pair in pairs:
-        matrix = sparse.csr_matrix((len(index), len(columns)))
-        for kind, frame in pair.items():
             coo = sparse.coo_matrix(frame.to_numpy())
             loc = np.array([mapping[kind+':'+s] for s in frame.columns], dtype=int)
             matrix += sparse.csr_matrix((coo.data, (coo.row, loc[coo.col])), shape=matrix.shape)
@@ -1288,6 +1301,13 @@ def load_model_raw(root, offset, run_time, expected, live):
                                       columns=MODEL_RAW_COLUMNS, tail=4050)
         if not publication:raise ValueError('MODEL requires same-round raw Arrow')
         sources = [publication]
+    elif run_time is not None and (Path(root)/offset/f'swap_dict_{int(run_time.timestamp())}.arrow').exists():
+        from tools.initialization_data import read_market
+        path=Path(root)/offset/f'swap_dict_{int(run_time.timestamp())}.arrow'
+        # Keep all symbols/full history. funding_fee absence keeps its original
+        # missing-value semantics; it is never substituted with funding_rate.
+        sources=({s:f} for s,f in read_market(path,columns=['candle_begin_time',*MODEL_RAW_COLUMNS],
+                                             end=expected,require_full=True))
     else:
         sources = (pd.read_pickle(p) for p in sorted((Path(root)/offset).rglob('swap_dict_batch*.pkl')))
     raw = {}
@@ -1305,7 +1325,7 @@ def load_model_raw(root, offset, run_time, expected, live):
     return raw
 
 
-def prepare(me_conf, account, run_time):
+def prepare(me_conf, account, run_time, *, inputs=None):
     """One state read under the same lock used for merge, calculation and save."""
     from time import perf_counter
     from core.utils.log_kit import logger
@@ -1313,7 +1333,7 @@ def prepare(me_conf, account, run_time):
     logger.info('MODEL仓管：开始准备输入及续算状态')
     options = me_conf.strategy.params['runtime']
     if options.get('initializing') is True:
-        return _prepare(me_conf, account, run_time, saved=None, started=started)
+        return _prepare(me_conf, account, run_time, saved=None, started=started, inputs=inputs)
     state = Path(options['state_path']);bootstrap = Path(options['bootstrap_path'])
     if state.resolve() == bootstrap.resolve():raise ValueError('State must not overwrite bootstrap')
     with lock(state):
@@ -1321,7 +1341,7 @@ def prepare(me_conf, account, run_time):
         return _prepare(me_conf, account, run_time, saved=saved, started=started)
 
 
-def _prepare(me_conf, account, run_time, *, saved, started):
+def _prepare(me_conf, account, run_time, *, saved, started, inputs=None):
     from time import perf_counter
     from core.utils.log_kit import logger
     last = started
@@ -1368,16 +1388,25 @@ def _prepare(me_conf, account, run_time, *, saved, started):
     leverage = pd.DataFrame(1., index=index, columns=range(14))
     for i, conf in enumerate(me_conf.factory.config_list):
         if conf.timing:
-            path = conf.get_result_folder()/'再择时动态杠杆.csv'
-            value = pd.read_csv(path, index_col='candle_begin_time', parse_dates=True)['动态杠杆']
+            if inputs is not None:
+                value = inputs['timing'][conf.name].copy(deep=False)
+            else:
+                path = conf.get_result_folder()/'再择时动态杠杆.csv'
+                value = pd.read_csv(path, index_col='candle_begin_time', parse_dates=True)['动态杠杆']
             value.index = utc_index(value.index);leverage[i] = value.reindex(index)
-    pivots = {k: read_bmac_market_pivot(account.hour_offset, k) for k in ('spot', 'swap')}
+    pivots = ({k: read_bmac_market_pivot(account.hour_offset, k) for k in ('spot', 'swap')}
+              if inputs is None else inputs['pivots'])
     sizes = virtual_lot_sizes(saved, me_conf.ratio_dfs, read_bmac_exginfo)
     equities = me_conf.equity_dfs
     if options.get('server_init') and not initializing:
         start = expected-pd.Timedelta(hours=4049)
         equities = [d.loc[utc_index(d.candle_begin_time)>=start].copy() for d in equities]
     context = build_context(equities, me_conf.ratio_dfs, leverage, pivots, sizes, minute, simulator_config)
+    if initializing:
+        dense=sum(int(f.memory_usage(index=True,deep=False).sum()) for pair in me_conf.ratio_dfs for f in pair)
+        csr=sum(m.data.nbytes+m.indices.nbytes+m.indptr.nbytes for m in context['matrices'])
+        arrays=sum(v.nbytes for v in context['simulation'].values() if isinstance(v,np.ndarray))
+        logger.info(f'INIT_DATA MODEL输入字节：child_dense={dense} csr={csr} simulation_arrays={arrays}；共享缓冲不可相加当RSS')
     progress('行情、子策略及再择时输入整理完成')
     def raw_loader():
         raw_started = perf_counter()
@@ -1393,6 +1422,8 @@ def _prepare(me_conf, account, run_time, *, saved, started):
         from config import strategy_pool, min_kline_num
         origin,n=configured_s3({'strategy_pool':strategy_pool},minute)
         raw = raw_loader()
+        logger.info(f'INIT_DATA MODEL原始行情：symbols={len(raw)} '
+                    f'frame_bytes={sum(int(f.memory_usage(index=True,deep=False).sum()) for f in raw.values())}；不含Python对象额外开销')
         validate_initial_history(raw,origin,n,min_kline_num)
         bundle = initialize_state(state,account.name,minute,context,raw,expected,strategy.params['parent'],strategy_pool,simulator_config,
                                   checkpoint_hours=options.get('checkpoint_hours', 0))
@@ -1402,7 +1433,9 @@ def _prepare(me_conf, account, run_time, *, saved, started):
     strategy._robust40_result = bundle['result']
     if initializing and options.get('checkpoint_hours'):
         from tools.robust40.handoff import read_inputs
-        inputs=read_inputs(run_time,minute,expected,initializing=True,raw_swap=raw,pivots=pivots)
+        # MODEL raw is projected; revision checks need their own broader column
+        # set, but only the bounded 168-hour tail of the same Arrow publication.
+        inputs=read_inputs(run_time,minute,expected,initializing=True,pivots=pivots)
         pd.to_pickle(inputs,state.parent/'revision_inputs.pkl')
     strategy._robust40_index = pd.DatetimeIndex(me_conf.equity_dfs[0].candle_begin_time)
     progress('仓管计算及状态保存完成')

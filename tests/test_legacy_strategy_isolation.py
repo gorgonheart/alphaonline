@@ -159,6 +159,11 @@ def test_legacy_target_lots_match_main_even_after_model_registration(name, mode,
     'positions/HybridRotationDriftStrategy.py'])
 def test_shared_implementation_unchanged_from_main(path):
     expected = baseline_source(path)
+    if path == 'core/model/account_config.py':
+        # Approved dry-run fix only; all remaining original AST stays identical.
+        guard = 'if self.if_transfer_bnb:'
+        assert expected.count(guard) == 1
+        expected = expected.replace(guard, 'if self.if_transfer_bnb and is_operate:')
     if path == 'positions/HybridRotationDriftStrategy.py':
         # Only the type-only framework import moved behind TYPE_CHECKING;
         # every function, constant and numerical decorator still matches main.

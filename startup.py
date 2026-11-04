@@ -121,6 +121,9 @@ def run_loop() -> datetime | None:
     # ====================================================================================================
     # 2. 等待数据中心完成数据更新
     # ====================================================================================================
+    if not is_debug:
+        from config import bmac_data_path
+        server_initializer.prepare(account_profile_files,run_time,bmac_data_path)
     logger.info(f'检查数据中心，{run_time}...')
     # 检查数据中心数据是否更新
     is_data_ready = check_bmac_update_flag(run_time)
@@ -171,6 +174,9 @@ def run_loop() -> datetime | None:
 
 def check_accounts():
     refresh_diff_time()  # 刷新与交易所的时差
+    if is_simulate == 'dry_run':
+        logger.info('🔵 [干跑模式] 跳过杠杆、持仓模式及保证金模式修改')
+        return
     for account_profile_file in load_multi_accounts():
         account, _ = init_system(account_profile_file.stem)
 

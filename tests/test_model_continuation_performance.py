@@ -78,7 +78,8 @@ def test_initial_prepare_does_not_read_or_double_lock(tmp_path, monkeypatch):
     path=tmp_path/'state.pkl'
     me=SimpleNamespace(strategy=SimpleNamespace(params={'runtime':dict(initializing=True,
         state_path=str(path),bootstrap_path=str(tmp_path/'unused.pkl'))}))
-    def prepared(*a, saved, started):
+    def prepared(*a, saved, started, inputs=None):
+        assert inputs is None
         assert saved is None and not Path(str(path)+'.lock').exists()
         return 'initializing'
     monkeypatch.setattr(model,'_prepare',prepared,raising=False)

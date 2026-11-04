@@ -37,8 +37,13 @@ def configure_worker():
     config.bmac_exginfo_path = config.bmac_data_path/'exginfo'
     config.is_simulate = 'debug'
     config.is_debug = True
-    from tools.robust40.initialization_config import MODEL_JOB_NUM
+    from tools.robust40.initialization_config import MODEL_JOB_NUM, INITIALIZATION
     config.job_num = MODEL_JOB_NUM
+    from tools.robust40.initialization_config import RESOURCE_POLICY
+    config.backtest_job_num = min(MODEL_JOB_NUM, RESOURCE_POLICY['initialization_backtest_workers'])
+    config.select_coin_inner_threads = 1
+    config.factor_col_limit = INITIALIZATION['factor_col_limit']
+    config.cross_section_chunk_size = INITIALIZATION['cross_section_chunk_size']
     config.error_webhook_url = ''
     return config
 

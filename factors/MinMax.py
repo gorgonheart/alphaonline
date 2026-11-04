@@ -27,3 +27,15 @@ def signal(*args):
     df[factor_name] = df['minmax'] - 0.5
 
     return df
+
+
+def signal_multi_params(df, param_list) -> dict:
+    ret = dict()
+    if not param_list:
+        return ret
+    tp = (df['high'] + df['low'] + df['close']) / 3
+    for param in param_list:
+        minimum = tp.rolling(param, min_periods=1).min()
+        maximum = tp.rolling(param, min_periods=1).max()
+        ret[param] = (tp - minimum) / (maximum - minimum) - 0.5
+    return ret

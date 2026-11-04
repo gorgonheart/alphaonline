@@ -175,7 +175,7 @@ def test_arrow_tail_reads_same_values_without_factor_columns(tmp_path,minute):
     pd.testing.assert_frame_equal(actual.reset_index(drop=True),frame[['candle_begin_time','close']].tail(168).reset_index(drop=True))
 
 
-def test_common_snapshot_restores_children_s3_and_model(tmp_path):
+def test_common_snapshot_restores_children_s3_and_model(tmp_path,monkeypatch):
     from test_robust40_runtime import context
     from positions.ModelRobust40Strategy import calculate, advance
     from tools.robust40.handoff import restore_snapshot
@@ -194,9 +194,29 @@ def test_common_snapshot_restores_children_s3_and_model(tmp_path):
     bundle=dict(context=c,result=result,minute=40,account_identity='account',strategy_pool=pool)
     (tmp_path/'model').mkdir();pd.to_pickle(bundle,tmp_path/'model/state.pkl')
     index=c['index'].tz_localize('UTC')
+    # Real factor/selector output: a raw close correction at t changes the
+    # stored next_close at t-1 even though the common checkpoint remains t-1.
+    from test_full_arrow_initialization import frame as raw_frame
+    from test_shared_factor_stage import configuration
+    from test_streaming_selection import strategy
+    from core import select_coin as select
+    from core.utils.factor_data import FactorBlocks
+    import polars as pl
+    from types import SimpleNamespace
+    monkeypatch.setattr(select,'get_snapshot_time',lambda _:None)
+    raw_selection=raw_frame(len(index)).assign(candle_begin_time=c['index'],
+        first_candle_time=c['index'][0],last_candle_time=c['index'][-1],close=100.)
+    factor_conf=configuration()
+    stg=strategy();stg.factor_columns=['Bias_3'];stg.long_factor=stg.short_factor='Bias_3'
+    stg.period_num=1;stg.offset_list=[0]
+    def full_selection(raw):
+        _,factors=select.process_candle_df_return_polars(raw.copy(),factor_conf,['Bias_3'],0)
+        return select.process_strategy_thread(stg,tmp_path,factor_source=factors.lazy(),return_result=True).to_pandas()
+    old_selection=full_selection(raw_selection)
     for i,spec in enumerate(pool):
         child=tmp_path/f'S{i+1}-{spec["name"]}';child.mkdir()
         pd.DataFrame({'candle_begin_time':index}).to_pickle(child/'选币结果.pkl')
+        if i==0:old_selection.to_pickle(child/'选币结果.pkl')
         for kind,symbol,ratio in [('spot','S',.1),('swap','U',-.1)]:
             pd.DataFrame(ratio,index=index,columns=[symbol]).to_pickle(child/f'ratio_{kind}.pkl')
         for suffix in (('state0','state1') if spec['re_timing'] else ('state0',)):
@@ -218,6 +238,35 @@ def test_common_snapshot_restores_children_s3_and_model(tmp_path):
     for path in tmp_path.glob('S*/lots_state*.pkl'):
         assert pd.Timestamp(pd.read_pickle(path)['simulate_to']).tz_localize(None)==time
     assert pd.read_pickle(tmp_path/'sections/s3.pkl')['cutoff']==time
+    corrected_raw=raw_selection.copy()
+    corrected_raw.loc[corrected_raw.candle_begin_time==revised,'close']=102.
+    from tools.robust40.handoff import first_revision
+    assert first_revision({'raw':raw_selection.set_index('candle_begin_time')},
+                          {'raw':corrected_raw.set_index('candle_begin_time')})==revised
+    expected_selection=full_selection(corrected_raw)
+    _,candidate_factors=select._factor_symbol(corrected_raw.copy(),factor_conf,['Bias_3'],0)
+    blocks=FactorBlocks(tmp_path/'replay-factors',hours=19,minute=40)
+    blocks.append(candidate_factors,0)
+    child=tmp_path/'S1-child0';report=tmp_path/'selection-report';report.mkdir()
+    conf=SimpleNamespace(strategy_list=[stg],unified_time='2017-01-01',has_snapshot=True,
+        lookback_days=0,get_result_folder=lambda:report,get_snapshot_folder=lambda:child)
+    start=time-pd.Timedelta('3h')  # Same snapshot minus holding window as core.
+    paths=select.select_factor_blocks([conf],blocks,tmp_path/'replayed-selection',workers=1,start=start)[0][0]
+    fresh=pl.concat([pl.read_ipc(p,memory_map=False) for p in paths]).to_pandas()
+    monkeypatch.setattr(select,'clean_start',False)
+    select.concat_select_results(conf,frames=[fresh])
+    actual_selection=pd.read_pickle(child/'选币结果.pkl')
+    pd.testing.assert_frame_equal(actual_selection,expected_selection.reset_index(drop=True),check_categorical=False)
+    prefix=actual_selection[actual_selection.candle_begin_time<start].reset_index(drop=True)
+    pd.testing.assert_frame_equal(prefix,old_selection[old_selection.candle_begin_time<start].reset_index(drop=True),check_categorical=False)
+    affected=revised-pd.Timedelta('1h')
+    assert actual_selection.loc[actual_selection.candle_begin_time==affected,'next_close'].item()==102.
+    stale=actual_selection.copy()
+    stale.loc[stale.candle_begin_time==affected,'next_close']=100.
+    # A negative control proves this oracle rejects a stale persisted t-1 row.
+    with pytest.raises(AssertionError):
+        pd.testing.assert_frame_equal(stale,expected_selection.reset_index(drop=True),check_categorical=False)
+    blocks.close()
     corrected=dict(c,simulation=dict(c['simulation']),close=c['close'].copy())
     corrected['simulation']['swap_close_p']=c['simulation']['swap_close_p'].copy()
     corrected['simulation']['swap_close_p'][-3,0]=102.

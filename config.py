@@ -56,6 +56,9 @@ precompute_factor_configs = {}  # 预计算因子配置，在账户配置文件�
 required_history_start = None  # 每次加载重置；仅显式配置的账户读取固定起点历史
 input_mode = 'auto'  # auto / full_pkl / arrow_strict; old accounts keep auto fallback
 section_state = False  # Explicit generic section continuation, default off
+# 通用因子/截面/选币块流程；四场景共用，完整验收后由人工启用。
+# custom/entry_exit 自动保留原整段流程；不改变账户策略参数或状态协议。
+shared_factor_pipeline = False
 
 # ====================================================================================================
 # ** 模拟器细节配置 **
@@ -130,7 +133,7 @@ if json_file_config.exists():
         # 目前只支持配置这些
         allowed_attrs = (
             'realtime_data_path', 'error_webhook_url', 'is_simulate', 'factor_col_limit', 'lookback_days',
-            'incremental_lookback_hours', 'proxy'
+            'incremental_lookback_hours', 'proxy', 'shared_factor_pipeline'
         )
 
         for _attr in allowed_attrs:

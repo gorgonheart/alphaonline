@@ -301,7 +301,25 @@ def is_trade_symbol(symbol, black_list, white_list) -> bool:
         return True
 
 
+def iter_preprocessed_candles(conf, run_time):
+    """Yield the existing market preparation in swap/spot order, without a PKL hop.
+
+    auto/full_pkl deliberately retain the legacy loader's fallback and history
+    rules. Strict Arrow tasks use path descriptors in the shared factor worker.
+    """
+    for kind in ('swap', 'spot'):
+        if {kind, 'mix'}.isdisjoint(conf.select_scope_set) and {kind}.isdisjoint(conf.order_first_set):
+            continue
+        market = load_bmac_data(kind, run_time, conf)
+        market = {symbol: frame for symbol, frame in market.items()
+                  if is_trade_symbol(symbol, conf.black_list, conf.white_list)}
+        yield from del_insufficient_data(market).values()
+
+
 def load_realtime_data(conf: BacktestConfig, run_time):
+    if getattr(conf, 'input_mode', 'auto') == 'arrow_full_strict':
+        from tools.streaming_factors import prepare_inputs
+        return prepare_inputs(conf, run_time)
     all_candle_df_list = []
     all_symbol_list = set()
     # chunk 机制先硬编码处理一下

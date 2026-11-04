@@ -60,7 +60,7 @@ def test_background_exit_is_reported_without_another_offset(tmp_path, monkeypatc
         assert not thread.is_alive()
         assert any(str(path) in m for m in messages)
         if fails: assert any('RuntimeError: 初始化失败原因' in m for m in messages)
-        else: assert any('初始化完成' in m for m in messages)
+        else: assert any('初始化任务结束' in m for m in messages)
         assert max(map(len, messages)) < 10000
     finally:
         process.wait(timeout=15)
@@ -127,13 +127,16 @@ def check():
     assert len(mef.factory.config_list) == 14
     import json
     initializing=json.loads(os.environ['ROBUST40_SERVER_WORKER'])['initializing']
-    assert config.input_mode == ('full_pkl' if initializing else 'arrow_strict') and config.section_state
+    assert config.input_mode == ('arrow_full_strict' if initializing else 'arrow_strict') and config.section_state
     assert config.checkpoint_hours == 25 and config.incremental_lookback_hours == 0
     # Both profiles must reach factor imports in every Windows-spawned process.
     # A CPU-sized live pool previously spawned 20 workers and exhausted memory.
     from core import select_coin
     from tools.robust40.initialization_config import MODEL_JOB_NUM
     assert config.job_num == MODEL_JOB_NUM
+    assert config.backtest_job_num == (1 if initializing else min(MODEL_JOB_NUM,3))
+    assert config.factor_col_limit == select_coin.factor_col_limit
+    if initializing:assert config.factor_col_limit == 16 and config.cross_section_chunk_size == 1
     assert select_coin.job_num == config.job_num
     assert all(c.checkpoint_hours == 25 and c.incremental_lookback_hours == 0 for c in mef.factory.config_list)
     from core.utils import datatools,exchange_hub
