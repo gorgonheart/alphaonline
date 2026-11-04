@@ -25,7 +25,7 @@ def producer_root(request):
 def legacy_account_path():
     root=Path(__file__).resolve().parents[1]
     def locate(name):
-        for path in (root/'accounts'/name,root/'tests/fixtures/legacy_accounts'/name):
+        for path in (root/'tests/fixtures/legacy_accounts'/name,root/'accounts'/name):
             if path.exists():return path
         pytest.skip('Legacy public account fixture unavailable: '+name)
     return locate
