@@ -42,3 +42,6 @@ DATA_READY_WAIT_SECONDS = 240
 # Includes the current bar: 25 points allow restoring before a 24-bar revision.
 CHECKPOINT_POINTS = 25
 REVISION_HISTORY_HOURS = 168
+
+# Failure payloads are disposable; keep bounded flat account diagnostics.
+DIAGNOSTIC_LOG_COUNT = 24

@@ -1,5 +1,5 @@
 """Account-locked common recovery. No exchange calls and no historical orders."""
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 import shutil
 import tempfile
@@ -262,8 +262,12 @@ def transaction(destination, stage):
         if not committed:
             destination.replace(stage)
             backup.replace(destination)
+            from .lifecycle import retire_replay
+            retire_replay(stage,destination)
         else:
             retire_backup(destination)
+            from .lifecycle import retire_replay
+            retire_replay(stage,destination)
 
 
 def retire_backup(destination):
@@ -274,29 +278,43 @@ def retire_backup(destination):
     backup.replace(previous)
 
 
-def recover_interrupted(destination):
+def recover_interrupted(destination, locked=False):
     """A process killed during the directory transaction leaves this unique backup."""
     destination=Path(destination).resolve()
     backup=destination.with_name(destination.name+'.replay-previous')
-    if not backup.exists():return
+    if not backup.exists():
+        folder=destination.parent.parent/'model_replay'/destination.name
+        if folder.exists():
+            from .server import account_lock
+            from .lifecycle import sweep_replay
+            with nullcontext() if locked else account_lock(destination):sweep_replay(destination)
+        return
     from .server import account_lock
-    with account_lock(destination):
+    with nullcontext() if locked else account_lock(destination):
+        from .lifecycle import active_roots
+        active=active_roots()
+        if active is None or destination.parent.parent.parent.resolve() in active:
+            raise BlockingIOError('Replay workers still active or ownership unreadable; recovery deferred')
         try:committed=pd.read_pickle(destination/'warmup.pkl').get('complete') is True
         except Exception:committed=False
         try:valid_backup=pd.read_pickle(backup/'warmup.pkl').get('complete') is True
         except Exception:valid_backup=False
         if not valid_backup:
-            parent=destination.parent.parent/'model_replay';parent.mkdir(exist_ok=True)
-            failed=Path(tempfile.mkdtemp(prefix=destination.name+'-unreadable-',dir=parent))
-            backup.replace(failed/'snapshot')
+            from .lifecycle import discard_interrupted
+            discard_interrupted(backup,destination)
             return  # inspect() can now request full initialization as usual.
         if committed:
             retire_backup(destination);return
+        failed=None
         if destination.exists():
-            parent=destination.parent.parent/'model_replay';parent.mkdir(exist_ok=True)
-            failed=Path(tempfile.mkdtemp(prefix=destination.name+'-interrupted-',dir=parent))
+            parent=destination.parent.parent/'model_replay'/destination.name;parent.mkdir(parents=True,exist_ok=True)
+            failed=Path(tempfile.mkdtemp(prefix='interrupted-',dir=parent))
             destination.replace(failed/'snapshot')
         backup.replace(destination)
+        if failed is not None:
+            from .lifecycle import discard_interrupted, discard
+            discard_interrupted(failed/'snapshot',destination)
+            discard(failed,failed.parent)
 
 
 def prepare(destination, values, run_time, minute, end):
@@ -321,18 +339,25 @@ def _prepare(destination, values, run_time, minute, end):
         return None,trim_inputs(current,end)
     telemetry.record(mode='replay',revised_from=revised)
     telemetry.emit('revision_detected')
-    parent=destination.parent.parent/'model_replay'
-    parent.mkdir(exist_ok=True)
-    workspace=Path(tempfile.mkdtemp(prefix=destination.name+'-',dir=parent))
+    parent=destination.parent.parent/'model_replay'/destination.name
+    parent.mkdir(parents=True,exist_ok=True)
+    from .lifecycle import sweep_replay
+    sweep_replay(destination)
+    workspace=Path(tempfile.mkdtemp(prefix='work-',dir=parent))
     stage=workspace/'snapshot'
-    with telemetry.phase('copy_s'):
-        shutil.copytree(destination,stage)
-    with telemetry.phase('restore_s'):
-        restored=restore_snapshot(stage,revised,values)
-    telemetry.record(restored_at=restored,replay_hours=float((cutoff(end)-restored)/pd.Timedelta(hours=1)))
-    telemetry.emit('restored')
-    from .server import save_meta
-    meta=pd.read_pickle(stage/'warmup.pkl')
-    save_meta(stage,dict(meta,complete=False,cutoff=restored))
-    print(f'MODEL历史修订 {revised}；共同恢复至 {restored}，子策略/S3/MODEL重新计算',flush=True)
+    try:
+        with telemetry.phase('copy_s'):
+            shutil.copytree(destination,stage)
+        with telemetry.phase('restore_s'):
+            restored=restore_snapshot(stage,revised,values)
+        telemetry.record(restored_at=restored,replay_hours=float((cutoff(end)-restored)/pd.Timedelta(hours=1)))
+        telemetry.emit('restored')
+        from .server import save_meta
+        meta=pd.read_pickle(stage/'warmup.pkl')
+        save_meta(stage,dict(meta,complete=False,cutoff=restored))
+        print(f'MODEL历史修订 {revised}；共同恢复至 {restored}，子策略/S3/MODEL重新计算',flush=True)
+    except BaseException:
+        from .lifecycle import retire_replay
+        retire_replay(stage,destination)
+        raise
     return stage,trim_inputs(current,end)

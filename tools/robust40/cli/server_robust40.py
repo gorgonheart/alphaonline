@@ -146,7 +146,7 @@ def prepare(account, workspace, stamp, destination):
     from tools.robust40.handoff import recover_interrupted
     # Do not hold this lock while the later compute subprocess acquires it.
     with server.account_lock(destination):
-        recover_interrupted(destination)
+        recover_interrupted(destination, True)
         status, reason = server.inspect(destination, account.stem, values,
                                         pd.Timestamp(stamp, unit='s')-pd.Timedelta(hours=1))
     if status != 'rebuild':
@@ -157,6 +157,18 @@ def prepare(account, workspace, stamp, destination):
 
 
 def initialize(account,workspace,stamp,destination,prepared_conf=None):
+    from tools.robust40 import server, lifecycle
+    # The caller already owns initialization lock. Snapshot lock excludes an
+    # orphan compute process before reclaiming any old workspace.
+    with server.account_lock(destination):
+        lifecycle.sweep_initialization(ROOT,account,stamp)
+    try:
+        return _initialize(account,workspace,stamp,destination,prepared_conf)
+    finally:
+        lifecycle.finish_initialization(workspace,ROOT,account,stamp)
+
+
+def _initialize(account,workspace,stamp,destination,prepared_conf=None):
     import pandas as pd
     from tools.robust40.market_inputs import freeze_inputs, freeze_extra, latest_ready, prepare_public_market
     from tools.robust40 import server

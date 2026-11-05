@@ -36,3 +36,6 @@ accounts backup/
 *.nbi
 *.bundle
 .numba_cache/
+
+# Disposable production verification sources, fixtures, caches and reports
+/test/

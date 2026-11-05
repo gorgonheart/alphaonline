@@ -185,7 +185,9 @@ def cleanup_initialization(workspace,root,account,stamp):
     """Drop only coordinator-owned successful scratch; keep research replays."""
     workspace=Path(workspace).resolve()
     expected=Path(root).resolve()/'data/server_initialization'/Path(account).stem/str(stamp)
-    if workspace==expected and workspace.exists():shutil.rmtree(workspace)
+    if workspace==expected and workspace.exists():
+        from .lifecycle import discard
+        discard(workspace,expected.parent)
 
 
 def clean_startup(accounts,root,snapshot_root):
