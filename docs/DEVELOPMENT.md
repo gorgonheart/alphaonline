@@ -1,5 +1,10 @@
 # alpha / alphaonline 统一开发说明
 
+## 2026-11-05 S3后上市币覆盖热修复
+
+GUNUSDT刚达到14000根时被旧max起点校验误当全市场历史不足，导致5/25/45反复初始化失败、15/35/55等待槽位。修复仅validate_initial_history的max→min，与原S3全市场时间检查一致，保持真实不足与4050拒绝、不改账户日期或数学。TDD12失败13通过后，相关79通过，独立25通过。源自已部署main，不混入下一版改造；见[热修复记录](2026-11-05-s3-listing-coverage-hotfix.md)。
+
+
 ## 2026-11-05 工作区清理部署及生产test隔离完成
 
 部署e32f503至43.167.235.164:/home/ubuntu/alphatrade，保留账户、none模式、资源覆盖与有效snapshot；未启动交易。失败初始化/回放工作区释放和有界诊断生效；未改core/startup/数学。根tests与专用benchmark/parity工具、已知测试缓存/日志/部署包归入test/archive，生产sparse checkout排除测试文件。tools/run_deployment_tests.py从已提交Git生成test/verify-*，隔离空凭据、数据、缓存和日志；删除test不影响业务，下次verify重建。两次隐藏test后配置与业务导入均通过，TDD还验证实际删除并重建。
