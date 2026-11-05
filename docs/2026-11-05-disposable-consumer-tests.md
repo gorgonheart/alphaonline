@@ -9,3 +9,5 @@ test可在没有验证任务时人工整目录删除；正在验证时删除只�
 历史tests、research验证目录、独立reports和已知测试缓存归档到test/archive。迁移前必须检查进程/启动配置引用；若存在业务引用需先移除引用，不能直接删除。部署备份中的测试源码和验证日志也迁入test/archive，运行源码和私有配置备份保留在原处；回退不依赖test。
 
 本轮同时发布失败初始化/回放生命周期清理，详见2026-11-05-scratch-lifecycle-implementation.md。不得将部署测试目录的可删除性质延伸到data/snapshot或data/server_initialization的在用任务。
+
+生产部署及可删除性验收已完成，见2026-11-05-lifecycle-production-deployment.md。

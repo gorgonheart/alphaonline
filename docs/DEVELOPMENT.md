@@ -1,5 +1,12 @@
 # alpha / alphaonline 统一开发说明
 
+## 2026-11-05 工作区清理部署及生产test隔离完成
+
+部署e32f503至43.167.235.164:/home/ubuntu/alphatrade，保留账户、none模式、资源覆盖与有效snapshot；未启动交易。失败初始化/回放工作区释放和有界诊断生效；未改core/startup/数学。根tests与专用benchmark/parity工具、已知测试缓存/日志/部署包归入test/archive，生产sparse checkout排除测试文件。tools/run_deployment_tests.py从已提交Git生成test/verify-*，隔离空凭据、数据、缓存和日志；删除test不影响业务，下次verify重建。两次隐藏test后配置与业务导入均通过，TDD还验证实际删除并重建。
+
+Ubuntu完整1459通过、77跳过，唯一缺LightGBM依赖失败补齐后对应文件6通过；补装lightgbm4.7.0、narwhals1.37.0，其他包未升级，pip check正常。所有新测试日志位于test/verify-i4hr7688及test/verify-bshdonik；未把重叠用例相加。首次宽范围迁移/历史rollback脚本改写被审批拒绝后，采用逐项确认测试资产的窄迁移，历史rollback.sh保持原样。部署细节见[生产记录](2026-11-05-lifecycle-production-deployment.md)。
+
+
 ## 2026-11-04 发布收尾与阶段验证接受
 
 用户接受25m四币差异归因作为阶段验证，真实下单由用户手工none测试；旧“未放行”条目保留为历史，不能描述成用户仍在等待自动审批。本轮按要求清理临时采集/资源监控、维护发布文档并提交当前main，不升级生产、不改账户或下单。
