@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-PYTHON="${ALPHATRADE_PYTHON:-/home/ubuntu/miniconda3/envs/alpha311/bin/python}"
+DEFAULT_PYTHON=/home/ubuntu/alphatrade-env/upgrade233/alpha311/bin/python
+if [[ ! -x "$DEFAULT_PYTHON" ]]; then DEFAULT_PYTHON=/home/ubuntu/miniconda3/envs/alpha311/bin/python; fi
+PYTHON="${ALPHATRADE_PYTHON:-$DEFAULT_PYTHON}"
 if [[ ! -x "$PYTHON" ]]; then echo 'Set ALPHATRADE_PYTHON to the isolated alpha311 interpreter.' >&2; exit 1; fi
 export PYTHONUTF8=1 PYTHONDONTWRITEBYTECODE=1 X3S_USE_FILE_LOGGING=0 MPLBACKEND=Agg
 unset X3S_TRADING_ACCOUNT ROBUST40_SERVER_WORKER ROBUST40_WARMUP_WORKER
