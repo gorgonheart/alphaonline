@@ -4,6 +4,8 @@ from pathlib import Path
 import shutil
 import pickle
 from contextlib import contextmanager
+from functools import wraps
+from threading import RLock, Thread, Event
 import pandas as pd
 from .warmup import settings, cutoff, effective_settings
 
@@ -72,6 +74,26 @@ def begin(path):
     save_meta(path,dict(meta,complete=False))
 
 
+
+def record_initialization_attempt(path,values,stamp):
+    """One bounded entry in existing metadata, written only before full compute."""
+    file=Path(path)/'warmup.pkl'
+    try:meta=pd.read_pickle(file) if file.exists() else {}
+    except (EOFError,pickle.UnpicklingError):meta={}
+    if not isinstance(meta,dict):meta={}
+    save_meta(path,dict(meta,complete=False,
+                       initialization_attempt=dict(stamp=int(stamp),settings=values)))
+
+
+def initialization_attempted(path,values,stamp):
+    file=Path(path)/'warmup.pkl'
+    if not file.exists():return False
+    try:
+        item=pd.read_pickle(file).get('initialization_attempt',{})
+        return item.get('stamp')==int(stamp) and effective_settings(item.get('settings'))==effective_settings(values)
+    except (EOFError,pickle.UnpicklingError,AttributeError):return False
+
+
 def inspect(path,account,values,end,max_gap=240):
     """Only a small metadata read and fixed-file stats; no model/ratio unpickle."""
     path=Path(path)
@@ -97,6 +119,13 @@ def inspect(path,account,values,end,max_gap=240):
         return 'ready',''
     except (OSError,ValueError,KeyError,EOFError,TypeError,pickle.UnpicklingError):
         return 'rebuild','missing or unreadable state'
+
+
+def inspect_resume(path,account,values,end):
+    """Use the same capacity as trade when deciding whether to cancel recovery."""
+    status,reason=inspect(path,account,values,end)
+    if status=='ready':return inspect(path,account,values,end,resume_capacity(values))
+    return status,reason
 
 
 def configured_s3(values,minute):
@@ -126,7 +155,7 @@ def validate_initial_history(raw,origin,n,min_kline_num):
     starts=[frame.candle_begin_time.min() for frame in raw.values()
             if len(frame)>=INITIALIZATION['minimum_history_bars']]
     if not starts:raise ValueError('Full raw history is not ready for initialization')
-    earliest=max(starts)+pd.Timedelta(hours=min_kline_num+n)
+    earliest=min(starts)+pd.Timedelta(hours=min_kline_num+n)
     if origin<earliest:
         raise ValueError(f'S3 configured date {origin} lacks history; earliest safe time is {earliest}. '
                          'Restore older history or explicitly change the configured S3 date and rebuild')
@@ -223,10 +252,19 @@ def finish_live(strategy):
     telemetry.commit()
 
 
+
+def _serialized(function):
+    @wraps(function)
+    def call(self,*args,**kwargs):
+        with self._mutex:return function(self,*args,**kwargs)
+    return call
+
+
 class Coordinator:
     """One isolated initializer; ready accounts continue on the normal serial loop."""
     def __init__(self,root):
         self.root=Path(root).resolve();self.jobs={};self.attempts={}
+        self.pending={};self._mutex=RLock();self._pending_thread=None;self._stop=Event()
 
     def _monitor(self,account,process,log):
         """Report exit immediately; polling at a later offset only reaps bookkeeping."""
@@ -234,7 +272,10 @@ class Coordinator:
         def report():
             from core.utils.log_kit import logger
             code=process.wait()
-            if code:
+            from .replay import WAIT_FOR_DATA_EXIT
+            if code==WAIT_FOR_DATA_EXIT:
+                logger.info(f'{Path(account).stem}: 发布已切换，返回等待完整数据；日志：{log}')
+            elif code:
                 try:
                     with Path(log).open('rb') as source:
                         source.seek(0,2);source.seek(max(0,source.tell()-8192))
@@ -247,41 +288,132 @@ class Coordinator:
         thread.start()
         return thread
 
+    @_serialized
     def _reap(self):
         for key,(process,handle) in list(self.jobs.items()):
             if process.poll() is not None:
+                from .replay import WAIT_FOR_DATA_EXIT
+                code=process.poll()
                 handle.close();del self.jobs[key]
+                if code==WAIT_FOR_DATA_EXIT:
+                    self.attempts.pop(key,None)
+                    if key in self.pending:
+                        item=self.pending[key]
+                        item['retry_version']=(item['cache'].get('version'),item.get('values_repr'))
+                elif code==0:self.pending.pop(key,None)
+
+    def _ensure_pending_thread(self):
+        if self._pending_thread is not None and self._pending_thread.is_alive():return
+        def watch():
+            while not self._stop.is_set():
+                with self._mutex:
+                    if not self.pending:
+                        self._pending_thread=None;return
+                self.drain_pending()
+                self._stop.wait(2.)
+        self._pending_thread=Thread(target=watch,daemon=True,name='initialization-ready')
+        self._pending_thread.start()
+
+    def close(self):
+        """Stop only this coordinator's metadata watcher, never an active initializer."""
+        self._stop.set()
+        if self._pending_thread is not None:self._pending_thread.join(timeout=3)
+
+    @_serialized
+    def request_rebuild(self,account,run_time,market,reason='rebuild required'):
+        account=Path(account).resolve()
+        if not enabled(account):raise ValueError('Only MODEL accounts can request this recovery')
+        if account not in self.pending:
+            self.pending[account]=dict(run_time=run_time,market=Path(market),reason=reason,cache={})
+        self.drain_pending()
+        self._ensure_pending_thread()
+
+    @_serialized
+    def drain_pending(self):
+        from .arrow_demand import set_demand
+        from .market_inputs import full_publication
+        from core.utils.log_kit import logger
+        self._reap()
+        for account,item in list(self.pending.items()):
+            try:
+                if not account.exists() or not enabled(account):
+                    self.pending.pop(account,None);continue
+                if account in self.jobs:continue
+                values,options=settings(account);minute=options['minute']
+                required={f'{name}_{p}' for name,ps in (values.get('precompute_factor_configs') or {}).items() for p in ps}
+                item['values_repr']=repr(values)
+                stamp,reason=full_publication(item['market'],minute,required,item['cache'])
+                destination=location(self.root,account,values)
+                # A completed external initializer must cancel pending even when
+                # the producer has already switched back to short Arrow.
+                check_stamp=stamp if stamp is not None else int(item['run_time'].timestamp())
+                try:
+                    with account_lock(destination.with_name(destination.name+'.dispatch')), account_lock(destination.with_name(destination.name+'.initialization')), account_lock(destination):
+                        from .handoff import recover_interrupted
+                        recover_interrupted(destination,True)
+                        status,_=inspect_resume(destination,account.stem,values,pd.Timestamp(check_stamp,unit='s')-pd.Timedelta(hours=1))
+                except BlockingIOError:continue
+                if status!='rebuild':
+                    self.pending.pop(account,None);continue
+                set_demand(item['market'],self.root,account,minute,True,stamp=int(item['run_time'].timestamp()))
+                if stamp is None:
+                    if item.get('waiting')!=reason:
+                        logger.info(f'REBUILD_WAIT account={account.stem} reason={reason}; 不占初始化计算槽；若未启用Arrow联动，需上游配置全量发布')
+                        item['waiting']=reason
+                    continue
+                if item.get('retry_version')==(item['cache'].get('version'),repr(values)):continue
+                if self.jobs:continue
+                if initialization_attempted(destination,values,stamp):
+                    if item.get('blocked_stamp')!=stamp:
+                        logger.error(f'REBUILD_BLOCKED account={account.stem} stamp={stamp}: 同配置同轮初始化已尝试，等待新配置/新发布')
+                        item['blocked_stamp']=stamp
+                    continue
+                run=pd.Timestamp(stamp,unit='s',tz='UTC').to_pydatetime()
+                self._launch(account,run,values,item['reason'],'rebuild',item['market'])
+            except Exception as exc:
+                # Background failures remain visible; no generic failure is
+                # reinterpreted as successful recovery or repeated computation.
+                message=f'{type(exc).__name__}: {exc}'
+                if item.get('error')!=message:
+                    logger.error(f'REBUILD_BLOCKED account={account.stem} reason={message}')
+                    item['error']=message
 
     def prepare(self,accounts,run_time,market):
-        """Cheap local preflight before the shared ready gate; no market reads."""
+        """Metadata-only preflight also restores pending invalid accounts after restart."""
         self._reap()
-        if self.jobs:return
         for account in accounts:
             if not enabled(account):continue
             account=Path(account).resolve();values,options=settings(account)
-            if run_time.minute!=options['minute']:continue
+            if account in self.pending or account in self.jobs:continue
+            # Initializing outside its trade offset is allowed; orders remain scheduled.
+            candidate=pd.Timestamp(run_time).replace(minute=options['minute'],second=0,microsecond=0)
+            if candidate>pd.Timestamp(run_time):candidate-=pd.Timedelta(hours=1)
             destination=location(self.root,account,values)
-            # A running owner may have an intentionally incomplete snapshot.
             try:
                 with account_lock(destination.with_name(destination.name+'.initialization')), account_lock(destination):
                     status,reason=inspect(destination,account.stem,values,
-                        pd.Timestamp(run_time.timestamp(),unit='s')-pd.Timedelta(hours=1))
+                        pd.Timestamp(candidate.timestamp(),unit='s')-pd.Timedelta(hours=1))
             except OSError:continue
-            if status=='rebuild':
-                self._launch(account,run_time,values,reason,'prepare',market)
-                if self.jobs:return
+            if status=='rebuild':self.request_rebuild(account,candidate.to_pydatetime(),market,reason)
 
+    @_serialized
     def _launch(self,account,run_time,values,reason,mode,market):
         import os
         import subprocess
         import sys
         from core.utils.log_kit import logger
         from .resources import supervisor_command
+        from .arrow_demand import set_demand
         stamp=int(run_time.timestamp())
+        try:
+            set_demand(market,self.root,account,run_time.minute,True,stamp=stamp)
+        except (OSError,ValueError) as exc:
+            logger.warning(f'ARROW_DEMAND full request deferred: {account.stem}: {exc}')
+            return
         if self.jobs:
             logger.info(f'{account.stem}: 等待初始化槽位；当前账户：{[p.stem for p in self.jobs]}')
             return
-        token=(stamp,reason,repr(values))
+        token=(stamp,repr(values)) if mode=='rebuild' else (stamp,reason,repr(values))
         if self.attempts.get(account)==token:return
         work=self.root/'data/server_initialization'/account.stem/str(stamp)
         if work.exists():
@@ -307,6 +439,18 @@ class Coordinator:
         self._monitor(account,process,Path(handle.name))
         logger.info(f'{account.stem}: {reason}; 启动后台初始化/{mode}；日志：{handle.name}')
 
+    def handle_result(self,account,run_time,market,command,env,returncode):
+        """Only the known MODEL trade CLI may request recovery via its exit code."""
+        import subprocess
+        from .replay import REBUILD_REQUIRED_EXIT
+        if returncode==0:return True
+        model_cli=self.root/'tools/robust40/cli/server_robust40.py'
+        if (returncode==REBUILD_REQUIRED_EXIT and len(command)>2 and
+                Path(command[1]).resolve()==model_cli and command[2]=='trade'):
+            self.request_rebuild(account,run_time,market,'worker requested full initialization')
+            return False
+        raise subprocess.CalledProcessError(returncode,command)
+
     def command(self,account,run_time,market):
         import json
         import os
@@ -322,8 +466,8 @@ class Coordinator:
         if values['account']['hour_offset']!=f'{minute}m' or run_time.minute!=minute:
             raise ValueError('Account and runtime offset differ')
         self._reap()
-        if account in self.jobs:
-            logger.info(f'{account.stem}: 初始化仍在后台运行；日志：{self.jobs[account][1].name}')
+        if account in self.pending or account in self.jobs:
+            logger.info(f'{account.stem}: 后台重建已登记，数据就绪后计算，交易仍等待合法offset')
             return None,None
         deadline=stamp+DATA_READY_WAIT_SECONDS
         folder=Path(market)/f'{minute}m'
@@ -343,7 +487,6 @@ class Coordinator:
                 logger.info(f'{account.stem}: 等待同轮完整数据，剩余{remaining:.0f}秒；缺失：{missing}')
                 waiting=True
             time.sleep(min(1.,remaining))
-        if waiting:logger.info(f'{account.stem}: 同轮四个ready已齐全，继续检查snapshot')
         destination=location(self.root,account,values)
         from .handoff import recover_interrupted
         try:recover_interrupted(destination)
@@ -370,9 +513,16 @@ class Coordinator:
                         reader=pa.ipc.open_file(source)
                         if not required.issubset(reader.schema.names):raise ValueError('Arrow missing columns')
                 meta=pd.read_pickle(destination/'warmup.pkl')
+                # Also repairs a lost success notification after controller death.
+                from .initialization_config import ARROW_DEMAND_ENABLED
+                if ARROW_DEMAND_ENABLED:
+                    from .arrow_demand import release_demand
+                    release_demand(market,self.root,account,minute,
+                                   stamp=int(cutoff(meta['cutoff']).tz_localize('UTC').timestamp())+3600,
+                                   values=values)
                 payload=dict(account=str(account),root=str(self.root),origin=meta['origin'],initializing=False,stamp=stamp)
                 env=dict(os.environ,ROBUST40_SERVER_WORKER=json.dumps(payload),PYTHONIOENCODING='utf-8')
                 return [sys.executable,str(self.root/'tools/robust40/cli/server_robust40.py'),'trade','--account',str(account),'--stamp',str(stamp)],env
             except (OSError,ValueError,pa.ArrowException):reason='Arrow unavailable or incomplete'
-        self._launch(account,run_time,values,reason,'initialize',market)
+        self.request_rebuild(account,run_time,market,reason)
         return None,None

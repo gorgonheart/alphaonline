@@ -71,6 +71,9 @@ def test_revision_arrow_projection_preserves_values_without_time_column_roundtri
         expected=expected.set_index('candle_begin_time')
         expected.index=expected.index.tz_localize(None)
         expected.first_candle_time=expected.first_candle_time.dt.tz_localize(None)
+        # Old Arrow has no settled-fee column; revision frames explicitly mark
+        # it unknown rather than inventing zero funding or dropping the field.
+        expected['funding_fee'] = np.nan
         original=pd.DataFrame.pop
         def pop(frame,column):
             if column=='candle_begin_time':pytest.fail('indexed reader converted and discarded timestamp column')

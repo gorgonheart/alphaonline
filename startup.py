@@ -111,20 +111,39 @@ def run_loop() -> datetime | None:
         logger.critical('没有检测到可用的账户配置文件，程序退出...')
         exit(2)
 
-    if is_debug and is_simulate == 'debug':  # 调试模式，不进行sleep，直接继续往后运行
-        logger.debug(f'🐞 调试模式 - 自动读取第一个文件"{account_profile_files[0].name}"的`hour_offset`')
-        first_hour_offset = read_hour_offset_from_config(account_profile_files[0])
-        run_time = get_debug_run_time(first_hour_offset)
-    else:
+    debug_round = is_debug and is_simulate == 'debug'
+    if not debug_round:
         run_time = sleep_until_run_time('5m', if_sleep=True, cheat_seconds=random_time)  # 每五分钟运行一次
+
+    offsets = {}
+    for account in account_profile_files:
+        try:
+            offset = read_hour_offset_from_config(account)
+            minute = int(offset.removesuffix('m'))
+            if not offset.endswith('m') or not 0 <= minute < 60:
+                raise ValueError('hour_offset 应为 0m 至 59m')
+            offsets[account] = minute
+        except (OSError, ValueError) as exc:
+            logger.error(f'跳过账户 {account.stem}：无法读取有效 hour_offset，{exc}')
+
+    if debug_round:
+        if not offsets:
+            return None
+        run_time = get_debug_run_time(f'{next(iter(offsets.values()))}m')
 
     # ====================================================================================================
     # 2. 等待数据中心完成数据更新
     # ====================================================================================================
     if not is_debug:
         from config import bmac_data_path
-        server_initializer.prepare(account_profile_files,run_time,bmac_data_path)
-    logger.info(f'检查数据中心，{run_time}...')
+        server_initializer.prepare(list(offsets),run_time,bmac_data_path)
+    due_accounts = [account for account, minute in offsets.items() if minute == run_time.minute]
+    if not due_accounts:
+        logger.debug(f'{run_time} 无匹配账户，跳过行情等待')
+        remedy_until_run_time(run_time)
+        return None
+
+    logger.info(f'检查数据中心，{run_time}，本轮账户：{", ".join(a.stem for a in due_accounts)}')
     # 检查数据中心数据是否更新
     is_data_ready = check_bmac_update_flag(run_time)
     # 判断数据是否更新好了
@@ -141,25 +160,18 @@ def run_loop() -> datetime | None:
     """!!! 核心逻辑在这里 !!!"""
     # 从命令行参数获取账户配置文件名(可选)
     # usage: python run_with_account.py _55mBTC样例.py
-    for account_profile_file in account_profile_files:
-        # 读取配置信息中的hour offset
-        hour_offset_value = read_hour_offset_from_config(account_profile_file)
-
-        logger.debug(f"👤 Using account: {account_profile_file}")
-        logger.debug(f"⏲️ hour_offset 的值为: {hour_offset_value}", )
-        if run_time.minute in [int(hour_offset_value[:-1])]:
-            os.environ["X3S_TRADING_ACCOUNT"] = account_profile_file.name
-            os.environ['PYTHONPATH'] = PROJECT_ROOT
-            from config import bmac_data_path
-            command, worker_env = server_initializer.command(account_profile_file, run_time, bmac_data_path)
-            if command is None:
-                continue
-            subprocess.run(
-                command, env=worker_env, check=True
-            )
-            stat_executor.submit(account_profile_file.stem, run_statistics_async, run_time, random_time, account_profile_file.stem)
-        else:
-            logger.warning(f'当前运行时间为{run_time}，不是 `{hour_offset_value}` 的offset，跳过\n')
+    for account_profile_file in due_accounts:
+        os.environ["X3S_TRADING_ACCOUNT"] = account_profile_file.name
+        os.environ['PYTHONPATH'] = PROJECT_ROOT
+        from config import bmac_data_path
+        command, worker_env = server_initializer.command(account_profile_file, run_time, bmac_data_path)
+        if command is None:
+            continue
+        result = subprocess.run(command, env=worker_env, check=False)
+        if not server_initializer.handle_result(account_profile_file, run_time, bmac_data_path,
+                                                command, worker_env, result.returncode):
+            continue
+        stat_executor.submit(account_profile_file.stem, run_statistics_async, run_time, random_time, account_profile_file.stem)
         gc.collect()  # 强制垃圾回收
 
     # 本次循环结束

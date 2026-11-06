@@ -56,7 +56,11 @@ def test_cli_worker_and_freeze_helpers_resolve_project_root():
     assert server_robust40.ROOT == ROOT
     assert prewarm_robust40.ROOT == ROOT
     source = (ROOT/'tools/robust40/server.py').read_text(encoding='utf-8')
-    assert source.count("'tools/robust40/cli/server_robust40.py'") == 2
+    # Recovery may add callers; every caller must resolve the same CLI entry.
+    paths = [node.value for node in ast.walk(ast.parse(source))
+             if isinstance(node, ast.Constant) and isinstance(node.value, str)
+             and node.value.endswith('server_robust40.py')]
+    assert paths and set(paths) == {'tools/robust40/cli/server_robust40.py'}
 
 
 @pytest.mark.parametrize('script', ['server_robust40', 'prewarm_robust40', 'check_server_factor_parity', 'summarize_replay_logs'])

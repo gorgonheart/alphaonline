@@ -86,7 +86,11 @@ def ordered_results(executor, function, arguments, *, max_pending, before_submit
             if not submit():
                 break
         while pending:
-            yield pending.popleft().result()
+            future = pending.popleft()
+            result = future.result()
+            yield result
+            # Do not retain the previous frame while waiting for the next one.
+            del result, future
             submit()
     finally:
         for future in pending:

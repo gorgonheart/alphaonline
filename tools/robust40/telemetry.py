@@ -77,7 +77,7 @@ def round_log(account, stamp, kind='trade'):
     emit('start')
     try:
         yield
-        record(status='ok')
+        if _current.get()['status']=='running':record(status='ok')
     except BaseException as exc:
         # Do not duplicate exception text: exchange exceptions may contain URLs/signatures.
         record(status='error',error_type=type(exc).__name__)

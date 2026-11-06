@@ -28,6 +28,41 @@ def latest_ready(folder, minute, now=None):
     return stamp, max((folder/f'{p}{stamp}.ready').stat().st_mtime_ns for p in prefixes)
 
 
+
+class PublicationUnavailable(ValueError):
+    """Publication is incomplete or was replaced while binding its immutable files."""
+
+
+def full_publication(source, minute, required=(), cache=None):
+    """Only ready flags/stat/header reads. Cache headers until the files change."""
+    import pyarrow as pa
+    folder=Path(source)/f'{minute}m'
+    try:
+        stamp,ready=latest_ready(folder,minute)
+        # Do not bind old pivots while a newer publication is only partly ready.
+        for prefix in ('spot_dict_','swap_dict_','market_pivot_spot_','market_pivot_swap_'):
+            if any(p.stem[len(prefix):].isdigit() and int(p.stem[len(prefix):])>stamp
+                   for p in folder.glob(prefix+'*.ready')):
+                return None,'waiting for newer partial publication'
+        paths=[folder/f'{kind}_dict_{stamp}.arrow' for kind in ('spot','swap')]
+        version=(stamp,ready,tuple(file_version(p) for p in paths),frozenset(required))
+    except (FileNotFoundError,ValueError):
+        return None,'waiting for same-round complete publication'
+    if cache is not None and cache.get('version')==version:return cache['result']
+    result=(stamp,'full publication ready')
+    try:
+        for path in paths:
+            with pa.memory_map(str(path),'r') as src:
+                schema=pa.ipc.open_file(src).schema
+                if (schema.metadata or {}).get(b'full_history')!=b'1':
+                    result=(None,'waiting for full-history Arrow');break
+                if not set(required).issubset(schema.names):
+                    result=(None,'waiting for required Arrow columns');break
+    except (FileNotFoundError,pa.ArrowInvalid):
+        return None,'publication changed or incomplete Arrow header'
+    if cache is not None:cache.update(version=version,result=result)
+    return result
+
 def freeze_file(source, destination):
     """Only for read-only CandleFileManager outputs (producer unlinks/recreates).
 
@@ -70,10 +105,17 @@ def freeze_extra(source, destination, loader, minute):
         else:
             shutil.copy2(path, target)
     if before != {p: file_version(p) for p in inputs()}:
-        raise ValueError(f'Factor input changed during freeze: {source}')
+        raise PublicationUnavailable(f'Factor input changed during freeze: {source}')
 
 
 def freeze_inputs(source, exginfo, destination, minute, stamp, ready_time, *, full_arrow=False):
+    try:
+        return _freeze_inputs(source,exginfo,destination,minute,stamp,ready_time,full_arrow=full_arrow)
+    except FileNotFoundError as exc:
+        raise PublicationUnavailable('Publication file disappeared during freeze') from exc
+
+
+def _freeze_inputs(source, exginfo, destination, minute, stamp, ready_time, *, full_arrow=False):
     folder = source/f'{minute}m'
     target = destination/f'{minute}m'
     target.mkdir(parents=True, exist_ok=False)
@@ -83,12 +125,12 @@ def freeze_inputs(source, exginfo, destination, minute, stamp, ready_time, *, fu
             import pyarrow as pa
             path = folder/f'{kind}_dict_{stamp}.arrow'
             if not path.is_file():
-                raise ValueError(f'Missing full-history Arrow: {path}; alpha publish_kline_num=0 required')
+                raise PublicationUnavailable(f'Missing full-history Arrow: {path}; alpha publish_kline_num=0 required')
             # Header-only check: no historical conversion or factor computation.
             with pa.memory_map(str(path), 'r') as src:
                 metadata = pa.ipc.open_file(src).schema.metadata or {}
                 if metadata.get(b'full_history') != b'1':
-                    raise ValueError(f'{path.name}: full-history Arrow required; alpha publish_kline_num=0')
+                    raise PublicationUnavailable(f'{path.name}: full-history Arrow required; alpha publish_kline_num=0')
             files.append(path)
         # Full Arrow supplies factors, MODEL raw features and revision tails.
         # Keep PKL batches only for the explicitly selected legacy PKL input.
@@ -96,14 +138,14 @@ def freeze_inputs(source, exginfo, destination, minute, stamp, ready_time, *, fu
         if not full_arrow:patterns.insert(0,f'{kind}_dict_batch*.pkl')
         for pattern in patterns:
             found = sorted(folder.glob(pattern))
-            if not found:raise ValueError(f'Missing input: {pattern}')
+            if not found:raise PublicationUnavailable(f'Missing input: {pattern}')
             files.extend(found)
     before = {p: file_version(p) for p in files}
     if any(info[1] > ready_time for info in before.values()):
-        raise ValueError('Producer is publishing newer inputs; retry after it is ready')
+        raise PublicationUnavailable('Producer is publishing newer inputs; retry after it is ready')
     for path in files:freeze_file(path, target/path.name)
     after = {p: file_version(p) for p in files}
-    if before != after:raise ValueError('Producer inputs changed during freeze; retry in a new workspace')
+    if before != after:raise PublicationUnavailable('Producer inputs changed during freeze; retry in a new workspace')
     for prefix in ('spot_dict_', 'swap_dict_', 'market_pivot_spot_', 'market_pivot_swap_'):
         shutil.copy2(folder/f'{prefix}{stamp}.ready', target/f'{prefix}{stamp}.ready')
     (destination/'exginfo').mkdir()

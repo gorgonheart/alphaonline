@@ -6,6 +6,19 @@ import pytest
 from tools.robust40 import server
 
 
+@pytest.fixture(autouse=True)
+def manual_pending(monkeypatch):
+    monkeypatch.setattr(server.Coordinator,'_ensure_pending_thread',lambda *a:None)
+
+
+def full_headers(folder,stamp):
+    import pyarrow as pa
+    for kind in ('spot','swap'):
+        table=pa.table({'close':[1.]}).replace_schema_metadata({b'full_history':b'1'})
+        with pa.OSFile(str(folder/f'{kind}_dict_{stamp}.arrow'),'wb') as sink:
+            with pa.ipc.new_file(sink,table.schema) as writer:writer.write_table(table)
+
+
 @pytest.mark.parametrize('pivot_arrives', [True, False])
 def test_dispatch_waits_for_same_round_pivot_within_execution_window(tmp_path, monkeypatch, pivot_arrives):
     import subprocess
@@ -15,6 +28,7 @@ def test_dispatch_waits_for_same_round_pivot_within_execution_window(tmp_path, m
     run = datetime(2026, 10, 30, 19, 55)
     stamp = int(run.timestamp())
     folder = tmp_path/'market/55m'; folder.mkdir(parents=True)
+    full_headers(folder,stamp)
     missing = folder/f'market_pivot_swap_{stamp}.ready'
     for prefix in ('spot_dict_', 'swap_dict_', 'market_pivot_spot_'):
         (folder/f'{prefix}{stamp}.ready').touch()
@@ -111,6 +125,7 @@ def test_one_background_initialization_and_deduplicate(tmp_path,monkeypatch):
     account=tmp_path/'a.py';account.write_text('')
     now=datetime.fromtimestamp(time.time()).replace(minute=20,second=0,microsecond=0)
     stamp=int(now.timestamp());folder=tmp_path/'market/20m';folder.mkdir(parents=True)
+    full_headers(folder,stamp)
     for prefix in ('spot_dict_','swap_dict_','market_pivot_spot_','market_pivot_swap_'):
         (folder/f'{prefix}{stamp}.ready').touch()
     values=dict(strategy_name='s',account=dict(hour_offset='20m'),strategy_pool=[])

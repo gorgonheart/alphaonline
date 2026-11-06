@@ -124,7 +124,7 @@ def test_execution_registration_preserves_built_in_modes():
     assert all(getattr(rebalance,k) is v for k,v in old.items())
     reb = RebalanceMode.init(dict(mode='RebRobust40',params=dict(min_order_usdt_ratio=.4,execution_cap=2.45)))
     obj = reb.create(np.ones(1), np.ones(1))
-    assert obj.use_full_equity and obj.calculator.min_order_usdt_ratio == .4 and obj.calculator.execution_cap == 2.45
+    assert obj.use_full_equity and obj.min_order_usdt_ratio == .4 and obj.execution_cap == 2.45
 
 
 def test_target_adapter_aligns_timezone_and_columns_and_detects_double_timing():

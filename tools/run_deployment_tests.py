@@ -13,6 +13,37 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
+
+
+def finish_run(run: Path, keep_logs: int = 24) -> None:
+    """Called only after the owned pytest process has exited, success or failure.
+
+    Never infer that another verify-* is idle from its age. Interrupted runs
+    remain available for manual test/ deletion; trading never scans this tree.
+    """
+    run = Path(run)
+    if (run.parent.name != 'test' or not run.name.startswith('verify-') or
+            run.is_symlink() or run.absolute() != run.resolve()):
+        return
+    started = time.perf_counter()
+    try:
+        logs = run.parent/'logs'
+        if logs.is_symlink():
+            raise ValueError('test/logs must not be a symlink')
+        logs.mkdir(exist_ok=True)
+        log = run/'verify.log'
+        if log.is_file():
+            log.replace(logs/(run.name+'.log'))
+        shutil.rmtree(run)
+        finished = sorted(logs.glob('verify-*.log'), key=lambda p:p.stat().st_mtime_ns)
+        for path in finished[:-keep_logs]:
+            path.unlink()
+        print(f'Verification log: {logs/(run.name+".log")}')
+    except (OSError, ValueError) as exc:
+        print(f'Verification cleanup deferred: {exc}')
+    finally:
+        print(f'Verification cleanup elapsed_s={time.perf_counter()-started:.6f}')
 
 
 def prepare_run(root: Path) -> Path:
@@ -58,7 +89,7 @@ def run_tests(root: Path, tests: list[str]) -> int:
     with log.open('wb') as output:
         result = subprocess.run(command, cwd=source, env=env, stdout=output, stderr=subprocess.STDOUT)
     print(log.read_text(encoding='utf-8', errors='replace'), end='')
-    print(f'Log retained for manual cleanup: {log}', flush=True)
+    finish_run(run)
     return result.returncode
 
 

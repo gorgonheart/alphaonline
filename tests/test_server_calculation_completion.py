@@ -11,7 +11,10 @@ import pytest
 from tools.robust40 import server
 
 
-def test_ready_publication_dispatches_after_four_minutes(tmp_path, monkeypatch):
+@pytest.mark.parametrize('demand_enabled', [False, True])
+def test_ready_publication_dispatches_after_four_minutes(tmp_path, monkeypatch, demand_enabled):
+    from tools.robust40 import initialization_config
+    monkeypatch.setattr(initialization_config, 'ARROW_DEMAND_ENABLED', demand_enabled)
     account = tmp_path/'account.py'
     run = datetime(2026, 10, 30, 22, 40)
     stamp = int(run.timestamp())
@@ -29,10 +32,14 @@ def test_ready_publication_dispatches_after_four_minutes(tmp_path, monkeypatch):
         with pa.OSFile(str(folder/f'{kind}_dict_{stamp}.arrow'), 'wb') as sink:
             with pa.ipc.new_file(sink, table.schema) as writer:
                 writer.write_table(table)
-    server.save_meta(server.location(tmp_path, account, values), dict(origin='2025-04-25 00:40'))
+    meta=dict(origin='2025-04-25 00:40')
+    if demand_enabled:meta['cutoff']=pd.Timestamp(stamp,unit='s')-pd.Timedelta(hours=1)
+    server.save_meta(server.location(tmp_path, account, values), meta)
     command, env = server.Coordinator(tmp_path).command(account, run, tmp_path/'market')
     assert command is not None and 'trade' in command
     assert env['ROBUST40_SERVER_WORKER']
+    requests=list((folder/'.arrow-demand').glob('*/*.json'))
+    assert len(requests)==int(demand_enabled)
 
 
 @pytest.mark.parametrize('delay', [1, 301])

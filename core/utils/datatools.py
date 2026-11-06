@@ -31,7 +31,7 @@ def check_flags(run_time, flag_paths: List[Path]):
     # 检查 flag 是否都已经 ready
     while True:
         if all(flag_path.exists() for flag_path in flag_paths):
-            time.sleep(3)
+            time.sleep(1)
             return True
 
         # 当前时间是否超过run_time

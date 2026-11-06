@@ -7,10 +7,19 @@ import importlib
 import pandas as pd
 
 
+# Reserved for the MODEL CLI only; ordinary errors retain nonzero failure.
+REBUILD_REQUIRED_EXIT = 75
+WAIT_FOR_DATA_EXIT = 76
+
+
+class RebuildRequired(ValueError):
+    """Known pre-trade state/history cannot be restored; full initialization needed."""
+
+
 def before(points, revised_from):
     candidates = [t for t in points if t < pd.Timestamp(revised_from)]
     if not candidates:
-        raise ValueError('No checkpoint precedes the revision; older state/history is required')
+        raise RebuildRequired('No checkpoint precedes the revision; older state/history is required')
     return max(candidates)
 
 

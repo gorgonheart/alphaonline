@@ -147,12 +147,12 @@ def test_unrecoverable_revision_marks_rebuild_before_account_calls(tmp_path,monk
     monkeypatch.setattr(server,'settings',lambda *a:({'strategy_pool':[]},{}))
     monkeypatch.setattr(server,'location',lambda *a:tmp_path)
     monkeypatch.setattr(server,'inspect',lambda *a:('ready',''))
-    def fail(*args):raise ValueError('No checkpoint precedes revision')
+    from tools.robust40.replay import RebuildRequired, REBUILD_REQUIRED_EXIT
+    def fail(*args):raise RebuildRequired('No checkpoint precedes revision')
     monkeypatch.setattr(handoff,'prepare',fail)
     calls=[]
     monkeypatch.setitem(sys.modules,'core.account_exec',SimpleNamespace(main=lambda:calls.append('account')))
-    with pytest.raises(ValueError,match='No checkpoint'):
-        worker.trade(Path('fake.py'),1793436000)
+    assert worker.trade(Path('fake.py'),1793436000)==REBUILD_REQUIRED_EXIT
     assert calls==[] and pd.read_pickle(tmp_path/'warmup.pkl')['complete'] is False
 
 

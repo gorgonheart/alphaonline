@@ -430,6 +430,48 @@ def apply_s5_delta(net, delta):
 
 # 5. 换仓死区与目标手数（保留原研究算法）
 
+@nb.njit(cache=True)
+def _filter_execution_lots(target, current, prices, sizes, min_order_usdt_ratio):
+    difference, amount = calc_delta_lots_amount(target, current, prices, sizes)
+    threshold = np.abs(current)*sizes*prices*min_order_usdt_ratio
+    return current+filter_deltas(target, current, difference, amount, threshold)
+
+
+@nb.njit(cache=True)
+def execution_lots(equity, spot_prices, spot_lots, spot_ratios, swap_prices, swap_lots, swap_ratios,
+                   spot_lot_sizes, swap_lot_sizes, min_order_usdt_ratio, execution_cap, long_only_equity_ratio):
+    # Shared mathematics for simulation and live calls. Explicit scalars avoid
+    # cached globals retaining account parameters; no jitclass crosses this API.
+    if not np.isfinite(equity) or equity <= 0:
+        raise ValueError('Invalid execution equity')
+    for j in range(len(spot_lots)):
+        if not np.isfinite(spot_ratios[j]) or not np.isfinite(spot_lot_sizes[j]) or spot_lot_sizes[j] <= 0:
+            raise ValueError('Invalid spot target or lot size')
+    for j in range(len(swap_lots)):
+        if not np.isfinite(swap_ratios[j]) or not np.isfinite(swap_lot_sizes[j]) or swap_lot_sizes[j] <= 0:
+            raise ValueError('Invalid swap target or lot size')
+    budget = equity*long_only_equity_ratio if np.sum(np.abs(swap_ratios)) < 1e-6 else equity
+    s = calc_target_lots_by_ratio(budget, spot_prices, spot_ratios, spot_lot_sizes)
+    u = calc_target_lots_by_ratio(budget, swap_prices, swap_ratios, swap_lot_sizes)
+    s = _filter_execution_lots(s, spot_lots, spot_prices, spot_lot_sizes, min_order_usdt_ratio)
+    u = _filter_execution_lots(u, swap_lots, swap_prices, swap_lot_sizes, min_order_usdt_ratio)
+    gross = 0.
+    for j in range(len(s)):
+        if s[j] != 0:
+            if not np.isfinite(spot_prices[j]) or spot_prices[j] <= 0:
+                raise ValueError('Invalid held spot price')
+            gross += abs(s[j]*spot_lot_sizes[j]*spot_prices[j]/equity)
+    for j in range(len(u)):
+        if u[j] != 0:
+            if not np.isfinite(swap_prices[j]) or swap_prices[j] <= 0:
+                raise ValueError('Invalid held swap price')
+            gross += abs(u[j]*swap_lot_sizes[j]*swap_prices[j]/equity)
+    if gross > execution_cap:
+        s = (s*(execution_cap/gross)).astype(np.int64)
+        u = (u*(execution_cap/gross)).astype(np.int64)
+    return s, u
+
+
 @jitclass
 class RebRobust40:
     spot_lot_sizes: nb.float64[:]
@@ -449,38 +491,13 @@ class RebRobust40:
         return current+filter_deltas(target, current, difference, amount, threshold)
 
     def calc_lots(self, equity, spot_prices, spot_lots, spot_ratios, swap_prices, swap_lots, swap_ratios):
-        if not np.isfinite(equity) or equity <= 0:
-            raise ValueError('Invalid execution equity')
-        for j in range(len(spot_lots)):
-            if not np.isfinite(spot_ratios[j]) or not np.isfinite(self.spot_lot_sizes[j]) or self.spot_lot_sizes[j] <= 0:
-                raise ValueError('Invalid spot target or lot size')
-        for j in range(len(swap_lots)):
-            if not np.isfinite(swap_ratios[j]) or not np.isfinite(self.swap_lot_sizes[j]) or self.swap_lot_sizes[j] <= 0:
-                raise ValueError('Invalid swap target or lot size')
-        budget = equity*LONG_ONLY_EQUITY_RATIO if np.sum(np.abs(swap_ratios)) < 1e-6 else equity
-        s = calc_target_lots_by_ratio(budget, spot_prices, spot_ratios, self.spot_lot_sizes)
-        u = calc_target_lots_by_ratio(budget, swap_prices, swap_ratios, self.swap_lot_sizes)
-        s = self._filter(s, spot_lots, spot_prices, self.spot_lot_sizes)
-        u = self._filter(u, swap_lots, swap_prices, self.swap_lot_sizes)
-        gross = 0.
-        for j in range(len(s)):
-            if s[j] != 0:
-                if not np.isfinite(spot_prices[j]) or spot_prices[j] <= 0:
-                    raise ValueError('Invalid held spot price')
-                gross += abs(s[j]*self.spot_lot_sizes[j]*spot_prices[j]/equity)
-        for j in range(len(u)):
-            if u[j] != 0:
-                if not np.isfinite(swap_prices[j]) or swap_prices[j] <= 0:
-                    raise ValueError('Invalid held swap price')
-                gross += abs(u[j]*self.swap_lot_sizes[j]*swap_prices[j]/equity)
-        if gross > self.execution_cap:
-            s = (s*(self.execution_cap/gross)).astype(np.int64)
-            u = (u*(self.execution_cap/gross)).astype(np.int64)
-        return s, u
+        return execution_lots(equity, spot_prices, spot_lots, spot_ratios, swap_prices, swap_lots, swap_ratios,
+                              self.spot_lot_sizes, self.swap_lot_sizes, self.min_order_usdt_ratio,
+                              self.execution_cap, LONG_ONLY_EQUITY_RATIO)
 
 LONG_ONLY_EQUITY_RATIO = .97
 
-@nb.njit
+@nb.njit(cache=True)
 def calc_target_lots_by_ratio(equity, prices, ratios, lot_sizes):
     """
     根据目标持仓比例，计算目标持仓手数
@@ -498,7 +515,7 @@ def calc_target_lots_by_ratio(equity, prices, ratios, lot_sizes):
         target_lots[extreme_value_mask] = 0
     return target_lots
 
-@nb.njit
+@nb.njit(cache=True)
 def calc_delta_lots_amount(target_lots, current_lots, prices, lot_sizes):
     """
     计算调仓手数和金额
@@ -509,7 +526,7 @@ def calc_delta_lots_amount(target_lots, current_lots, prices, lot_sizes):
     delta_amount[mask] = np.abs(delta_lots[mask]) * lot_sizes[mask] * prices[mask]
     return (delta_lots, delta_amount)
 
-@nb.njit
+@nb.njit(cache=True)
 def filter_deltas(target_lots, current_lots, delta_lots, delta_amount, min_order_limit):
     mask_builds = np.logical_and(current_lots == 0, target_lots != 0)
     mask_liquidations = np.logical_and(current_lots != 0, target_lots == 0)
@@ -1158,9 +1175,11 @@ class LiveRebRobust40:
     use_full_equity = True
 
     def __init__(self, spot_lot_sizes, swap_lot_sizes, min_order_usdt_ratio=.4, execution_cap=2.45):
-        self.calculator = RebRobust40(np.asarray(spot_lot_sizes, dtype=float),
-                                     np.asarray(swap_lot_sizes, dtype=float),
-                                     min_order_usdt_ratio, execution_cap)
+        # Match the original owned lot-size arrays without constructing a JIT class.
+        self.spot_lot_sizes = np.asarray(spot_lot_sizes, dtype=float).copy()
+        self.swap_lot_sizes = np.asarray(swap_lot_sizes, dtype=float).copy()
+        self.min_order_usdt_ratio = float(min_order_usdt_ratio)
+        self.execution_cap = float(execution_cap)
 
     def calc_lots(self, equity, spot_prices, spot_lots, spot_ratios, swap_prices, swap_lots, swap_ratios):
         for prices, held, target in ((spot_prices, spot_lots, spot_ratios),
@@ -1168,8 +1187,9 @@ class LiveRebRobust40:
             active = (held != 0) | (target != 0)
             if np.any(active & (~np.isfinite(prices) | (prices <= 0))):
                 raise ValueError('Missing active instrument price for MODEL_ROBUST40')
-        return self.calculator.calc_lots(equity, spot_prices, spot_lots, spot_ratios,
-                                         swap_prices, swap_lots, swap_ratios)
+        return execution_lots(equity, spot_prices, spot_lots, spot_ratios, swap_prices, swap_lots, swap_ratios,
+                              self.spot_lot_sizes, self.swap_lot_sizes, self.min_order_usdt_ratio,
+                              self.execution_cap, LONG_ONLY_EQUITY_RATIO)
 
 
 def register_execution():

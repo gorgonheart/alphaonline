@@ -99,19 +99,25 @@ def step5_aggregate_select_results(conf: BacktestConfig, max_candle_time, save_f
 
 def step6_simulate_performance(conf: BacktestConfig, run_time):
     logger.info(f'{conf.name} 开始模拟交易...')
-    account_df = calc_equity(conf, run_time, state_name='state0')
+    has_timing_signal = isinstance(conf.timing, TimingSignal)
+    market_inputs = None
+    if has_timing_signal:
+        # Only this child's state0/state1 share inputs; no cross-round/global cache.
+        from core.utils.datatools import read_bmac_market_pivot, read_bmac_exginfo
+        offset = f'{run_time.minute}m'
+        market_inputs = dict(pivots={k: read_bmac_market_pivot(offset, k) for k in ('spot', 'swap')},
+                             units={k: read_bmac_exginfo(k) for k in ('spot', 'swap')})
+    account_df = calc_equity(conf, run_time, state_name='state0', market_inputs=market_inputs)
 
     save_performance_df_csv(conf, 资金曲线=account_df)
 
-    has_timing_signal = isinstance(conf.timing, TimingSignal)
-
     if has_timing_signal:
-        account_df = simu_timing(conf, run_time)
+        account_df = simu_timing(conf, run_time, account_df=account_df, market_inputs=market_inputs)
 
     return account_df
 
 
-def simu_timing(conf: BacktestConfig, run_time):
+def simu_timing(conf: BacktestConfig, run_time, *, account_df=None, market_inputs=None):
     s_time = time.time()
     logger.info(f'{conf.get_fullname(as_folder_name=True)} 资金曲线择时，生成动态杠杆')
     state0_equity_path = conf.get_snapshot_folder() / 'account_state0.pkl'
@@ -119,12 +125,14 @@ def simu_timing(conf: BacktestConfig, run_time):
         logger.warning(f'{state0_equity_path} 不存在，请检查')
         logger.critical(f'{conf.name} 历史选币为空，可能是过滤条件过于严格，或者选中的币种被拉黑，请检查配置。程序退出...AA')
         exit()
-    account_df = pd.read_pickle(state0_equity_path)
+    if account_df is None:
+        account_df = pd.read_pickle(state0_equity_path)
 
     leverages = calc_timing_leverages(conf, account_df)
     logger.debug(f'⏰ 完成再择时杠杆计算，已花费时间{time.time() - s_time:.3f}秒')
 
-    account_df = calc_equity(conf, run_time, leverage=leverages * conf.leverage, state_name='state1')
+    account_df = calc_equity(conf, run_time, leverage=leverages * conf.leverage, state_name='state1',
+                             market_inputs=market_inputs)
     save_performance_df_csv(conf, 资金曲线_再择时=account_df, 再择时动态杠杆=pd.DataFrame({
         'candle_begin_time': account_df['candle_begin_time'],
         '动态杠杆': leverages

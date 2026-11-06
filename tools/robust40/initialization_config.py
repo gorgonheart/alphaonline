@@ -37,10 +37,15 @@ RESOURCE_POLICY = dict(
     telemetry_seconds=10,
 )
 LIVE_BARS = 4050
+# Enable with alpha arrow_demand_enabled + an audited arrow_demand_min_rows.
+# Short publication keeps max(5000, LIVE_BARS + min_kline_num + 1) mapping warmup;
+# source PKL/factors/pivots stay full. Failure retains the full-history request.
+ARROW_DEMAND_ENABLED = False
+ARROW_CONSUMER_NAME = None  # Defaults to installation folder name; unique per shared producer.
 # Bounds waiting for missing input only; valid calculation has no time deadline.
 DATA_READY_WAIT_SECONDS = 240
-# Includes the current bar: 25 points allow restoring before a 24-bar revision.
-CHECKPOINT_POINTS = 25
+# Include cutoff-24h and its strictly earlier restore point, as well as cutoff.
+CHECKPOINT_POINTS = 26
 REVISION_HISTORY_HOURS = 168
 
 # Failure payloads are disposable; keep bounded flat account diagnostics.

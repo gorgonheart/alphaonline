@@ -170,7 +170,7 @@ def initialize(account,workspace,stamp,destination,prepared_conf=None):
 
 def _initialize(account,workspace,stamp,destination,prepared_conf=None):
     import pandas as pd
-    from tools.robust40.market_inputs import freeze_inputs, freeze_extra, latest_ready, prepare_public_market
+    from tools.robust40.market_inputs import freeze_inputs, freeze_extra, latest_ready, prepare_public_market, PublicationUnavailable
     from tools.robust40 import server
     values,options=server.settings(account)
     minute=options['minute']
@@ -179,8 +179,10 @@ def _initialize(account,workspace,stamp,destination,prepared_conf=None):
     # Coordinator passes account explicitly; no credential/config files are copied.
     os.environ['X3S_TRADING_ACCOUNT']=str(account)
     import config
+    from tools.robust40.arrow_demand import set_demand, release_demand
+    set_demand(config.bmac_data_path,ROOT,account,minute,True,stamp=stamp)
     actual,ready=latest_ready(config.bmac_data_path/f'{minute}m',minute)
-    if actual!=stamp:raise ValueError('Publication changed before initialization; retry newest round')
+    if actual!=stamp:raise PublicationUnavailable('Publication changed before initialization; retry newest round')
     workspace.mkdir(parents=True,exist_ok=False)
     print(f'{account.stem}: 冻结同轮完整行情和外部输入，publication={stamp}',flush=True)
     # Preserve public host settings before the spawned worker imports config;
@@ -211,10 +213,51 @@ def _initialize(account,workspace,stamp,destination,prepared_conf=None):
     print(f'{account.stem}: 输入和市场规则已冻结，启动完整计算；S3 origin={origin}',flush=True)
     payload=dict(account=str(account),root=str(workspace),origin=str(origin),initializing=True)
     env=dict(os.environ,ROBUST40_SERVER_WORKER=json.dumps(payload),PYTHONIOENCODING='utf-8')
+    with server.account_lock(destination):
+        server.record_initialization_attempt(destination,values,stamp)
     subprocess.run([sys.executable,str(Path(__file__).resolve()),'compute','--account',str(account),
                     '--workspace',str(workspace),'--stamp',str(stamp),'--destination',str(destination)],
                     cwd=ROOT,env=env,check=True)
+    # compute returns only after validation and atomic installation. Never put
+    # this notification in finally: failure must retain the full-history request.
+    release_demand(config.bmac_data_path,ROOT,account,minute,stamp=stamp,values=values)
     server.cleanup_initialization(workspace,ROOT,account,stamp)
+
+
+
+def rebuild(account,stamp,destination):
+    """Called after resource admission; never place an order from this worker."""
+    import pandas as pd
+    from tools.robust40 import server,telemetry
+    from tools.robust40.market_inputs import full_publication, PublicationUnavailable
+    from tools.robust40.replay import WAIT_FOR_DATA_EXIT
+    values,options=server.settings(account)
+    os.environ['X3S_TRADING_ACCOUNT']=str(account)
+    import config
+    required={f'{name}_{p}' for name,ps in (values.get('precompute_factor_configs') or {}).items() for p in ps}
+    actual,reason=full_publication(config.bmac_data_path,options['minute'],required)
+    if actual is None:
+        telemetry.record(status='waiting_data',recovery_reason=reason)
+        return WAIT_FOR_DATA_EXIT
+    with server.account_lock(destination):
+        from tools.robust40.handoff import recover_interrupted
+        recover_interrupted(destination,True)
+        status,reason=server.inspect_resume(destination,account.stem,values,pd.Timestamp(actual,unit='s')-pd.Timedelta(hours=1))
+    if status!='rebuild':
+        telemetry.record(initialization_completed=False,recovery_reason='state already updated')
+        return 0
+    if server.initialization_attempted(destination,values,actual):
+        telemetry.record(status='blocked',recovery_reason='same configuration/publication already attempted')
+        return 1
+    workspace=ROOT/'data/server_initialization'/account.stem/str(actual)
+    telemetry.record(publication_stamp=actual)
+    try:
+        initialize(account,workspace,actual,destination)
+    except PublicationUnavailable as exc:
+        telemetry.record(status='waiting_data',recovery_reason=str(exc))
+        return WAIT_FOR_DATA_EXIT
+    telemetry.record(initialization_completed=True)
+    return 0
 
 
 def compute(account,workspace,stamp,destination):
@@ -279,16 +322,19 @@ def trade(account,stamp):
 
 def _trade(account,stamp):
     import pandas as pd
-    import pickle
     import config
     from contextlib import nullcontext
     from tools.robust40 import handoff
     from tools.robust40 import server
     from tools.robust40 import telemetry
+    from tools.robust40.replay import RebuildRequired, REBUILD_REQUIRED_EXIT
     values,_=server.settings(account)
     destination=server.location(ROOT,account,values)
     server.check_dependencies(values)
     status,reason=server.inspect(destination,account.stem,values,pd.Timestamp(stamp,unit='s')-pd.Timedelta(hours=1),server.resume_capacity(values))
+    if status=='rebuild':
+        telemetry.record(mode='rebuild_required',status='rebuild_required',recovery_reason=reason)
+        return REBUILD_REQUIRED_EXIT
     if status!='ready':
         telemetry.record(mode='not_ready')
         raise ValueError(reason)
@@ -299,11 +345,11 @@ def _trade(account,stamp):
     run=(pd.Timestamp(stamp,unit='s')+pd.Timedelta(hours=config.utc_offset)).to_pydatetime()
     try:
         stage,inputs=handoff.prepare(destination,values,run,end.minute,end)
-    except (ValueError, OSError, KeyError, EOFError, pickle.UnpicklingError) as exc:
-        # Unrecoverable revision/coverage follows the existing initializer route.
-        telemetry.record(mode='rebuild_required',recovery_reason=str(exc)[:500])
+    except RebuildRequired as exc:
+        # No orders have run; release the account lock before the parent queues initialization.
         server.begin(destination)
-        raise
+        telemetry.record(mode='rebuild_required',status='rebuild_required',recovery_reason=str(exc)[:500])
+        return REBUILD_REQUIRED_EXIT
     config.strategy_config['params']['runtime']['replaying']=stage is not None
     with handoff.transaction(destination,stage) if stage is not None else nullcontext():
         server.begin(destination)
@@ -323,7 +369,7 @@ def main():
     # before framework loggers wrap stdout (Windows redirected streams use GBK).
     configure_output()
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument('mode',choices=['prepare','initialize','compute','trade'])
+    p.add_argument('mode',choices=['prepare','initialize','rebuild','compute','trade'])
     p.add_argument('--account',required=True)
     p.add_argument('--stamp',required=True,type=int)
     p.add_argument('--workspace')
@@ -350,13 +396,18 @@ def main():
             with telemetry.round_log(account.stem,a.stamp,kind='initialize'):
                 initialize(account,Path(a.workspace).resolve(),a.stamp,destination)
                 telemetry.record(initialization_completed=True)
+    elif a.mode=='rebuild':
+        destination=Path(a.destination).resolve()
+        with server.account_lock(destination.with_name(destination.name+'.initialization')):
+            with telemetry.round_log(account.stem,a.stamp,kind='initialize'):
+                return rebuild(account,a.stamp,destination)
     elif a.mode=='compute':
         with server.account_lock(a.destination):
             with telemetry.round_log(account.stem,a.stamp,kind='compute'):
                 compute(account,Path(a.workspace).resolve(),a.stamp,Path(a.destination).resolve())
     else:
         with server.account_lock(server.location(ROOT,account,server.settings(account)[0])):
-            trade(account,a.stamp)
+            return trade(account,a.stamp)
 
 
-if __name__=='__main__':main()
+if __name__=='__main__':sys.exit(main())

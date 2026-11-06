@@ -181,6 +181,13 @@ def calc_equity(conf: BacktestConfig, run_time, leverage: float | pd.Series = No
     spot_lot_sizes = df_exginfo_spot['lot_size'].astype(float)
     swap_lot_sizes = df_exginfo_swap['lot_size'].astype(float)
 
+    old_points = state.get('snapshot_queue', [])
+    if has_snapshot and getattr(conf, 'checkpoint_hours', 0):
+        from core.utils.checkpoints import align_expert_points
+        # Compare the saved units BEFORE assigning this round's lot sizes.
+        old_points = align_expert_points(old_points, 'spot', state['spot'], spot_lot_sizes, pivot_dict_spot)
+        old_points = align_expert_points(old_points, 'swap', state['swap'], swap_lot_sizes, pivot_dict_swap)
+
     if not has_snapshot:
         start_lots_spot = np.zeros(len(df_spot_ratio.columns))
         start_lots_swap = np.zeros(len(df_swap_ratio.columns))
@@ -264,11 +271,6 @@ def calc_equity(conf: BacktestConfig, run_time, leverage: float | pd.Series = No
 
     if getattr(conf, 'checkpoint_hours', 0):
         from core.utils.checkpoints import merge_points
-        old_points = state.get('snapshot_queue', [])
-        # A listing changes array layout: old arrays cannot be restored by position.
-        if has_snapshot and any(not pd.Index(state[k]['columns']).equals(r.columns)
-                                for k, r in (('spot', df_spot_ratio), ('swap', df_swap_ratio))):
-            old_points = []
         snapshot_queue = merge_points(old_points, snapshot_queue, conf.checkpoint_hours)
 
     if state_name == 'state0':

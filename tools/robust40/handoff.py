@@ -14,7 +14,7 @@ from . import telemetry
 RAW_COLUMNS = ('open','high','low','close','volume','quote_volume','trade_num',
                'taker_buy_base_asset_volume','taker_buy_quote_asset_volume',
                'avg_price_1m','funding_rate','是否交易','symbol_spot','symbol_swap',
-               'is_spot','first_candle_time')
+               'is_spot','first_candle_time','funding_fee')
 
 
 def utc_times(values):
@@ -32,6 +32,8 @@ def input_frames(raw, pivots, end, start=None):
             left,right=idx.searchsorted(start),idx.searchsorted(end,side='right')
             columns = [c for c in RAW_COLUMNS if c in frame]
             value = frame.iloc[left:right][columns].copy();value.index = idx[left:right]
+            if 'funding_fee' not in value:
+                value['funding_fee'] = np.nan
             if 'first_candle_time' in value:
                 value['first_candle_time']=utc_times(value.first_candle_time).to_numpy()
             if not value.index.is_unique:raise ValueError('Duplicate revision input time')
@@ -63,6 +65,10 @@ def first_revision(old, new):
         if key not in new:
             earliest.append(a.index.min());telemetry.add(removed_series=1);continue
         b = new[key]
+        # Earlier revision snapshots never projected raw funding_fee. Compare
+        # the fields actually recorded, then keep the full new frame as baseline.
+        if key.startswith('raw/') and 'funding_fee' not in a and 'funding_fee' in b:
+            b = b.drop(columns='funding_fee')
         if not a.index.equals(b.index):
             positions=b.index.get_indexer(a.index)
             if (positions<0).any():raise ValueError('Revision input coverage is incomplete')
@@ -133,6 +139,7 @@ def read_arrow_tail(root, kind, run_time, end, start=None, indexed=False, column
         names=json.loads(reader.schema.metadata[b'symbols'])
         if len(names) != reader.num_record_batches:
             raise ValueError('Arrow symbol metadata differs from record batch count')
+        missing_revision_fee = indexed and columns is None and 'funding_fee' not in reader.schema.names
         columns=['candle_begin_time']+[c for c in (RAW_COLUMNS if columns is None else columns)
                                       if c != 'candle_begin_time' and c in reader.schema.names]
         data_columns=[c for c in columns if not indexed or c!='candle_begin_time']
@@ -146,6 +153,8 @@ def read_arrow_tail(root, kind, run_time, end, start=None, indexed=False, column
             if right<=left:continue
             frame=batch.select(data_columns).slice(int(left),int(right-left)).to_pandas(use_threads=False)
             if indexed:
+                if missing_revision_fee:
+                    frame['funding_fee'] = np.nan
                 # The time index already exists. Do not convert a duplicate
                 # timestamp column or retain its full-history backing buffer.
                 frame.index=idx[left:right].copy(deep=True).rename('candle_begin_time')

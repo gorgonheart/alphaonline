@@ -40,3 +40,28 @@ def test_test_directory_symlink_rejected(tmp_path):
     try:(root/'test').symlink_to(outside,target_is_directory=True)
     except OSError:pytest.skip('symlink permissions')
     with pytest.raises(ValueError):helper().prepare_run(root)
+
+
+def test_finished_runs_release_payload_and_keep_bounded_logs(tmp_path):
+    mod=helper()
+    finish=getattr(mod,'finish_run',None)
+    assert callable(finish), 'Completed verification still retains full payload'
+    root=tmp_path/'test';root.mkdir()
+    active=root/'verify-active';active.mkdir();(active/'keep').write_text('running')
+    for i in range(27):
+        run=root/f'verify-{i:03}';run.mkdir()
+        (run/'source').mkdir();(run/'source/large').write_bytes(b'x'*8192)
+        (run/'verify.log').write_text(f'finished {i}')
+        finish(run)
+        assert not run.exists()
+    assert (active/'keep').read_text()=='running'
+    assert len(list((root/'logs').glob('verify-*.log')))==24
+    assert (root/'logs/verify-026.log').read_text()=='finished 26'
+
+
+def test_finish_refuses_unowned_directory(tmp_path):
+    mod=helper();finish=getattr(mod,'finish_run',None)
+    assert callable(finish)
+    other=tmp_path/'data';other.mkdir();(other/'verify.log').write_text('keep')
+    finish(other)
+    assert (other/'verify.log').read_text()=='keep'

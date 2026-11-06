@@ -2,6 +2,7 @@
 import json
 from types import SimpleNamespace
 import pandas as pd
+import pytest
 
 
 def test_initialize_cli_logs_unicode_when_output_is_redirected(tmp_path):
@@ -32,7 +33,8 @@ worker.main()
     assert 'stderr：初始化正常' in result.stderr.decode('utf-8')
 
 
-def test_initializer_uses_only_market_calls_and_preserves_host_settings(tmp_path,monkeypatch):
+@pytest.mark.parametrize('compute_fails', [False, True])
+def test_initializer_uses_only_market_calls_and_preserves_host_settings(tmp_path,monkeypatch,compute_fails):
     from tools.robust40.cli import server_robust40 as worker
     from tools.robust40 import market_inputs as warm
     from tools.robust40 import server
@@ -68,14 +70,28 @@ def test_initializer_uses_only_market_calls_and_preserves_host_settings(tmp_path
     monkeypatch.setattr(warm,'public_market_client',lambda:bn)
     monkeypatch.setattr(exchanges,'get_bstocks_coins',lambda:set())
     monkeypatch.setattr(config,'realtime_data_path','/srv/alpha/data')
+    from tools.robust40 import arrow_demand
+    notifications=[]
+    monkeypatch.setattr(arrow_demand,'set_demand',lambda *a,**k:notifications.append(('full',k['stamp'])))
+    monkeypatch.setattr(arrow_demand,'release_demand',lambda *a,**k:notifications.append(('installed',k['stamp'])))
     commands=[]
-    monkeypatch.setattr(subprocess,'run',lambda *a,**k:commands.append((a,k)))
+    def run(*a,**k):
+        commands.append((a,k))
+        assert notifications==[('full',stamp)]
+        if compute_fails:raise subprocess.CalledProcessError(1,a[0])
+    monkeypatch.setattr(subprocess,'run',run)
     workspace=tmp_path/'scratch'
     with monkeypatch.context() as no_raw_prepass:
         def forbidden_read(*args, **kwargs):
             raise AssertionError('Initialization date must not unpickle raw history')
         no_raw_prepass.setattr(pd,'read_pickle',forbidden_read)
+        if compute_fails:
+            with pytest.raises(subprocess.CalledProcessError):
+                worker.initialize(account,workspace,stamp,tmp_path/'snapshot/acct')
+            assert notifications==[('full',stamp)]
+            return
         worker.initialize(account,workspace,stamp,tmp_path/'snapshot/acct')
+        assert notifications==[('full',stamp),('installed',stamp)]
     assert calls==['init_exchange','bstocks','spot','swap']
     public=json.loads((workspace/'config.json').read_text())
     assert public['realtime_data_path']=='/srv/alpha/data'

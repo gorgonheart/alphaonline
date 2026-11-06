@@ -34,9 +34,9 @@ def test_launch_failure_closes_log_and_allows_retry(tmp_path, monkeypatch):
     monkeypatch.setattr(subprocess, 'Popen', launch)
     c = server.Coordinator(tmp_path)
     with pytest.raises(OSError, match='process creation failed'):
-        c.command(account, run, tmp_path/'market')
+        c._launch(account, run, values, 'missing', 'rebuild', tmp_path/'market')
     assert handles[0].closed
-    assert c.command(account, run, tmp_path/'market') == (None, None)
+    c._launch(account, run, values, 'missing', 'rebuild', tmp_path/'market')
     assert len(handles) == 2
     assert handles[1].closed
 
@@ -128,7 +128,8 @@ def check():
     import json
     initializing=json.loads(os.environ['ROBUST40_SERVER_WORKER'])['initializing']
     assert config.input_mode == ('arrow_full_strict' if initializing else 'arrow_strict') and config.section_state
-    assert config.checkpoint_hours == 25 and config.incremental_lookback_hours == 0
+    from tools.robust40.initialization_config import CHECKPOINT_POINTS
+    assert config.checkpoint_hours == CHECKPOINT_POINTS and config.incremental_lookback_hours == 0
     # Both profiles must reach factor imports in every Windows-spawned process.
     # A CPU-sized live pool previously spawned 20 workers and exhausted memory.
     from core import select_coin
@@ -138,7 +139,7 @@ def check():
     assert config.factor_col_limit == select_coin.factor_col_limit
     if initializing:assert config.factor_col_limit == 16 and config.cross_section_chunk_size == 1
     assert select_coin.job_num == config.job_num
-    assert all(c.checkpoint_hours == 25 and c.incremental_lookback_hours == 0 for c in mef.factory.config_list)
+    assert all(c.checkpoint_hours == CHECKPOINT_POINTS and c.incremental_lookback_hours == 0 for c in mef.factory.config_list)
     from core.utils import datatools,exchange_hub
     if initializing:
         assert datatools.get_dummy_client().get_market_info('spot') == {}

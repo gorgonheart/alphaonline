@@ -105,7 +105,7 @@ def test_private_aggregation_worker_does_not_return_saved_matrices(monkeypatch):
     assert calls[0][1] == {'save_final_result':True}
 
 
-def test_preflight_starts_one_prepared_job_before_market_ready(tmp_path, monkeypatch):
+def test_preflight_registers_one_lightweight_wait_before_market_ready(tmp_path, monkeypatch):
     from datetime import datetime
     from tools.robust40 import server
     a=tmp_path/'55.py'; a.write_text('')
@@ -117,22 +117,25 @@ def test_preflight_starts_one_prepared_job_before_market_ready(tmp_path, monkeyp
     def launch(account, run, values, reason, mode, market):
         launched.append((account,mode)); c.jobs[account]=(SimpleNamespace(poll=lambda:None),SimpleNamespace(close=lambda:None))
     monkeypatch.setattr(c,'_launch',launch)
+    monkeypatch.setattr(c,'_ensure_pending_thread',lambda:None)
     c.prepare([a],datetime(2026,11,2,10,55),tmp_path/'absent_market')
     c.prepare([a],datetime(2026,11,2,10,55),tmp_path/'absent_market')
-    assert launched==[(a.resolve(),'prepare')]
+    assert launched==[] and list(c.pending)==[a.resolve()]
     assert not (tmp_path/'data/server_initialization').exists()
 
 
-def test_preflight_ignores_legacy_and_other_offsets(tmp_path,monkeypatch):
+def test_preflight_ignores_legacy_and_recovers_other_offsets(tmp_path,monkeypatch):
     from datetime import datetime
     from tools.robust40 import server
     old=tmp_path/'old.py'; old.write_text('')
     other=tmp_path/'20.py'; other.write_text('')
     monkeypatch.setattr(server,'enabled',lambda p:p==other)
-    monkeypatch.setattr(server,'settings',lambda p:({'account':{'hour_offset':'20m'}},{'minute':20}))
+    monkeypatch.setattr(server,'settings',lambda p:({'account':{'hour_offset':'20m'},'strategy_name':'s'},{'minute':20}))
     c=server.Coordinator(tmp_path)
     monkeypatch.setattr(c,'_launch',lambda *a:pytest.fail('Unexpected initialization'))
+    monkeypatch.setattr(c,'_ensure_pending_thread',lambda:None)
     c.prepare([old,other],datetime(2026,11,2,10,55),tmp_path/'market')
+    assert old not in c.pending and other in c.pending
 
 
 def test_priority_set_before_profile_import_and_not_for_test_import(monkeypatch):

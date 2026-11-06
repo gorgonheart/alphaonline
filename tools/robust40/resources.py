@@ -25,7 +25,7 @@ PREFIXES = ('spot_dict_', 'swap_dict_', 'market_pivot_spot_', 'market_pivot_swap
 
 def configure_process(role):
     """Called before config/native libraries, so spawned threads/children inherit."""
-    if role not in ('prepare', 'initialize', 'compute', 'trade'):
+    if role not in ('prepare', 'initialize', 'rebuild', 'compute', 'trade'):
         return
     if sys.platform == 'linux':
         priority = POLICY['trading_nice' if role == 'trade' else 'initialization_nice']
@@ -275,13 +275,41 @@ def main():
     configure_process('initialize')
     # The two installations share physical RAM. One full initializer globally;
     # queued supervisors are small and hold no market/state arrays.
-    with global_initialization_slot():
+    with queued_initialization_account(command), global_initialization_slot():
         command, env, unit = initialization_command(command,args.stamp,args.root)
         process = subprocess.Popen(command,env=env,cwd=args.root)
         controller = watch_resources(process,unit,args.market,lambda message:print(message,flush=True))
         code = process.wait()
         if controller:controller.join(timeout=3)
         return code
+
+
+@contextmanager
+def queued_initialization_account(command):
+    """Same lock path as Coordinator; keep ownership while waiting for global RAM.
+
+    Kept stdlib-only: a queued supervisor must not import pandas/MODEL.
+    The compute worker still owns the distinct .initialization/snapshot locks.
+    """
+    if 'rebuild' not in command:
+        yield;return
+    destination=Path(command[command.index('--destination')+1]).resolve()
+    folder=destination.parent.parent/'server_account_locks'
+    folder.mkdir(parents=True,exist_ok=True)
+    with (folder/(destination.name+'.dispatch.lock')).open('a+b') as handle:
+        if handle.tell()==0:handle.write(b'0');handle.flush()
+        handle.seek(0)
+        if os.name=='nt':
+            import msvcrt
+            msvcrt.locking(handle.fileno(),msvcrt.LK_NBLCK,1)
+        else:
+            import fcntl
+            fcntl.flock(handle.fileno(),fcntl.LOCK_EX|fcntl.LOCK_NB)
+        try:yield
+        finally:
+            handle.seek(0)
+            if os.name=='nt':msvcrt.locking(handle.fileno(),msvcrt.LK_UNLCK,1)
+            else:fcntl.flock(handle.fileno(),fcntl.LOCK_UN)
 
 
 @contextmanager
