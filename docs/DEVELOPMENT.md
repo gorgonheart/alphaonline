@@ -1,5 +1,11 @@
 # alpha / alphaonline 统一开发说明
 
+## 2026-11-06 双端正式发布与起点核对
+
+经用户批准，临时FACTOR_BLOCK_PROFILE/ACCOUNT_TIMING/EXECUTION_PHASE埋点已清理，保留既有运行和恢复日志；交易运行版本2827d27、上游b9cdd13已合并main并于15:09发布43.167.235.164的alphatrade/alpha2。正式账户none、参数和有效snapshot保留，其他alpha/alphatradetest未重启。Arrow联动开启，普通请求至少5000根、最终交易4050，初始化请求全历史；DataAPI K线仍关闭。Windows交易1547/80跳过、alpha337通过；Ubuntu交易1550/77跳过，上游适用325/5跳过/7既有平台或耗时断言排除，详见[正式发布记录](2026-11-06-production-release.md)。
+
+15:25首轮遇到超恢复点修订，新流程已立即后台重建而非报错重启。用户追问起点功能：六offset各1268条旧snapshot与保存起点完全一致、无缺失，25m新Arrow first_candle_time同样零差异；不是功能漏同步。25m 545个币种映射为空值表示变化，另有1000CATUSDT现货与CATUSDT合约两项真实历史配对修正，覆盖168小时并独立足以触发重建；价量真实修订从11月5日起，在近期恢复范围。25m后台重建976.989秒后成功提交，15:44核查complete=True/cutoff=06:25 UTC、Arrow请求自动降为5000、自有工作区释放，35m接着启动。不能将后台初始化当作下一合法offset真实成交验收；完整覆盖与未决项见发布记录。
+
 ## 2026-11-05 S3后上市币覆盖热修复
 
 GUNUSDT刚达到14000根时被旧max起点校验误当全市场历史不足，导致5/25/45反复初始化失败、15/35/55等待槽位。修复仅validate_initial_history的max→min，与原S3全市场时间检查一致，保持真实不足与4050拒绝、不改账户日期或数学。TDD12失败13通过后，相关79通过，独立25通过。源自已部署main，不混入下一版改造；见[热修复记录](2026-11-05-s3-listing-coverage-hotfix.md)。
