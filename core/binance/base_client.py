@@ -136,9 +136,14 @@ class BinanceClient:
         从 sapi_get_capital_config_getall 返回的钱包币种配置中解析出 bStocks（股票代币）的基础币代码集合。
         bStocks 代币的唯一可靠标识：name 字段 strip 后以 '(bStocks)' 结尾
         """
+        if not isinstance(coin_config_list, list):
+            raise ValueError('bStocks 钱包名单不是列表')
         result = set()
-        for item in coin_config_list or []:
-            name = str(item.get('name', '') or '').strip()
+        for item in coin_config_list:
+            if (not isinstance(item, dict) or not isinstance(item.get('coin'), str)
+                    or not item['coin'].strip() or not isinstance(item.get('name'), str)):
+                raise ValueError('bStocks 钱包名单字段无效')
+            name = item['name'].strip().replace('（', '(').replace('）', ')')
             if name.endswith('(bStocks)'):
                 coin = item.get('coin')
                 if coin:
@@ -147,9 +152,9 @@ class BinanceClient:
 
     def fetch_bstocks_coins(self, expire_seconds=3600 * 12) -> set:
         """
-        刷新并返回 bStocks（股票代币）基础币代码集合，全局类级缓存。
+        合并钱包配置与代币转换资产名单，全局类级缓存。
         无 apikey 的 dummy client 不发请求，直接复用现有缓存；缓存未过期也不发请求。
-        刷新失败时保留旧缓存并返回，不抛出、不中断，时间戳不更新（下轮自动重试）。
+        部分失败保留旧成员；冷启动部分空结果不算成功。两来源完整成功才移除旧成员。
         账户配置 filter_bstocks=False 时不拉取名单并返回空集，bStocks 过滤整体关闭
         """
         if not self.filter_bstocks:
@@ -162,14 +167,36 @@ class BinanceClient:
         if int(time.time()) - BinanceClient._bstocks_last_update < expire_seconds:
             return BinanceClient.bstocks_coins
 
+        coins = set()
+        successful_sources = 0
+        errors = []
         try:
             coin_config_list = retry_wrapper(self.exchange.sapi_get_capital_config_getall, func_name='获取BN钱包币种配置')
-            BinanceClient.bstocks_coins = self._parse_bstocks_coins(coin_config_list)
-            BinanceClient._bstocks_last_update = int(time.time())
-            logger.debug(f'🔢 更新bStocks名单，共 {len(BinanceClient.bstocks_coins)} 个: {BinanceClient.bstocks_coins}')
+            coins |= self._parse_bstocks_coins(coin_config_list)
+            successful_sources += 1
         except Exception as e:
-            logger.warning(f'bStocks 名单刷新失败，沿用旧缓存: {e}')
-            send_wechat_work_msg(f'bStocks 名单刷新失败，沿用旧缓存: {e}', error_webhook_url)
+            errors.append(str(e))
+            logger.warning(f'bStocks 钱包名单获取失败: {e}')
+        try:
+            assets = retry_wrapper(self.exchange.sapi_get_equity_market_tokenized_assets, func_name='获取BN代币转换资产')
+            if not isinstance(assets, list) or any(
+                    not isinstance(item, dict) or not isinstance(item.get('assetCode'), str)
+                    or not item['assetCode'].strip() for item in assets):
+                raise ValueError('bStocks 代币转换名单字段无效')
+            coins |= {item['assetCode'] for item in assets}
+            successful_sources += 1
+        except Exception as e:
+            errors.append(str(e))
+            logger.warning(f'bStocks 代币转换名单获取失败: {e}')
+
+        if successful_sources == 2 or coins:
+            BinanceClient._bstocks_last_update = int(time.time())
+        if successful_sources == 2:
+            BinanceClient.bstocks_coins = coins
+        else:
+            BinanceClient.bstocks_coins = BinanceClient.bstocks_coins | coins
+        if successful_sources == 0:
+            send_wechat_work_msg(f'bStocks 名单刷新失败，沿用旧缓存: {"; ".join(errors)}', error_webhook_url)
 
         return BinanceClient.bstocks_coins
 

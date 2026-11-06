@@ -12,6 +12,7 @@ Author: 邢不行
 import json
 import random
 import time
+from numbers import Real
 from typing import Optional
 
 import numpy as np
@@ -95,6 +96,18 @@ class AccountConfig:
         self.max_one_order_amount: int | float = (
                 config.get("max_one_order_amount", 100) * (1 + random.uniform(-0.2, 0.2))
         )
+
+        # 每轮参考名义金额上限，现货/合约独立；不是跨小时累计成交额度。
+        limits = config.get('max_symbol_order_amount', {})
+        if not isinstance(limits, dict):
+            raise ValueError('max_symbol_order_amount 必须是币种到有限正数金额的字典')
+        self.max_symbol_order_amount: dict[str, float] = {}
+        for symbol, value in limits.items():
+            if (not isinstance(symbol, str) or not symbol.strip()
+                    or isinstance(value, (bool, np.bool_)) or not isinstance(value, Real)
+                    or not np.isfinite(value) or value <= 0):
+                raise ValueError('max_symbol_order_amount 的键必须为非空币种，金额必须为有限正数')
+            self.max_symbol_order_amount[symbol] = float(value)
 
         # 加仓、减仓、调仓中使用 GTC 的目标资金比例
         self.maker_ratio: float = float(config.get("maker_ratio", 0))
@@ -207,6 +220,7 @@ class AccountConfig:
 + 获取行情k线数量: {self.get_kline_num}
 + 产生信号最小K线数量: {self.min_kline_num}
 + 单次下单最大金额(USDT): {self.max_one_order_amount}
++ 单币种每轮计划金额上限(USDT): {self.max_symbol_order_amount or '不限制'}
 + GTC 目标资金比例: {self.maker_ratio:.2%}
 + 是否纯多: {self.is_pure_long}
 + 拆单间隔(秒): {self.twap_interval}
@@ -464,13 +478,43 @@ class AccountConfig:
         symbol_price = pd.concat([symbol_spot_price, symbol_swap_price], ignore_index=True, copy=False)
         symbol_price.set_index(['symbol', 'symbol_type'], inplace=True)
         order_df = order_df.join(symbol_price, how='left')
+        if self.max_symbol_order_amount:
+            default_limit = self.max_symbol_order_amount.get('*')
+            limited = np.array([
+                self.max_symbol_order_amount.get(symbol, default_limit) is not None
+                for symbol in order_df.index.get_level_values('symbol')
+            ], dtype=bool)
+            invalid_price = ~np.isfinite(order_df['price']) | (order_df['price'] <= 0)
+            if (limited & invalid_price).any():
+                raise ValueError('单币限额订单缺少有效报价，停止本轮下单')
         order_df['实际下单资金'] = order_df['price'] * order_df['实际下单量']
         order_df.drop(columns='price', inplace=True)
 
         # 对没有报价的 symbol，设置 实际下单资金 为1，进行容错
         order_df['实际下单资金'] = order_df['实际下单资金'].fillna(1.)
 
-        return order_df.reset_index()
+        return self.limit_symbol_order_amount(order_df).reset_index()
+
+    def limit_symbol_order_amount(self, order_df: pd.DataFrame) -> pd.DataFrame:
+        """裁剪本轮参考金额；保留目标和交易模式，原拆单精度/滑点规则不变。"""
+        if not self.max_symbol_order_amount or order_df.empty:
+            return order_df
+        default_limit = self.max_symbol_order_amount.get('*')
+        limits = pd.Series([
+            self.max_symbol_order_amount.get(symbol, default_limit)
+            for symbol in order_df.index.get_level_values('symbol')
+        ], index=order_df.index, dtype=float)
+        money = order_df['实际下单资金'].abs()
+        over = limits.notna() & (money > limits)
+        if not over.any():
+            return order_df
+        result = order_df.copy()
+        ratio = limits[over] / money[over]
+        result.loc[over, '实际下单资金'] *= ratio
+        result.loc[over, '实际下单量'] *= ratio
+        for (symbol, market), amount in limits[over].items():
+            logger.info(f'[{self.name}] {symbol}({market}) 本轮计划下单金额限制为 {amount:g}U')
+        return result
 
     def calc_spot_need_usdt_amount(self, is_select_empty, spot_order):
         """

@@ -11,8 +11,8 @@ scikit-learn==1.5.2
 lightgbm==4.7.0
 joblib==1.4.2
 threadpoolctl==3.6.0
-ccxt==4.5.53
-xbx-py11==0.1.23
+ccxt==4.5.88
+xbx-py11==0.1.24
 matplotlib==3.9.2
 dataframe-image==0.2.4
 plotly==5.24.1

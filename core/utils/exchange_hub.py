@@ -85,7 +85,7 @@ def apply_bstocks_black_list(conf) -> list:
 
     if added:
         logger.info(f'🚫 bStocks 动态过滤：{len(added)} 个股票代币并入黑名单'
-                    f'（来源: BN capital/config/getall，缓存共 {len(coins)} 个）: {added}')
+                    f'（来源: BN 钱包配置 / 代币转换资产接口，缓存共 {len(coins)} 个）: {added}')
     else:
         logger.info(f'🚫 bStocks 动态过滤：{len(coins)} 个股票代币均已在黑名单中，无需并入')
 

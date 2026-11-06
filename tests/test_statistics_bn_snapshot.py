@@ -101,7 +101,7 @@ def test_pm_default_overview_does_not_call_native_statistics(monkeypatch):
     assert snapshot['account_equity']==0.
     assert 'statistics' not in snapshot
     client.exchange.papiGetAccount.assert_not_called()
-    client.get_swap_usdt_balance.assert_called_once()
+    client.get_swap_usdt_balance.assert_not_called()
 
 
 def test_missing_price_keeps_asset_and_zero_account_is_valid():

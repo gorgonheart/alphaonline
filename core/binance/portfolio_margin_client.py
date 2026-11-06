@@ -71,7 +71,7 @@ class PortfolioMarginClient(BinanceClient):
 
     def get_swap_usdt_balance(self, asset='USDT'):
         """
-        统一账户，获取USDT的余额，是不存在的，直接返回 0
+        读取UM账户crossWalletBalance，供独立归集等操作使用；交易概览使用同轮balance响应。
         :param asset:  资产类型
         :return:
         """
@@ -599,7 +599,6 @@ class PortfolioMarginClient(BinanceClient):
 
         # 获取账户余额信息
         balance = self.get_balance_df()
-        swap_usdt_balance = self.get_swap_usdt_balance()
         swap_position_df = self.get_swap_position_df()
         logger.ok('获取账户资产数据完成')
 
@@ -628,6 +627,8 @@ class PortfolioMarginClient(BinanceClient):
             }
 
         logger.info('准备处理资产数据...')
+        # 概览各分量共用一次balance响应，不与另一次UM账户crossWalletBalance混算。
+        swap_usdt_balance = balance.loc[balance['symbol'] == 'USDT', 'umWalletBalance'].sum()
         # 追加USDT后缀，方便计算usdt价值
         balance.loc[~balance['symbol'].isin(self.base_coins), 'symbol'] = balance['symbol'] + 'USDT'
 
@@ -668,6 +669,8 @@ class PortfolioMarginClient(BinanceClient):
                 base_coin_amount = (
                         balance.loc[balance['symbol'] == base_coin, '当前持仓量'].sum()
                         + balance.loc[balance['symbol'] == base_coin, '锁仓资金'].sum()
+                        + balance.loc[(balance['symbol'] == base_coin) & (balance['UM钱包价值'] > 0), 'UM钱包价值'].sum()
+                        + balance.loc[(balance['symbol'] == base_coin) & (balance['CM钱包价值'] > 0), 'CM钱包价值'].sum()
                 )
                 spot_usdt_balance += base_coin_amount
                 self.base_coin_amount[base_coin] = base_coin_amount or 0
@@ -739,6 +742,11 @@ class PortfolioMarginClient(BinanceClient):
 
         # 账户总净值 = 现货总价值 + 账户总体未实现盈亏 + 负债
         account_equity = (spot_equity + account_pnl + negative_balance)
+
+        # 基础币金额已含正USDT UM钱包；它保留在合约交易分量，不能再进入现货分量。
+        # 负UM钱包未进入上面的正余额汇总，保持合约侧负值和概览负债各自的既有用途。
+        spot_usdt_balance -= max(swap_usdt_balance, 0)
+        spot_equity -= max(swap_usdt_balance, 0)
 
         logger.ok('处理资产数据完成')
 

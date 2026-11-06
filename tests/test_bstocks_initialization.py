@@ -21,7 +21,8 @@ def setup_market(monkeypatch):
     monkeypatch.setattr(base.BinanceClient,'_bstocks_last_update',0)
     client=object.__new__(base.BinanceClient)
     client.filter_bstocks=True;client.api_key='offline-placeholder'
-    client.exchange=SimpleNamespace(sapi_get_capital_config_getall=lambda:None)
+    client.exchange=SimpleNamespace(sapi_get_capital_config_getall=lambda:None,
+        sapi_get_equity_market_tokenized_assets=lambda:[])
     import core.model.account_config as accounts
     monkeypatch.setattr(accounts,'AccountConfig',lambda *a,**k:SimpleNamespace(
         bn=client,init_exchange=lambda *a:None))
@@ -46,7 +47,8 @@ def test_first_refresh_failure_stops_before_public_market_fetch(setup_market,mon
     ([{'coin':'STOCK','name':'Example (bStocks)'},{'coin':'BTC','name':'Bitcoin'}],{'STOCK'})])
 def test_successful_automatic_refresh_including_empty_result(setup_market,monkeypatch,rows,expected):
     base,client,warm,calls,notifications=setup_market
-    monkeypatch.setattr(base,'retry_wrapper',lambda *a,**k:rows)
+    client.exchange.sapi_get_capital_config_getall=lambda:rows
+    monkeypatch.setattr(base,'retry_wrapper',lambda fn,**k:fn())
     warm.prepare_public_market()
     assert base.BinanceClient.bstocks_coins==expected
     assert base.BinanceClient._bstocks_last_update>0
