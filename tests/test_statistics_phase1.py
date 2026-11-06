@@ -43,9 +43,9 @@ def test_eth_market_value_without_ledger_io(monkeypatch, isolated, ledger_amount
     result = sf.calc_spot_position(source, '45m', pd.Series({'ETHUSDT': 2407.22}))
     assert result.loc['ETHUSDT', 'pos_u'] == pytest.approx(.6294843 * 2407.22)
     assert result.loc['ETHUSDT', 'pos_amount'] == .6294843
-    assert pd.isna(result.loc['ETHUSDT', 'avg_price'])
-    assert pd.isna(result.loc['ETHUSDT', 'pnl_u'])
-    assert result.loc['ETHUSDT', 'cost_status'] == '待对账'
+    assert result.loc['ETHUSDT', 'avg_price'] == 2407.22
+    assert result.loc['ETHUSDT', 'pnl_u'] == 0
+    assert result.loc['ETHUSDT', 'cost_status'] == '期初估算（未计手续费）'
     pd.testing.assert_frame_equal(source, before)
     read.assert_not_called()
 

@@ -11,7 +11,7 @@ Author: 邢不行
 """
 import os
 from tools.statistics_runtime import atomic_save, temporary_path
-from tools.statistics_format import format_amount, format_time, format_frame
+from tools.statistics_format import format_amount, format_time, format_frame, format_percent
 import traceback
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -28,8 +28,14 @@ data_path = get_folder_path('data', as_path_type=True)
 
 
 def calc_spot_position(spot_position, account_name, spot_last_price):
-    """Current market value only. Legacy net investment is not verified cost."""
+    """Market value plus independent fee-exclusive moving-average estimates."""
     if spot_position.empty:
+        # Still consume fills and close estimates after a complete liquidation.
+        try:
+            from tools.spot_cost_estimate import estimate_spot_costs
+            estimate_spot_costs(data_path / account_name, {}, {}, datetime.now())
+        except Exception as error:
+            print(f'{account_name}: 现货成本估算不可用: {error}')
         return pd.DataFrame()
     source = spot_position.set_index('symbol') if 'symbol' in spot_position else spot_position.copy()
     result = pd.DataFrame(index=source.index.rename('symbol'))
@@ -43,6 +49,20 @@ def calc_spot_position(spot_position, account_name, spot_last_price):
     result['pnl_u'] = np.nan
     result['avg_price'] = np.nan
     result['cost_status'] = '待对账'
+    try:
+        from tools.spot_cost_estimate import estimate_spot_costs
+        costs = estimate_spot_costs(data_path / account_name, result.pos_amount.to_dict(),
+                                    result.cur_price.to_dict(), datetime.now())
+        result['avg_price'] = pd.Series({s: c['avg_price'] for s, c in costs.items()}, dtype=float).reindex(result.index)
+        result['cost_status'] = pd.Series({s: c['cost_status'] for s, c in costs.items()}).reindex(result.index)
+        result['cost_since'] = pd.to_datetime(pd.Series({s: c.get('cost_since') for s, c in costs.items()}).reindex(result.index))
+        valid = (result.pos_amount > 0) & (result.avg_price > 0)
+        result.loc[valid, 'change'] = result.loc[valid, 'cur_price'] / result.loc[valid, 'avg_price'] - 1
+        result.loc[valid, 'pnl_u'] = result.loc[valid, 'pos_amount'] * (result.loc[valid, 'cur_price'] - result.loc[valid, 'avg_price'])
+        result['change'] = result['change'].map(format_percent)
+    except Exception as error:
+        result['cost_status'] = '估算不可用'
+        print(f'{account_name}: 现货成本估算不可用: {error}')
     return result
 
 
