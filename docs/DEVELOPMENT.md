@@ -8,6 +8,12 @@
 
 按用户授权，18:58将升级分支运行提交c49d6de的8个文件增量发布至43.173.122.28:/home/ubuntu/alphatrade。远端实际源码叠加升级后Ubuntu相关175项通过、无失败/跳过，66.37秒；独立新alpha311正常解析部署依赖，pip check及实际安装路径禁网导入通过。测试交易PID2583547使用/home/ubuntu/alphatrade-env/upgrade233/alpha311，版本2.3.3，仍dry_run；上游PID1421306不变。账户25m-eart1106及机器配置保留，未配置限额，部署步骤核对快照不变。旧环境及文件备份保留；已确认启动与调度，下一25m完整自然轮尚未验收，生产未升级。见[测试部署与回退记录](2026-11-06-upgrade-core-2.3.3-test-deployment.md)。
 
+## 2026-11-06 双端正式发布与起点核对
+
+经用户批准，临时FACTOR_BLOCK_PROFILE/ACCOUNT_TIMING/EXECUTION_PHASE埋点已清理，保留既有运行和恢复日志；交易运行版本2827d27、上游b9cdd13已合并main并于15:09发布43.167.235.164的alphatrade/alpha2。正式账户none、参数和有效snapshot保留，其他alpha/alphatradetest未重启。Arrow联动开启，普通请求至少5000根、最终交易4050，初始化请求全历史；DataAPI K线仍关闭。Windows交易1547/80跳过、alpha337通过；Ubuntu交易1550/77跳过，上游适用325/5跳过/7既有平台或耗时断言排除，详见[正式发布记录](2026-11-06-production-release.md)。
+
+15:25首轮遇到超恢复点修订，新流程已立即后台重建而非报错重启。用户追问起点功能：六offset各1268条旧snapshot与保存起点完全一致、无缺失，25m新Arrow first_candle_time同样零差异；不是功能漏同步。25m 545个币种映射为空值表示变化，另有1000CATUSDT现货与CATUSDT合约两项真实历史配对修正，覆盖168小时并独立足以触发重建；价量真实修订从11月5日起，在近期恢复范围。25m后台重建976.989秒后成功提交，15:44核查complete=True/cutoff=06:25 UTC、Arrow请求自动降为5000、自有工作区释放，35m接着启动。不能将后台初始化当作下一合法offset真实成交验收；完整覆盖与未决项见发布记录。
+
 ## 2026-11-06 2.3.3 增量升级（本地分支实施，未部署）
 
 从 main `2827d27` 新建 `codex/upgrade-core-2.3.3`，按用户确认增量引入每轮单币计划金额限制、bStocks双来源及全半角兼容、统一账户正钱包修正、OKX password加密工具。限额默认关闭，非法配置拒绝，清仓也受限；不做小时累计，原精度/滑点规则保持。目标、Arrow/Polars/C预计算、JIT及MODEL/S3续算保护保留。

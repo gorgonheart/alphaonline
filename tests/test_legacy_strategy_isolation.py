@@ -159,11 +159,39 @@ def test_legacy_target_lots_match_main_even_after_model_registration(name, mode,
     'positions/HybridRotationDriftStrategy.py'])
 def test_shared_implementation_unchanged_from_main(path):
     expected = baseline_source(path)
+    text = (ROOT/path).read_text(encoding='utf-8-sig')
+    if path == 'core/model/account_config.py':
+        added_display = "+ 单币种每轮计划金额上限(USDT): {self.max_symbol_order_amount or '不限制'}\n"
+        assert text.count(added_display) == 1
+        text = text.replace(added_display, '')
+    current = ast.parse(text)
     if path == 'core/model/account_config.py':
         # Approved dry-run fix only; all remaining original AST stays identical.
         guard = 'if self.if_transfer_bnb:'
         assert expected.count(guard) == 1
         expected = expected.replace(guard, 'if self.if_transfer_bnb and is_operate:')
+        # Approved 2.3.3 cap is covered by independent order oracles. Project
+        # ONLY its additive hook away; keep comparing every legacy AST node
+        # against the original frozen pre-MODEL source, not a new baseline.
+        current.body = [n for n in current.body if not (
+            isinstance(n, ast.ImportFrom) and n.module == 'numbers'
+            and [a.name for a in n.names] == ['Real'])]
+        cls = next(n for n in current.body if isinstance(n, ast.ClassDef) and n.name == 'AccountConfig')
+        cap = [n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == 'limit_symbol_order_amount']
+        assert len(cap) == 1
+        cls.body.remove(cap[0])
+        init = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == '__init__')
+        start = next(i for i,n in enumerate(init.body) if isinstance(n, ast.Assign)
+                     and isinstance(n.targets[0], ast.Name) and n.targets[0].id == 'limits')
+        assert [type(n).__name__ for n in init.body[start:start+4]] == ['Assign','If','AnnAssign','For']
+        del init.body[start:start+4]
+        calc = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == 'calc_order_amount')
+        guards = [n for n in calc.body if isinstance(n, ast.If) and
+                  isinstance(n.test, ast.Attribute) and n.test.attr == 'max_symbol_order_amount']
+        assert len(guards) == 1
+        calc.body.remove(guards[0])
+        assert ast.unparse(calc.body[-1]) == 'return self.limit_symbol_order_amount(order_df).reset_index()'
+        calc.body[-1] = ast.parse('return order_df.reset_index()').body[0]
     if path == 'positions/HybridRotationDriftStrategy.py':
         # Only the type-only framework import moved behind TYPE_CHECKING;
         # every function, constant and numerical decorator still matches main.
@@ -171,7 +199,7 @@ def test_shared_implementation_unchanged_from_main(path):
                                     'from typing import TYPE_CHECKING, Any, Iterable')
         expected = expected.replace('from core.model.strategy_config import PosStrategyConfig',
             'if TYPE_CHECKING:\n    from core.model.strategy_config import PosStrategyConfig')
-    assert ast.dump(ast.parse((ROOT/path).read_text(encoding='utf-8-sig'))) == ast.dump(ast.parse(expected))
+    assert ast.dump(current) == ast.dump(ast.parse(expected))
 
 
 @pytest.mark.parametrize('minute', [20, 40, 55])
