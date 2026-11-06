@@ -40,11 +40,28 @@ def portfolio_overview(balance, positions, ticker, base_coins, account_info):
         swap_assets=dict(swap_position_df=positions))
 
 
-def position_history(records, *, source, offset_minute, observed_at=None):
+def observation_baseline_mask(times, observed_at, hours, *, run_times=None, run_time=None, tolerance_minutes=10):
+    """1h uses the previous scheduled round; observations may drift either way.
+
+    A baseline must still precede the current observation. Legacy callers without
+    a scheduled round and 24h reports retain the old one-sided time window.
+    """
+    times = pd.to_datetime(times, format='mixed', errors='coerce')
+    now = pd.Timestamp(observed_at)
+    target = now - pd.Timedelta(hours=hours)
+    tolerance = pd.Timedelta(minutes=tolerance_minutes)
+    if hours == 1 and run_time is not None:
+        if run_times is None:
+            return pd.Series(False, index=times.index)
+        slots = pd.to_datetime(run_times, format='mixed', errors='coerce')
+        return ((slots == pd.Timestamp(run_time)-pd.Timedelta(hours=1)) &
+                ((times-target).abs() <= tolerance) & (times < now))
+    return (times <= target) & (times >= target-tolerance)
+
+
+def position_history(records, *, source, offset_minute, observed_at=None, run_time=None):
     """Reuse already loaded post-order records; old/pre-order scopes stay separate."""
-    selected = {}
     candidates = []
-    targets = {hours: pd.Timestamp(observed_at)-pd.Timedelta(hours=hours) for hours in (1,24)} if observed_at is not None else {}
     for frame in records.values():
         attrs = frame.attrs
         if (attrs.get('phase') != 'post_trade' or attrs.get('snapshot_source') != source
@@ -53,16 +70,16 @@ def position_history(records, *, source, offset_minute, observed_at=None):
         record_time = attrs.get('observed_at')
         if record_time is None:
             continue
-        if targets:
-            timestamp = pd.Timestamp(record_time)
-            for hours, target in targets.items():
-                if (target-pd.Timedelta(minutes=10) <= timestamp <= target and
-                        (hours not in selected or timestamp > selected[hours][0])):
-                    selected[hours] = (timestamp, frame)
-        else:
-            candidates.append(frame)
-    if targets:
-        candidates = [pair[1] for pair in selected.values()]
+        candidates.append(frame)
+    if observed_at is not None and candidates:
+        times = pd.Series([pd.Timestamp(f.attrs['observed_at']) for f in candidates])
+        slots = pd.Series([f.attrs.get('run_time') for f in candidates])
+        chosen = []
+        for hours in (1,24):
+            mask = observation_baseline_mask(times, observed_at, hours, run_times=slots, run_time=run_time)
+            if mask.any():
+                chosen.append(candidates[times.loc[mask].idxmax()])
+        candidates = chosen
     frames = []
     for frame in candidates:
         attrs = frame.attrs

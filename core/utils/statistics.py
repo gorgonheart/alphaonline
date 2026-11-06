@@ -909,6 +909,7 @@ def save_and_send_equity_info(account_config: AccountConfig, me_conf, spot_posit
     """Persist the basic observation first; optional reporting cannot discard it."""
     options = options or {}
     observed_at = observed_at or datetime.now()
+    baseline_run_time = run_time
     run_time = run_time or observed_at
     swap = calc_swap_position(swap_position) if swap_frame is None else swap_frame
     longs = swap.loc[swap.side > 0, 'pos_u'] if not swap.empty else pd.Series(dtype=float)
@@ -953,22 +954,28 @@ def save_and_send_equity_info(account_config: AccountConfig, me_conf, spot_posit
         msg += f'权益口径：BN实际净权益（{metrics["equity_currency"]}）\n'
         # Retain complete observation intervals; a changed equity definition is not PnL.
         for hours in (1, 24):
-            target = observed_at-timedelta(hours=hours)
-            times = pd.to_datetime(comparable.observed_at, errors='coerce')
-            valid = comparable.loc[(times <= target) & (times >= target-timedelta(minutes=10))]
+            from tools.statistics_snapshot import observation_baseline_mask
+            times = pd.to_datetime(comparable.observed_at, format='mixed', errors='coerce')
+            valid = comparable.loc[observation_baseline_mask(times, observed_at, hours,
+                run_times=comparable.time, run_time=baseline_run_time)]
             valid = valid.loc[pd.to_numeric(valid['账户总净值'], errors='coerce').map(np.isfinite)]
             if valid.empty:
                 msg += f'{hours}小时账户损益：历史不足\n'
             else:
                 idx = times.loc[valid.index].idxmax()
                 change = account_equity-float(valid.loc[idx, '账户总净值'])
+                interval = ''
+                if hours == 1:
+                    seconds = int(round((pd.Timestamp(observed_at)-times.loc[idx]).total_seconds()))
+                    interval = f'；实际间隔 {seconds//60}分{seconds%60:02d}秒'
                 msg += (f'{hours}小时账户损益：{format_amount(change)} {metrics["equity_currency"]}'
-                        f'；起点 {format_time(times.loc[idx])}\n')
+                        f'；起点 {format_time(times.loc[idx])}{interval}\n')
     # Difference in observed equity is not cash-flow-adjusted trading PnL.
     if metrics is None and not old.empty:
         times = pd.to_datetime(old['observed_at'], errors='coerce') if 'observed_at' in old else pd.Series(pd.NaT,index=old.index)
-        target = observed_at-timedelta(hours=1)
-        prior = old.loc[(times <= target) & (times >= target-timedelta(minutes=10))]
+        from tools.statistics_snapshot import observation_baseline_mask
+        prior = old.loc[observation_baseline_mask(times, observed_at, 1,
+            run_times=old.time, run_time=baseline_run_time)]
         if not prior.empty:
             idx = times.loc[prior.index].idxmax()
             msg += f'约1小时权益变化：{format_amount(account_equity-float(old.loc[idx,"账户总净值"]))}；起点 {format_time(times.loc[idx])}\n'

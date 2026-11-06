@@ -150,16 +150,18 @@ def save_position_snapshot(account_config: AccountConfig, run_time):
         atomic_save(path, lambda target: frame.to_pickle(target))
 
 
-def get_historical_position(account_name, hours_ago, pos_type='spot', *, observed_at=None, history=None, tolerance_minutes=10):
-    """No future baseline; require an observation within ten minutes before target."""
+def get_historical_position(account_name, hours_ago, pos_type='spot', *, observed_at=None, history=None, tolerance_minutes=10, run_time=None):
+    """Select a prior observation under the shared scheduled-round policy."""
     if history is None:
         path = get_file_path(data_path, account_name, '账户信息', f'{pos_type}_position_history.pkl', as_path_type=True)
         history = pd.read_pickle(path) if path.exists() else pd.DataFrame()
     if history.empty:
         return pd.DataFrame()
-    target = pd.Timestamp(observed_at or datetime.now()) - pd.Timedelta(hours=hours_ago)
-    times = pd.to_datetime(history['observed_at'] if 'observed_at' in history else history['timestamp'])
-    eligible = times[(times <= target) & (times >= target-pd.Timedelta(minutes=tolerance_minutes))]
+    from tools.statistics_snapshot import observation_baseline_mask
+    times = pd.to_datetime(history['observed_at'] if 'observed_at' in history else history['timestamp'], format='mixed', errors='coerce')
+    mask = observation_baseline_mask(times, observed_at or datetime.now(), hours_ago,
+        run_times=history.get('timestamp'), run_time=run_time, tolerance_minutes=tolerance_minutes)
+    eligible = times[mask]
     if eligible.empty:
         return pd.DataFrame()
     actual = eligible.max()
@@ -197,6 +199,7 @@ def calculate_and_send_pnl_report(account_config: AccountConfig, spot_position, 
                                   snapshot_source=None):
     """Optional estimate. Two history reads per round, persistence before notification."""
     observed_at = observed_at or datetime.now()
+    baseline_run_time = run_time
     run_time = run_time or observed_at
     frames = current_frames or (calc_spot_position(spot_position, account_config.name, spot_last_price), calc_swap_position(swap_position))
     histories = {}
@@ -204,12 +207,12 @@ def calculate_and_send_pnl_report(account_config: AccountConfig, spot_position, 
         if history_cache is not None:
             from tools.statistics_snapshot import position_history
             histories[market] = position_history(history_cache[market], source=snapshot_source,
-                                                 offset_minute=account_config.hour_offset_minute, observed_at=observed_at)
+                                                 offset_minute=account_config.hour_offset_minute, observed_at=observed_at, run_time=baseline_run_time)
         else:
             path = get_file_path(data_path, account_config.name, '账户信息', f'{market}_position_history.pkl', as_path_type=True)
             histories[market] = pd.read_pickle(path) if path.exists() else pd.DataFrame()
     baselines = {(hours, market): get_historical_position(account_config.name, hours, market,
-                 observed_at=observed_at, history=histories[market])
+                 observed_at=observed_at, history=histories[market], run_time=baseline_run_time)
                  for hours in (1, 24) for market in ('spot', 'swap')}
     def required_symbols(market):
         symbols = set()
