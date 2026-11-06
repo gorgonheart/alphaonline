@@ -155,6 +155,8 @@ def validate_initial_history(raw,origin,n,min_kline_num):
     starts=[frame.candle_begin_time.min() for frame in raw.values()
             if len(frame)>=INITIALIZATION['minimum_history_bars']]
     if not starts:raise ValueError('Full raw history is not ready for initialization')
+    # S3 checks market-wide coverage; later listings enter only when their
+    # factor is valid. A coin reaching 14000 bars must not move the origin.
     earliest=min(starts)+pd.Timedelta(hours=min_kline_num+n)
     if origin<earliest:
         raise ValueError(f'S3 configured date {origin} lacks history; earliest safe time is {earliest}. '
