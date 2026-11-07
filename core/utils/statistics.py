@@ -964,12 +964,9 @@ def save_and_send_equity_info(account_config: AccountConfig, me_conf, spot_posit
             else:
                 idx = times.loc[valid.index].idxmax()
                 change = account_equity-float(valid.loc[idx, '账户总净值'])
-                interval = ''
-                if hours == 1:
-                    seconds = int(round((pd.Timestamp(observed_at)-times.loc[idx]).total_seconds()))
-                    interval = f'；实际间隔 {seconds//60}分{seconds%60:02d}秒'
+                interval = '' if hours == 1 else f'；起点 {format_time(times.loc[idx])}'
                 msg += (f'{hours}小时账户损益：{format_amount(change)} {metrics["equity_currency"]}'
-                        f'；起点 {format_time(times.loc[idx])}{interval}\n')
+                        f'{interval}\n')
     # Difference in observed equity is not cash-flow-adjusted trading PnL.
     if metrics is None and not old.empty:
         times = pd.to_datetime(old['observed_at'], errors='coerce') if 'observed_at' in old else pd.Series(pd.NaT,index=old.index)

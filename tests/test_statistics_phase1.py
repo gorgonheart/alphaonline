@@ -45,7 +45,7 @@ def test_eth_market_value_without_ledger_io(monkeypatch, isolated, ledger_amount
     assert result.loc['ETHUSDT', 'pos_amount'] == .6294843
     assert result.loc['ETHUSDT', 'avg_price'] == 2407.22
     assert result.loc['ETHUSDT', 'pnl_u'] == 0
-    assert result.loc['ETHUSDT', 'cost_status'] == '期初估算（未计手续费）'
+    assert result.loc['ETHUSDT', 'cost_status'] == '期初估算'
     pd.testing.assert_frame_equal(source, before)
     read.assert_not_called()
 

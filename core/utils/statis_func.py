@@ -193,6 +193,27 @@ def calc_position_pnl(current_pos, historical_pos, spot_last_price, pos_type='sp
     return result.rename_axis('symbol').reset_index()
 
 
+def price_impact_top(results):
+    """Five largest absolute impacts per position direction across both markets."""
+    frame = pd.DataFrame(results)
+    if frame.empty:
+        return frame
+    frame = frame.dropna(subset=['total_pnl']).copy()
+    frame['_absolute'] = frame.total_pnl.abs()
+    ranked = frame.sort_values('_absolute', ascending=False, kind='stable')
+    return pd.concat([ranked.loc[ranked.side > 0].head(5), ranked.loc[ranked.side < 0].head(5)])
+
+
+def filter_small_price_impact(result, baseline, market_info):
+    if result.empty:
+        return result
+    limits = market_info.get('min_qty', {})
+    quantity = baseline.set_index('symbol')['pos_amount'].abs()
+    # market_info stores decimal precision exponents, not quantity values.
+    minimum = result.symbol.map(limits).map(lambda precision: 10. ** -float(precision) if pd.notna(precision) else 0.)
+    return result.loc[result.symbol.map(quantity) >= minimum].copy()
+
+
 def calculate_and_send_pnl_report(account_config: AccountConfig, spot_position, swap_position, spot_last_price,
                                   me_conf=None, *, observed_at=None, run_time=None, current_frames=None,
                                   strategy_maps=None, total_equity=None, notify=True, history_cache=None,
@@ -227,12 +248,15 @@ def calculate_and_send_pnl_report(account_config: AccountConfig, spot_position, 
     if required_symbols('spot') - set(spot_last_price.index):
         spot_last_price = account_config.bn.get_spot_ticker_price_series()
     record = {'kind': 'opening_position_price_impact', 'observed_at': observed_at, 'run_time': run_time}
-    lines = [f'【期初持仓价格影响估算】{account_config.name}', f'观察终点：{format_time(observed_at)}']
+    lines = [f'【期初持仓价格影响估算】{account_config.name}']
     for hours in (1, 24):
         results, intervals = [], {}
         for market, current, prices in zip(('spot', 'swap'), frames, (spot_last_price, swap_prices)):
             baseline = baselines[hours, market]
             result = calc_position_pnl(current, baseline, prices, market, total_equity)
+            market_info = getattr(account_config.bn, 'market_info', {})
+            if isinstance(market_info, dict):
+                result = filter_small_price_impact(result, baseline, market_info.get(market, {}))
             valid = baseline.attrs.get('valid_baseline', False)
             # Empty known holdings are valid; legacy non-empty rows cannot be valued reliably.
             usable = valid and (baseline.empty or (all(c in baseline for c in ('market_value', 'pos_amount', 'cur_price')) and baseline[['market_value', 'pos_amount', 'cur_price']].notna().all().all()))
@@ -244,15 +268,17 @@ def calculate_and_send_pnl_report(account_config: AccountConfig, spot_position, 
             elif result['total_pnl'].isna().any():
                 lines.append(f'{hours}h {market}: 缺价格，合计未知')
             else:
-                lines.append(f'{hours}h {market}: {format_amount(result.total_pnl.sum())} U；实际起点 {format_time(intervals[market]["baseline_time"])}')
+                lines.append(f'{hours}h {market}: {format_amount(result.total_pnl.sum())} U')
             if not result.empty:
                 mapping = (strategy_maps or ({}, {}))[0 if market == 'spot' else 1]
                 result['strategy'] = result['symbol'].map(mapping).fillna('未匹配')
-                ranked = result.dropna(subset=['total_pnl']).sort_values('total_pnl', ascending=False)
-                top = pd.concat([ranked.loc[ranked.total_pnl > 0].head(5), ranked.loc[ranked.total_pnl < 0].tail(5)])
-                for row in top.itertuples():
-                    lines.append(f'  {row.symbol}: {format_amount(row.total_pnl, signed=True)} U [{row.strategy}]')
             results.extend(result.to_dict('records'))
+        top = price_impact_top(results)
+        if not top.empty:
+            for side, label in ((1, '多头'), (-1, '空头')):
+                lines.append(f'{hours}h {label}价格影响（绝对值前5）')
+                for row in top.loc[top.side * side > 0].itertuples():
+                    lines.append(f'  {row.symbol}: {format_amount(row.total_pnl, signed=True)} U [{row.strategy}]')
         record[f'{hours}h'] = results
         record[f'{hours}h_status'] = intervals
     path = get_file_path(data_path, account_config.name, '账户信息', 'pnl_history.pkl', as_path_type=True)

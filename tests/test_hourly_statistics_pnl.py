@@ -23,8 +23,8 @@ def test_real_account_seconds_drift_is_not_missing_history(tmp_path,monkeypatch)
         pd.DataFrame(),pd.DataFrame(),0.,16422.337132,0.,0.,run_time=RUN,observed_at=NOW,
         options=dict(notify=False,details=False),metrics=dict(equity_source='binance_pm_actualEquity',equity_currency='USD'))
     assert '1小时账户损益：-11 USD' in msg
-    assert '起点 11-06 19:21:26' in msg
-    assert '实际间隔 59分58秒' in msg
+    assert '1小时账户损益：-11 USD\n' in msg
+    assert '实际间隔' not in msg
     assert '24小时账户损益：历史不足' in msg
 
 

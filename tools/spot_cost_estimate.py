@@ -104,7 +104,7 @@ def estimate_spot_costs(account_root, quantities, prices, observed_at):
             assets[symbol] = item
         else:
             item['quantity'] = qty
-        result[symbol] = dict(avg_price=item['average'], cost_status=item['status']+'（未计手续费）', cost_since=item['since'])
+        result[symbol] = dict(avg_price=item['average'], cost_status=item['status'], cost_since=item['since'])
     state['observed_at'] = str(observed_at)
     atomic_save(path, lambda target: target.write_text(json.dumps(state, ensure_ascii=False, allow_nan=False), encoding='utf-8'))
     return result

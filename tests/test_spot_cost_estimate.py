@@ -55,7 +55,7 @@ def test_close_reopen_and_unexplained_quantity_reset(tmp_path):
     assert estimate(tmp_path,2)['avg_price']==90
     result=estimate(tmp_path,3,130)
     assert result['avg_price']==130
-    assert result['cost_status']=='估算重置（未计手续费）'
+    assert result['cost_status']=='估算重置'
 
 
 def test_bad_price_and_short_do_not_create_fake_cost(tmp_path):
@@ -66,7 +66,7 @@ def test_bad_price_and_short_do_not_create_fake_cost(tmp_path):
 def test_missing_order_identity_resets_on_quantity_change(tmp_path):
     estimate(tmp_path,10,100)
     write_orders(tmp_path,[order('','BUY',2,240)])
-    assert estimate(tmp_path,12,120)['cost_status']=='估算重置（未计手续费）'
+    assert estimate(tmp_path,12,120)['cost_status']=='估算重置'
 
 
 def test_corrupt_state_is_not_silently_reseeded(tmp_path):
