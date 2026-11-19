@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Current cross-project source of truth: [统一开发说明](docs/DEVELOPMENT.md). Read it first; it records the 2026-10-14 corrected factors and supersedes historical architecture descriptions below.
+Current cross-project unified entry point: [统一开发入口与全局摘要](docs/README.md)（专题知识库见 `docs/kb/`，逐条流水日志见 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md)）. Read it first; it reflects the current 2.3.3 / 1.1.12 baseline and supersedes historical architecture descriptions below.
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
