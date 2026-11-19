@@ -1,5 +1,13 @@
 # alpha / alphaonline 统一开发说明
 
+## 2026-11-19 新上币 universe 扩张误判重建修复（A1 + A′ + merge_context 回填）
+
+针对 11-17 与 11-19 两起新上市币触发 6 户串行全量重建事故（`plan.md` 问题 A），基于生产运行基线 `414cb05` 独立实施修复（未夹带本地未发布的 `6c02e58` 统计精简改动）：
+
+- **A1 判定层（`tools/robust40/handoff.py::first_revision`、`tools/robust40/telemetry.py::fields`）**：新增序列（`key not in old`）与共享表新增列仅记录结构化遥测（`added_series`、`added_series_keys`、`added_columns`、`added_column_names`），不再推进 `revised_from` 且不污染 `changed_fields`；共有列按 `a.columns.intersection(b.columns)` 精确比对。移除序列与移除列保持保守策略，仍计入 `a.index.min()` 并记录 `removed_series` / `removed_series_keys` / `removed_columns` / `removed_column_names`。
+- **A′ checkpoint 保持与扩张回填（`positions/ModelRobust40Strategy.py::expand_result`、`_update_state`、`merge_context`）**：`expand_result` 新增可选参数 `simulation=None`，在校验 `checkpoint_layout`、共有币种 `lot_sizes` 与状态元组长度一致后，按 symbol 名重映射全部 26 个 checkpoint（保留 `int64`/`float64` Numba dtype）并更新 `checkpoint_layout`；旧 3 参数调用或元数据不匹配时安全回退删除 checkpoint。独立审查拦截到 `merge_context` 对首次进入 `context["columns"]` 的新币未回填 overlap 区间既有价格/资金费（会导致 T+1 轮及扩张前回放抛 `ValueError`），同步修复为仅对新增列在 `old["index"] ∩ new["index"]` 回填 `new["simulation"]`，不改动任何共有列历史。
+- **验证与未决事项**：新增 `tests/test_universe_expansion_revision.py`（13 项，覆盖 T-A1～T-A8、移除回归、T+1 续算、扩张前回放与空边扩张），Windows `alpha311` 相关 9 个测试文件共 122 项全部通过（0 失败）。移除语义放宽（Phase 2）与 `plan.md` 问题 B（24h `[未匹配]` 归属回填）保留为后续独立事项，未纳入本次修复。
+
 ## 2026-11-06 一小时损益已合并并部署两线
 
 用户授权仅统计专项验证后，将c217ca1合入main并部署测试23:47、正式23:49。两边11项专项各通过，三份安装统计源码比对及禁网导入/漂移匹配断言通过；交易及行情PID全部未变，账户和配置保留。下一自然统计子进程自动加载；未运行全流程、未手动触发通知或修改旧历史。详见[两线部署与回退记录](2026-11-06-hourly-statistics-deployment.md)。下方“本地分支未部署”为前一阶段记录，已由本条更新状态。
