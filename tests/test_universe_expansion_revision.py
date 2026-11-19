@@ -561,3 +561,172 @@ def test_new_symbol_with_nan_price_and_zero_weight_keeps_finite_equity_and_uncha
     e_spot, e_swap = exp_sim.attrs['simulation_state']
     np.testing.assert_array_equal(e_spot[1], [0, b_spot[1][0]])
     np.testing.assert_array_equal(e_swap[1], [0, b_swap[1][0]])
+
+
+def test_expansion_with_prior_prices_survives_next_round_and_pre_expansion_replay(tmp_path):
+    """Critical review fix: new symbol with prior overlap prices survives Round T+1 and pre-expansion replay."""
+    from positions import ModelRobust40Strategy as model
+
+    parent_params = dict(
+        cap_ratios=[0.1] * 14,
+        direction_list=['long'] * 7 + ['short'] * 7,
+    )
+    old_ctx = _expanded_context('2026-08-01 00:40', 1200, with_new=False)
+    idx_old = old_ctx['index']
+    weights_old = model.calc_hybrid_ratio(
+        old_ctx['equities'], type('P', (), {'params': parent_params})()
+    )
+    weights_old.attrs = {}
+    raw_old = {
+        'U': pd.DataFrame(
+            dict(
+                candle_begin_time=idx_old,
+                first_candle_time=idx_old[0],
+                close=100.0,
+                quote_volume=1000.0,
+                avg_price_1m=100.0,
+            )
+        )
+    }
+    old_res = model.calculate(old_ctx, weights_old, raw_old, checkpoint_hours=26)
+
+    state_path = tmp_path / 'state.pkl'
+    bootstrap_path = tmp_path / 'bootstrap.pkl'
+    pd.to_pickle(
+        dict(
+            version=1,
+            minute=40,
+            account_identity='35m_t1104',
+            params=parent_params,
+            context=old_ctx,
+            result=old_res,
+        ),
+        state_path,
+    )
+
+    def make_incoming(periods, active_from):
+        ctx = _expanded_context(
+            '2026-08-01 00:40', periods, with_new=True, new_nan_before=1192
+        )
+        # Non-zero funding rate on newly added swap:A during prior overlap bars
+        ctx['simulation']['funding_rates'][1192:, 0] = 0.0003
+        # Non-zero target weight on newly added spot:B and swap:A starting at expansion bar
+        from scipy import sparse
+
+        weights_arr = np.tile([0.0, 0.1, 0.0, -0.1], (periods, 1))
+        weights_arr[active_from:, 0] = 0.05
+        weights_arr[active_from:, 2] = -0.05
+        ctx['matrices'] = [sparse.csr_matrix(weights_arr) for _ in range(14)]
+        idx = ctx['index']
+        raw = {
+            'U': pd.DataFrame(
+                dict(
+                    candle_begin_time=idx,
+                    first_candle_time=idx[0],
+                    close=100.0,
+                    quote_volume=1000.0,
+                    avg_price_1m=100.0,
+                )
+            ),
+            'A': pd.DataFrame(
+                dict(
+                    candle_begin_time=idx[1192:],
+                    first_candle_time=idx[1192],
+                    close=100.0,
+                    quote_volume=100.0,
+                    avg_price_1m=100.0,
+                )
+            ),
+        }
+        return ctx, raw
+
+    # Round T: universe expands with spot:B and swap:A having 8 prior hours of prices + non-zero weight at T
+    ctx_t, raw_t = make_incoming(1201, active_from=1200)
+    updated_t = model.update_state(
+        state_path,
+        bootstrap_path,
+        '35m_t1104',
+        40,
+        ctx_t,
+        raw_t,
+        ctx_t['index'][-1],
+        checkpoint_hours=26,
+    )
+    assert len(updated_t['result']['account'].attrs['checkpoints']) == 26
+    assert np.isfinite(updated_t['result']['account']['equity']).all()
+
+    # Round T+1: next incremental round must NOT crash with "Historical revision in spot_open_p"
+    ctx_t1, raw_t1 = make_incoming(1202, active_from=1200)
+    updated_t1 = model.update_state(
+        state_path,
+        bootstrap_path,
+        '35m_t1104',
+        40,
+        ctx_t1,
+        raw_t1,
+        ctx_t1['index'][-1],
+        checkpoint_hours=26,
+    )
+    assert len(updated_t1['result']['account'].attrs['checkpoints']) == 26
+    assert np.isfinite(updated_t1['result']['account']['equity']).all()
+
+    # Pre-expansion restore + merge_context + advance (exact restore_snapshot -> _update_state flow)
+    revised_from = idx_old[-3]
+    restored_res, restored_at = model.restore_model(
+        updated_t1['context'], updated_t1['result'], revised_from
+    )
+    assert restored_at == idx_old[-4]
+    sliced_ctx = model.slice_context(
+        updated_t1['context'],
+        updated_t1['context']['index'][updated_t1['context']['index'] <= restored_at],
+    )
+    merged_replay = model.merge_context(sliced_ctx, ctx_t1)
+    weights_t1 = model.calc_hybrid_ratio(
+        merged_replay['equities'], type('P', (), {'params': parent_params})()
+    )
+    weights_t1.attrs = {}
+    replayed = model.advance(
+        merged_replay, weights_t1, raw_t1, restored_res, checkpoint_hours=26
+    )
+    assert np.isfinite(replayed['account']['equity']).all()
+    pd.testing.assert_frame_equal(
+        replayed['account'], updated_t1['result']['account'], check_exact=True
+    )
+
+
+def test_expand_result_remaps_checkpoints_when_one_side_starts_empty():
+    """Empty spot (or swap) universe expanding to non-empty preserves checkpoints and exact dtypes."""
+    from positions import ModelRobust40Strategy as model
+
+    t = pd.Timestamp('2026-10-01 00:40')
+    empty_state = (
+        (1000.0, np.array([], dtype=np.int64), np.array([], dtype=np.int64), np.array([], dtype=np.float64), True),
+        (500.0, np.array([-3], dtype=np.int64), np.array([-4], dtype=np.int64), np.array([20.0], dtype=np.float64), True),
+    )
+    frame = pd.DataFrame({'equity': [1500.0]})
+    frame.attrs['simulation_state'] = empty_state
+    frame.attrs['checkpoints'] = {t: empty_state}
+    frame.attrs['checkpoint_layout'] = (
+        ('spot', (), ()),
+        ('swap', ('U',), (1.0,)),
+    )
+    result = dict(
+        virtual_accounts=[frame.copy()],
+        account=frame.copy(),
+        targets={'spot': pd.DataFrame(index=[t]), 'swap': pd.DataFrame({'U': [-0.1]}, index=[t])},
+        delta=pd.DataFrame({'U': [0.0]}, index=[t]),
+    )
+    sim = {
+        'spot_lot_sizes': np.array([0.5], dtype=float),
+        'swap_lot_sizes': np.array([2.0, 1.0], dtype=float),
+    }
+    out = model.expand_result(result, ['swap:U'], ['spot:B', 'swap:A', 'swap:U'], sim)
+    assert out['account'].attrs['checkpoint_layout'] == (
+        ('spot', ('B',), (0.5,)),
+        ('swap', ('A', 'U'), (2.0, 1.0)),
+    )
+    spot_s, swap_s = out['account'].attrs['checkpoints'][t]
+    assert spot_s[1].dtype == np.int64 and spot_s[2].dtype == np.int64 and spot_s[3].dtype == np.float64
+    np.testing.assert_array_equal(spot_s[1], [0])
+    np.testing.assert_array_equal(swap_s[1], [0, -3])
+    np.testing.assert_array_equal(swap_s[3], [0.0, 20.0])

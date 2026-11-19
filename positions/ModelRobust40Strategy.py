@@ -1065,11 +1065,15 @@ def merge_context(old, new, minimum_overlap=168, warmup=1000):
         if not np.isfinite(simulation[kind+'_lot_sizes']).all():raise ValueError('Missing lot sizes')
         keys = [kind+'_'+k+'_p' for k in ('open', 'close', 'vwap1m')]
         if kind == 'swap':keys.append('funding_rates')
+        common = sorted(set(oc) & set(nc))
+        added = [c for c in cols if c not in oc]
+        shared_idx = old['index'].intersection(new['index']) if added else pd.DatetimeIndex([])
         for key in keys:
             a = pd.DataFrame(old['simulation'][key], index=old['index'], columns=oc).reindex(columns=cols)
             b = pd.DataFrame(new['simulation'][key], index=new['index'], columns=nc).reindex(columns=cols)
-            common = sorted(set(oc) & set(nc))
             _same(a.loc[overlap, common], b.loc[overlap, common], key)
+            if added and len(shared_idx):
+                a.loc[shared_idx, added] = b.loc[shared_idx, added]
             if key == 'funding_rates':a = a.fillna(0);b = b.fillna(0)
             simulation[key] = np.ascontiguousarray(pd.concat([a, b.loc[addition]]).to_numpy())
     for key in simulation.keys()-row_fields:
@@ -1110,48 +1114,55 @@ def expand_result(result, old_columns, columns, simulation=None):
         return tuple(states)
 
     def can_remap_checkpoints(frame, points):
-        if simulation is None:
+        if not isinstance(simulation, dict):
             return False
         layout = frame.attrs.get('checkpoint_layout')
-        if not layout or len(layout) != 2:
+        if not isinstance(layout, (tuple, list)) or len(layout) != 2:
             return False
-        for (kind, syms, lot_sizes), expected_kind in zip(layout, ('spot', 'swap')):
+        for entry, expected_kind in zip(layout, ('spot', 'swap')):
+            if not isinstance(entry, (tuple, list)) or len(entry) != 3:
+                return False
+            kind, syms, lot_sizes = entry
             if kind != expected_kind or tuple(syms) != old_syms[kind]:
                 return False
             new_lot_key = kind + '_lot_sizes'
-            if new_lot_key not in simulation or len(simulation[new_lot_key]) != len(new_syms[kind]):
+            if new_lot_key not in simulation or simulation[new_lot_key] is None:
+                return False
+            new_lot_arr = np.asarray(simulation[new_lot_key], dtype=float)
+            if new_lot_arr.ndim != 1 or len(new_lot_arr) != len(new_syms[kind]):
                 return False
             old_sizes = np.asarray(lot_sizes, dtype=float)
-            if len(old_sizes) != len(old_syms[kind]):
+            if old_sizes.ndim != 1 or len(old_sizes) != len(old_syms[kind]):
                 return False
             if len(old_sizes):
-                new_sizes = pd.Series(simulation[new_lot_key], index=new_syms[kind], dtype=float)
+                new_sizes = pd.Series(new_lot_arr, index=new_syms[kind], dtype=float)
                 aligned_new = new_sizes.reindex(old_syms[kind]).to_numpy(dtype=float)
                 if not np.allclose(old_sizes, aligned_new, rtol=1e-12, atol=0):
                     return False
         for pair in points.values():
-            if len(pair) != 2:
+            if not isinstance(pair, (tuple, list)) or len(pair) != 2:
                 return False
             for kind, s in zip(('spot', 'swap'), pair):
+                if not isinstance(s, (tuple, list)) or len(s) != 5:
+                    return False
                 expected_len = len(old_by_kind[kind])
                 if len(s[1]) != expected_len or len(s[2]) != expected_len or len(s[3]) != expected_len:
                     return False
         return True
 
-    new_layout = (
-        tuple((k, new_syms[k], tuple(simulation[k + '_lot_sizes'])) for k in ('spot', 'swap'))
-        if simulation is not None and all(k + '_lot_sizes' in simulation for k in ('spot', 'swap'))
-        else None
-    )
+    columns_changed = list(old_columns) != list(columns)
 
     def account(frame):
         frame = frame.copy()
         frame.attrs['simulation_state'] = remap_pair(frame.attrs['simulation_state'])
-        if old_columns != columns:
+        if columns_changed:
             points = frame.attrs.get('checkpoints')
-            if points and new_layout is not None and can_remap_checkpoints(frame, points):
+            if points and can_remap_checkpoints(frame, points):
                 frame.attrs['checkpoints'] = {t: remap_pair(pair) for t, pair in points.items()}
-                frame.attrs['checkpoint_layout'] = new_layout
+                frame.attrs['checkpoint_layout'] = tuple(
+                    (k, new_syms[k], tuple(np.asarray(simulation[k + '_lot_sizes'], dtype=float)))
+                    for k in ('spot', 'swap')
+                )
             else:
                 frame.attrs.pop('checkpoints', None)
                 frame.attrs.pop('checkpoint_layout', None)
