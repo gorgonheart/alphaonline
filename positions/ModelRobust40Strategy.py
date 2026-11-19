@@ -1091,27 +1091,76 @@ def merge_context(old, new, minimum_overlap=168, warmup=1000):
     return result
 
 
-def expand_result(result, old_columns, columns):
+def expand_result(result, old_columns, columns, simulation=None):
     """Map saved lots by instrument, retaining delisted positions and pending orders."""
     out = dict(result)
-    def account(frame):
+    old_by_kind = {k: [c for c in old_columns if c.startswith(k+':')] for k in ('spot', 'swap')}
+    new_by_kind = {k: [c for c in columns if c.startswith(k+':')] for k in ('spot', 'swap')}
+    old_syms = {k: tuple(c.split(':', 1)[1] for c in old_by_kind[k]) for k in ('spot', 'swap')}
+    new_syms = {k: tuple(c.split(':', 1)[1] for c in new_by_kind[k]) for k in ('spot', 'swap')}
+
+    def remap_pair(pair):
         states = []
-        for kind, state in zip(('spot', 'swap'), frame.attrs['simulation_state']):
-            old = [c for c in old_columns if c.startswith(kind+':')]
-            new = [c for c in columns if c.startswith(kind+':')]
+        for kind, state in zip(('spot', 'swap'), pair):
+            old, new = old_by_kind[kind], new_by_kind[kind]
             equity, lots, targets, prices, initialized = state
-            align = lambda values: pd.Series(values, index=old).reindex(new, fill_value=0).to_numpy()
-            states.append((equity, align(lots), align(targets), align(prices), initialized))
-        frame = frame.copy();frame.attrs['simulation_state'] = tuple(states)
+            def align(values, dtype):
+                return pd.Series(values, index=old, dtype=dtype).reindex(new, fill_value=0).to_numpy(dtype=dtype, copy=True)
+            states.append((equity, align(lots, np.int64), align(targets, np.int64), align(prices, np.float64), initialized))
+        return tuple(states)
+
+    def can_remap_checkpoints(frame, points):
+        if simulation is None:
+            return False
+        layout = frame.attrs.get('checkpoint_layout')
+        if not layout or len(layout) != 2:
+            return False
+        for (kind, syms, lot_sizes), expected_kind in zip(layout, ('spot', 'swap')):
+            if kind != expected_kind or tuple(syms) != old_syms[kind]:
+                return False
+            new_lot_key = kind + '_lot_sizes'
+            if new_lot_key not in simulation or len(simulation[new_lot_key]) != len(new_syms[kind]):
+                return False
+            old_sizes = np.asarray(lot_sizes, dtype=float)
+            if len(old_sizes) != len(old_syms[kind]):
+                return False
+            if len(old_sizes):
+                new_sizes = pd.Series(simulation[new_lot_key], index=new_syms[kind], dtype=float)
+                aligned_new = new_sizes.reindex(old_syms[kind]).to_numpy(dtype=float)
+                if not np.allclose(old_sizes, aligned_new, rtol=1e-12, atol=0):
+                    return False
+        for pair in points.values():
+            if len(pair) != 2:
+                return False
+            for kind, s in zip(('spot', 'swap'), pair):
+                expected_len = len(old_by_kind[kind])
+                if len(s[1]) != expected_len or len(s[2]) != expected_len or len(s[3]) != expected_len:
+                    return False
+        return True
+
+    new_layout = (
+        tuple((k, new_syms[k], tuple(simulation[k + '_lot_sizes'])) for k in ('spot', 'swap'))
+        if simulation is not None and all(k + '_lot_sizes' in simulation for k in ('spot', 'swap'))
+        else None
+    )
+
+    def account(frame):
+        frame = frame.copy()
+        frame.attrs['simulation_state'] = remap_pair(frame.attrs['simulation_state'])
         if old_columns != columns:
-            frame.attrs.pop('checkpoints', None)
-            frame.attrs.pop('checkpoint_layout', None)
+            points = frame.attrs.get('checkpoints')
+            if points and new_layout is not None and can_remap_checkpoints(frame, points):
+                frame.attrs['checkpoints'] = {t: remap_pair(pair) for t, pair in points.items()}
+                frame.attrs['checkpoint_layout'] = new_layout
+            else:
+                frame.attrs.pop('checkpoints', None)
+                frame.attrs.pop('checkpoint_layout', None)
         return frame
+
     out['virtual_accounts'] = [account(a) for a in result['virtual_accounts']]
     out['account'] = account(result['account'])
-    symbols = lambda kind: [c.split(':', 1)[1] for c in columns if c.startswith(kind+':')]
-    out['targets'] = {k: v.reindex(columns=symbols(k), fill_value=0) for k, v in result['targets'].items()}
-    out['delta'] = result['delta'].reindex(columns=symbols('swap'), fill_value=0)
+    out['targets'] = {k: v.reindex(columns=list(new_syms[k]), fill_value=0) for k, v in result['targets'].items()}
+    out['delta'] = result['delta'].reindex(columns=list(new_syms['swap']), fill_value=0)
     return out
 
 
@@ -1139,7 +1188,7 @@ def _update_state(bundle, state_path, identity, minute, incoming, raw_swap, expe
     if not bundle['result']['parent'].index.equals(bundle['context']['index']):
         raise ValueError('Saved calculation and history time axes differ')
     context = merge_context(bundle['context'], incoming)
-    previous = expand_result(bundle['result'], bundle['context']['columns'], context['columns'])
+    previous = expand_result(bundle['result'], bundle['context']['columns'], context['columns'], context['simulation'])
     report('状态读取、历史重叠核对及增量合并完成')
     # Normal import retains Hybrid's disk cache across fresh hourly workers.
     # The AST loader in tools.offline intentionally disables reference caches.

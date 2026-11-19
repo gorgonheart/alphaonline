@@ -28,10 +28,10 @@ def add(**values):
         for key,value in values.items():state[key]=state.get(key,0)+value
 
 
-def fields(names):
+def fields(names, key='changed_fields'):
     state=_current.get()
     if state is not None:
-        state['changed_fields']=sorted(set(state.get('changed_fields',[])) | set(map(str,names)))
+        state[key]=sorted(set(state.get(key,[])) | set(map(str,names)))
 
 
 def emit(event):
