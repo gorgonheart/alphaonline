@@ -58,12 +58,15 @@ def first_revision(old, new):
         if key not in old:
             times = new[key].index[new[key].index<=end]
             if len(times):
-                earliest.append(times.min())
                 telemetry.add(added_series=1)
+                telemetry.fields([key], key='added_series_keys')
             continue
         a = old[key]
         if key not in new:
-            earliest.append(a.index.min());telemetry.add(removed_series=1);continue
+            earliest.append(a.index.min())
+            telemetry.add(removed_series=1)
+            telemetry.fields([key], key='removed_series_keys')
+            continue
         b = new[key]
         # Earlier revision snapshots never projected raw funding_fee. Compare
         # the fields actually recorded, then keep the full new frame as baseline.
@@ -74,8 +77,20 @@ def first_revision(old, new):
             if (positions<0).any():raise ValueError('Revision input coverage is incomplete')
             b=b.take(positions)
         if a.equals(b):continue
-        columns = a.columns.union(b.columns)
+        added_columns = b.columns.difference(a.columns, sort=False)
+        removed_columns = a.columns.difference(b.columns, sort=False)
+        if len(added_columns):
+            telemetry.add(added_columns=len(added_columns))
+            telemetry.fields(added_columns, key='added_column_names')
+        if len(removed_columns):
+            telemetry.add(removed_columns=len(removed_columns))
+            telemetry.fields(removed_columns, key='removed_column_names')
+            earliest.append(a.index.min())
+        columns = a.columns.intersection(b.columns)
+        if not len(columns):
+            continue
         a = a.reindex(columns=columns);b = b.reindex(index=a.index,columns=columns)
+        if a.equals(b):continue
         # Dictionary encodings are not market revisions; compare their values.
         categorical=[c for c in columns if isinstance(a[c].dtype,pd.CategoricalDtype)
                      or isinstance(b[c].dtype,pd.CategoricalDtype)]

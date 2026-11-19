@@ -1,5 +1,13 @@
 # alpha / alphaonline 统一开发说明
 
+## 2026-11-19 新上币 universe 扩张误判重建修复（A1 + A′ + merge_context 回填，已部署生产）
+
+针对 11-17 与 11-19 两起新上市币触发 6 户串行全量重建事故（`plan.md` 问题 A），基于生产运行基线 `414cb05` 独立实施修复并已于 20:22:04+08:00 fast-forward 部署至 `43.167.235.164:/home/ubuntu/alphatrade`（`edbbba3`，未夹带本地未发布的 `6c02e58` 统计精简改动）：
+
+- **A1 判定层（`tools/robust40/handoff.py::first_revision`、`tools/robust40/telemetry.py::fields`）**：新增序列（`key not in old`）与共享表新增列仅记录结构化遥测（`added_series`、`added_series_keys`、`added_columns`、`added_column_names`），不再推进 `revised_from` 且不污染 `changed_fields`；共有列按 `a.columns.intersection(b.columns)` 精确比对。移除序列与移除列保持保守策略，仍计入 `a.index.min()` 并记录 `removed_series` / `removed_series_keys` / `removed_columns` / `removed_column_names`。
+- **A′ checkpoint 保持与扩张回填（`positions/ModelRobust40Strategy.py::expand_result`、`_update_state`、`merge_context`）**：`expand_result` 新增可选参数 `simulation=None`，在校验 `checkpoint_layout`、共有币种 `lot_sizes` 与状态元组长度一致后，按 symbol 名重映射全部 26 个 checkpoint（保留 `int64`/`float64` Numba dtype）并更新 `checkpoint_layout`；旧 3 参数调用或元数据不匹配时安全回退删除 checkpoint。独立审查拦截到 `merge_context` 对首次进入 `context["columns"]` 的新币未回填 overlap 区间既有价格/资金费（会导致 T+1 轮及扩张前回放抛 `ValueError`），同步修复为仅对新增列在 `old["index"] ∩ new["index"]` 回填 `new["simulation"]`，不改动任何共有列历史。
+- **验证、部署与未决事项**：新增 `tests/test_universe_expansion_revision.py`（13 项，覆盖 T-A1～T-A8、移除回归、T+1 续算、扩张前回放与空边扩张）。Windows `alpha311` 相关 9 个测试文件共 122 项全部通过（0 失败，135.96s）；Ubuntu 生产隔离环境 `/home/ubuntu/alphatrade-env/upgrade233/alpha311` 同组 122 项全部通过（0 失败，132.37s）。部署时无活跃交易 worker，预备份位于 `/home/ubuntu/alphatrade/test/universe-expansion-fix-20261119/runtime-before/`，安装后禁网导入与合成断言通过，`startup.py` PID `464274` 未变，6 个账户快照均 `complete=True`，机器本地配置与账户文件未改动。移除语义放宽（Phase 2）与 `plan.md` 问题 B（24h `[未匹配]` 归属回填）保留为后续独立事项，未纳入本次修复；下一次自然新币上市轮的 `MODEL_REPLAY` 遥测待线上观察。
+
 ## 2026-11-07 统计展示精简（主干本地，未发布）
 
 按用户要求，1小时账户损益仅展示数值，删除起点和实际间隔；期初持仓价格影响通知删除观察终点及实际起点，按期初持仓绝对数量与market_info.min_qty精度换算的数量门槛过滤小持仓，现货/合约合并后按多头、空头分别取损益绝对值前5。现货cost_status不再追加“（未计手续费）”，估算计算仍不计手续费；匹配规则、实际时间元数据及成本数学保持。仅运行直接相关最小测试，不做全流程、不发布。缺少数量精度的币种保留，避免未知规则被当作零持仓删除。
