@@ -1,15 +1,15 @@
 # 当前分支、未发布提交、Stash、Worktree 与多机同步状态
 
-> 所属体系：[统一开发入口](../README.md) · 核对时间：`2026-11-20 14:22+08:00`
+> 所属体系：[统一开发入口](../README.md) · 核对时间：`2026-11-20 14:42+08:00`
 
 ---
 
 ## 1. 未合并主干的分支检查结论
 
-- **`D:/alphaonline`**：`git branch --no-merged main` 为**空**（包含 `release/perf-phase0-3-and-removed-series` 在内的全部本地分支已合入 `main`）。
+- **`D:/alphaonline`**：`git branch --no-merged main` 为**空**（全部本地分支已合入 `main`）。
 - **`D:/alpha`**：`git branch --no-merged main` 为**空**（当前本地 7 个分支已全部合入 `main`）。
 
-> **重要区分**：“分支已合入本地 `main`” ≠ “已发布到正式/测试服务器”。当前存在 **1 个已合入本地 `main` 但未发布到生产**的提交，见下文 §2。
+> **同步状态**：两仓本地 `main` 与正式机 `production/main` 现已**完全对齐（0 未发布提交）**；历史未发布提交 `6c02e58` 已随 `940c487` 同步发布至测试与正式服务器。
 
 ---
 
@@ -17,7 +17,7 @@
 
 | 仓库 | 本地 `main` | 正式服务器（`43.167.235.164`） | 测试服务器（`43.173.122.28`） | 关键差异说明 |
 | --- | --- | --- | --- | --- |
-| **`D:/alphaonline`** | `0b34ac6`（及文档提交） | `8406c3f`（`production/main`） | 增量同步至 `8406c3f`（含 Phase 0–3 + F1） | ① 本地 `main` 仍比生产多 1 个未发布提交 **`6c02e58`**（`2026-11-07` 统计展示精简与多空分侧前 5，涉及 `core/utils/statis_func.py`、`core/utils/statistics.py`、`tools/spot_cost_estimate.py`）；<br>② 正式机已于 `2026-11-20 14:15` fast-forward 升级至 `8406c3f`（Phase 0–3 性能优化 + F1 `removed_series` 分级治理与熔断，含 `foreground_max_age_seconds=3600` 僵尸过滤），已于 `0b34ac6` 合并回本地 `main`。 |
+| **`D:/alphaonline`** | `940c487`（+文档同步） | `940c487`（+文档同步，`production/main`） | 增量同步至 `940c487`（含 Phase 0–3 + F1 + Q1/Q2） | 正式与本地 `main` **0 代码差异**；原本地独有提交 `6c02e58`（统计精简）与 `940c487`（24h `[未匹配]` 归属回填）已于 `2026-11-20 14:36–14:40` 同步部署至测试机与正式机并通过 127/127 离线验收。 |
 | **`D:/alpha`** | `41686c3` | `41686c3`（`production/main`） | `2026-11-06` 源码全文件对齐 `494d22a` | 生产与本地完全同步（`main...production/main` 0 差异）。 |
 
 ---

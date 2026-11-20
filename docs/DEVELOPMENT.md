@@ -2,6 +2,21 @@
 
 > **统一开场入口**：[docs/README.md](README.md)（汇总三套环境、账户矩阵、存储限制、主干历史、核心关系、分支状态、性能分析、待办路线、避坑清单与历史归档索引）；本文件保留按时间倒序的逐条详细技术与发布流水。
 
+## 2026-11-20 统计展示精简（Q2 `6c02e58`）与 24h `[未匹配]` 归属回填（Q1 `940c487`）合并主干并双线发布测试与正式
+
+按用户授权，将原仅存本地 `main` 的统计展示精简提交 `6c02e58`（Q2）与新增的 24h 期初持仓价格影响策略归属回填修复 `940c487`（Q1，`plan.md` §2 问题 B）统一落地并发布至测试机与正式机，**本地 `main` 与 `production/main` 彻底对齐（0 分叉）**：
+
+- **Q1 问题 B 实现（`core/utils/statis_func.py`、`core/utils/statistics.py`）**：
+  1. `build_recent_strategy_backfill_map(account_name, hours=24, max_strategy_display=5, now=None)` 新增可选时间基准 `now`（支持 naive/aware `datetime`），按 `[anchor_hour - hours, anchor_hour]` 窗口扫描 `data/{account}/select_coin/{YYYY-MM-DD_HH}.pkl`，避免补算漂移与未来文件越界。
+  2. 新增薄封装 `build_strategy_maps(me_conf, account_name, *, now=None, hours=24, max_strategy_display=5, current=None)`，按 `{**backfill, **current}` 合并（当前周期优先覆盖历史兜底，历史存档仅回填已平仓/轮出币种）。
+  3. `statistics.py::run()` 在 `notify=True` 或 `price_impact=True` 时均以 `now=run_time or observed_at` 构建合并映射（特别覆盖 `55m` 跨整点场景：`run_time=12:55`、`observed_at=13:00` 时确保 24h 前 `yesterday_12.pkl` 不漏网）；`send_position_result` 与 `calculate_and_send_pnl_report` 在 `strategy_maps=None` 且提供 `me_conf` 时同步走 `build_strategy_maps` 兜底；保留 `statistics.build_symbol_strategy_columns` 透传接口，零破坏既有单测。
+- **Q2 统计展示精简同步上线（`6c02e58`）**：1h 账户损益仅展数值、期初持仓价格影响按 `min_qty` 过滤小持仓并按多头/空头合并现货/合约取绝对值前 5、现货 `cost_status` 去“（未计手续费）”（`core/utils/statis_func.py`、`core/utils/statistics.py`、`tools/spot_cost_estimate.py`）。
+- **验证与双线部署结果**：
+  - 新增 `tests/test_strategy_backfill_attribution.py`（7 项，先 RED 7 失败后 GREEN 7 通过，覆盖 T-B1～T-B6、`55m` 跨整点、`notify=False, price_impact=True` 与 `send_position_result` 兜底）；Windows `alpha311` 全部 7 个统计/损益/成本测试文件 **127/127 通过**（`24.02 s`）。
+  - **测试机 `alphatest`（`43.173.122.28`）**：空闲窗口备份至 `test/release-stats-q1-q2-20261120/backup/` 后同步代码与测试，Ubuntu 同组 **127/127 通过**；实测 `25m-eart1106` 真实存档回填命中 `spot=96 / swap=131`（耗时 `0.062 s`），PM2 PID `1035811` / `1035837` 未变。
+  - **正式机 `alphaprod`（`43.167.235.164`，`14:40:24 CST`）**：空闲窗口（`35m_t1104` 结束后）备份至 `/home/ubuntu/alphatrade/test/release-stats-q1-q2-20261120/backup/`，通过 `/home/ubuntu/repos/alphatrade.git` fast-forward `8406c3f → 940c487`；官方离线 `tools/run_deployment_tests.py` 同组 **127/127 通过**（`27.00 s`，日志 `/home/ubuntu/alphatrade/test/logs/verify-84ji6seu.log`）；只读实测生产存档回填 `25m-eart1106` 命中 `spot=108 / swap=151`（`0.363 s`）、`55m_o.rgonheart1104` 命中 `spot=110 / swap=154`（`0.309 s`）；`startup.py` PID `464274` 与 `alpha2` PID `3634429` 未变，6/6 实盘快照均 `complete=True`，根分区 `86%`（余 `25 GiB`）。
+  - 未决观测项：下一自然整点统计子进程（`45m` 起）将自动加载新文案格式与 24h 归属回填，线上 24h 报告 `[未匹配]` 条数待实盘推送自然验收。
+
 ## 2026-11-20 Phase 0–3 性能优化与问题 A Phase 2（F1 `removed_series` 分级治理）已提交 Git 并部署正式生产（`8406c3f`）
 
 - **Git 提交与生产发布（2026-11-20 14:15:49+08:00）**：基于生产运行基线 `edbbba3` 独立提交 3 个原子提交并 fast-forward 推送至 `production/main`（`/home/ubuntu/repos/alphatrade.git` → `/home/ubuntu/alphatrade`，未夹带本地未发布统计精简 `6c02e58`），随后 `--no-ff` 合回本地 `main`（`0b34ac6`）：

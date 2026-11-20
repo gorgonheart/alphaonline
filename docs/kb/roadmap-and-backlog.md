@@ -9,8 +9,8 @@
 
 | 编号 | 任务方向 | 现状与依据 | 推进前置条件 / 备注 |
 | --- | --- | --- | --- |
-| **Q1** | **问题 B：24h 盈亏报告 `[未匹配]` 归属回填** | [plan.md](../../plan.md) §2 已完成设计（B1：`build_recent_strategy_backfill_map` 增加 `now` 基准、新增 `build_strategy_maps` 按 `{**backfill, **current}` 合并、`statistics.py` 与 `statis_func.py` 接入；实测 25 文件读取仅 0.106s） | 触及 `core/utils/statis_func.py` 与 `core/utils/statistics.py`，需先决定是否与未发布的本地提交 `6c02e58` 合并发布，或基于 `edbbba3` 单独发。 |
-| **Q2** | **决定本地未发布提交 `6c02e58` 的去留** | `2026-11-07` 统计展示精简与多空分侧前 5 仅在本地 `main`，未发正式/测试 | 需用户确认是否与 Q1 同批发布到生产与测试。 |
+| **Q1** | **问题 B：24h 盈亏报告 `[未匹配]` 归属回填** | **已完成并上线测试与正式（`940c487`，2026-11-20）**：`build_recent_strategy_backfill_map(..., now=...)` + `build_strategy_maps` 合并（`{**backfill, **current}`）+ `run_time` 基准防 `55m` 跨整点漏档 + `None` 兜底；三端 127/127 全过，生产真实存档命中 `108/151`、`110/154` 币种 | 待下一自然整点实盘推送观测 24h `[未匹配]` 条数归零。 |
+| **Q2** | **本地统计展示精简提交 `6c02e58` 合发** | **已随 `940c487` 上线测试与正式（2026-11-20）**，本地 `main` 与 `production/main` 0 分叉 | 已闭环。 |
 | **Q3** | **正式机新上币扩张 + F1 移除治理自然实战验收** | `edbbba3` 已于 2026-11-20 凌晨 `ANTBUSDT` 新增实战通过（6 户零重建）；`8406c3f`（Phase 0–3 + F1）已于 2026-11-20 `14:15` 上线生产并在 `15m` 首轮验收性能 | 后续持续观测自然退市/美股休市（`removed_series` 分级放宽）与下一次自然初始化（Phase 2 `BURST ↔ YIELD`）线上遥测。 |
 | **Q4** | **正式机磁盘空间治理（当前可用仅 25 GiB / 86%）** | 根分区 `178G` 已用 `146G`，目录中仍存多份历史发布归档包（`*.bundle`、`*.tar.gz`、`alphatrade1` 等） | 须按 [production-limits-and-ops.md](production-limits-and-ops.md) 逐项盘点归属、经用户明确授权后再清理，严禁盲删业务状态。 |
 
