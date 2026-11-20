@@ -43,7 +43,7 @@ from core.utils.path_kit import get_file_path, get_folder_path
 from core.utils.functions import del_hist_files, refresh_diff_time, ignore_error
 from core.utils.statis_func import calc_swap_position, calc_spot_position, save_send_pos_info, \
     calculate_and_send_pnl_report, send_img_for_dataframe, build_symbol_strategy_columns, \
-    compute_recent_volume, format_volume_message
+    build_strategy_maps, compute_recent_volume, format_volume_message
 from core.utils.dingding import send_wechat_work_msg, send_wechat_work_img
 from config import error_webhook_url, exchange_basic_config, utc_offset
 
@@ -610,7 +610,19 @@ def send_position_result(account_config: AccountConfig, spot_position, swap_posi
             history_cache[market] = records
     if not notify:
         return frames
-    maps = strategy_maps if strategy_maps is not None else (build_symbol_strategy_columns(me_conf) if me_conf else ({}, {}))
+    maps = (
+        strategy_maps
+        if strategy_maps is not None
+        else (
+            build_strategy_maps(
+                me_conf,
+                account_config.name,
+                now=run_time or observed_at,
+                current=build_symbol_strategy_columns(me_conf),
+            )
+            if me_conf else ({}, {})
+        )
+    )
     for frame, mapping in zip(frames, maps):
         if not frame.empty:
             display = frame.copy()
@@ -1269,6 +1281,10 @@ def run():
                     except Exception as error:
                         print(f'{account.name}: {label}失败（基础数据已保存）: {error}')
                 maps = ({}, {})
+                if options.get('notify', True) or options.get('price_impact', False):
+                    maps = optional('策略归属', lambda: build_strategy_maps(
+                        me_conf, account.name, now=run_time or observed_at, max_strategy_display=5,
+                        current=build_symbol_strategy_columns(me_conf))) or maps
                 if options.get('notify', True):
                     optional('净值通知', lambda: send_wechat_work_msg(msg, account.wechat_webhook_url))
                     optional('策略状态', lambda: send_pos_strategy_info(me_conf, account))
@@ -1282,7 +1298,6 @@ def run():
                                 send_wechat_work_msg('【子策略权重】\n'+format_weights(frame.iloc[-1], names),
                                                     account.wechat_webhook_url)
                     optional('策略权重', weights)
-                    maps = optional('策略归属', lambda: build_symbol_strategy_columns(me_conf)) or maps
                     for frame, mapping in zip(frames, maps):
                         if not frame.empty:
                             display = frame.copy()
@@ -1290,9 +1305,9 @@ def run():
                             optional('持仓图', lambda: send_img_for_dataframe(display, account.wechat_webhook_url))
                 if options.get('price_impact', False):
                     optional('价格影响估算', lambda: calculate_and_send_pnl_report(account, spot, swap, prices,
-                        observed_at=observed_at, run_time=run_time, current_frames=frames, strategy_maps=maps,
-                        total_equity=equity, notify=options.get('notify', True), history_cache=history_cache,
-                        snapshot_source=snapshot_source))
+                        me_conf=me_conf, observed_at=observed_at, run_time=run_time, current_frames=frames,
+                        strategy_maps=maps, total_equity=equity, notify=options.get('notify', True),
+                        history_cache=history_cache, snapshot_source=snapshot_source))
             except Exception as error:
                 failures.append(f'{profile.stem}: {error}')
                 print(traceback.format_exc())

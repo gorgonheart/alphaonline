@@ -249,6 +249,8 @@ def calculate_and_send_pnl_report(account_config: AccountConfig, spot_position, 
         spot_last_price = account_config.bn.get_spot_ticker_price_series()
     record = {'kind': 'opening_position_price_impact', 'observed_at': observed_at, 'run_time': run_time}
     lines = [f'【期初持仓价格影响估算】{account_config.name}']
+    if strategy_maps is None and me_conf is not None:
+        strategy_maps = build_strategy_maps(me_conf, account_config.name, now=baseline_run_time or observed_at)
     for hours in (1, 24):
         results, intervals = [], {}
         for market, current, prices in zip(('spot', 'swap'), frames, (spot_last_price, swap_prices)):
@@ -381,7 +383,7 @@ def build_symbol_strategy_columns(me_conf, max_strategy_display=5):
     return spot_map, swap_map
 
 
-def build_recent_strategy_backfill_map(account_name, hours=24, max_strategy_display=5):
+def build_recent_strategy_backfill_map(account_name, hours=24, max_strategy_display=5, now=None):
     """
     从最近 hours 小时的选币结果存档构建 symbol → "父策略名(L/S)" 映射，
     用于回填「当前持仓周期已轮出/平仓、但近 hours 小时内持有过」的币种归属。
@@ -396,6 +398,7 @@ def build_recent_strategy_backfill_map(account_name, hours=24, max_strategy_disp
     仅识别带 parent_name 列的存档记录；更早格式的存档无此列、对应币种不回填
     （存档仅保留 72h，会随时间自愈）。
 
+    :param now: 时间基准（优先传 run_time 或 observed_at，默认 datetime.now()）
     :return: (spot_map, swap_map)，未命中的 symbol 不在返回值中
     """
     spot_map, swap_map = {}, {}
@@ -404,15 +407,19 @@ def build_recent_strategy_backfill_map(account_name, hours=24, max_strategy_disp
         if not dir_path.exists():
             return spot_map, swap_map
 
-        # 以整点为界向前取 hours 小时的存档文件
-        cutoff = (datetime.now() - timedelta(hours=hours)).replace(minute=0, second=0, microsecond=0)
+        # 以整点为界向前取 hours 小时的存档文件，并排除晚于基准整点的未来文件
+        anchor = now or datetime.now()
+        if getattr(anchor, 'tzinfo', None) is not None:
+            anchor = anchor.replace(tzinfo=None)
+        anchor_hour = anchor.replace(minute=0, second=0, microsecond=0)
+        cutoff = anchor_hour - timedelta(hours=hours)
         parts = []
         for f in dir_path.glob('*.pkl'):
             try:
                 file_time = datetime.strptime(f.stem, '%Y-%m-%d_%H')
             except ValueError:
                 continue
-            if file_time < cutoff:
+            if file_time < cutoff or file_time > anchor_hour:
                 continue
             try:
                 df_i = pd.read_pickle(f)
@@ -458,6 +465,17 @@ def build_recent_strategy_backfill_map(account_name, hours=24, max_strategy_disp
         print(traceback.format_exc())
 
     return spot_map, swap_map
+
+
+def build_strategy_maps(me_conf, account_name, *, now=None, hours=24, max_strategy_display=5, current=None):
+    """合并当前周期与最近 hours 小时选币存档的策略归属映射（当前周期优先覆盖历史兜底）。"""
+    if current is None:
+        current = build_symbol_strategy_columns(me_conf, max_strategy_display) if me_conf is not None else ({}, {})
+    backfill = (
+        build_recent_strategy_backfill_map(account_name, hours, max_strategy_display, now=now)
+        if account_name else ({}, {})
+    )
+    return ({**backfill[0], **current[0]}, {**backfill[1], **current[1]})
 
 
 # ====================================================================================================
