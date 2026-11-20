@@ -2,6 +2,55 @@
 
 > **统一开场入口**：[docs/README.md](README.md)（汇总三套环境、账户矩阵、存储限制、主干历史、核心关系、分支状态、性能分析、待办路线、避坑清单与历史归档索引）；本文件保留按时间倒序的逐条详细技术与发布流水。
 
+## 2026-11-20 Phase 0–3 性能优化与问题 A Phase 2（F1 `removed_series` 分级治理）已提交 Git 并部署正式生产（`8406c3f`）
+
+- **Git 提交与生产发布（2026-11-20 14:15:49+08:00）**：基于生产运行基线 `edbbba3` 独立提交 3 个原子提交并 fast-forward 推送至 `production/main`（`/home/ubuntu/repos/alphatrade.git` → `/home/ubuntu/alphatrade`，未夹带本地未发布统计精简 `6c02e58`），随后 `--no-ff` 合回本地 `main`（`0b34ac6`）：
+  1. `8b4280c`：Phase 0 轻量分段埋点 + Phase 1 时序因子 Numba 核/市值与 BTC 缓存/直建 Polars + Phase 3 `P3-1` Step 6 `fork` CoW 只读 Pivot 共享。
+  2. `4a7b8d4`：Phase 2 初始化 `BURST ↔ YIELD` 动态 cgroup v2 治理；上线前现场巡检捕获正式机存在 3 个 1 月 16–17 日遗留僵尸 `account_exec.py` 进程（`ppid=1`、运行 307 天、0% CPU），补齐 `foreground_running()` 的 `foreground_max_age_seconds=3600` 过滤及回归测试，防止正式机初始化被僵尸进程永久锁死在 `CPUQuota=20%`。
+  3. `8406c3f`：问题 A Phase 2（F1）`removed_series` 消费端分级治理 + `max(30, 8%)` 单市场断流熔断（`UpstreamUniverseDropError`），上游 `alpha2` 保持 0 改动。
+- **部署与验证事实**：
+  - 部署时机：空闲窗口（无活跃交易/初始化 worker）；预备份至 `/home/ubuntu/alphatrade/test/release-perf-f1-20261120/backup/`；`git merge --ff-only origin/main` 后保留正式机机器配置（`data_pipeline=True`、`factor_symbol_batch_size=32`、`ARROW_DEMAND_ENABLED=True`）并启用 `dynamic_burst_enabled=True`；离线预热 `core/utils/fast_rolling.py` Numba 缓存（`0.91 s`）；`startup.py` PID `464274` 与 `alpha2` PID `3634429` 未重启；6/6 账户快照均为 `complete=True`；根分区 `86%`（余 `25 GiB`）。
+  - 自动化验证：Windows `alpha311` 13 个测试文件 **94/94 通过**（`22.50 s`）；Ubuntu 正式机通过 `tools/run_deployment_tests.py` 隔离运行同组 **94/94 通过**（`73.95 s`，日志 `/home/ubuntu/alphatrade/test/logs/verify-wktip78f.log`，自动清理完成）。
+  - **正式机首轮自然实盘验收（`15m-nheart1104`，`14:15 CST`，`stamp=1795155300`，`cutoff=2026-11-20 05:15:00`，`mode=incremental`）**：`FACTOR_BLOCKS_PROFILE` 369 万行降至 **`47.439 s`**（原 `~63.4 s`，`-25.2%`，`swap_out_pages=1`）；`STEP6_MARKET_PRELOAD` `mode=fork` **`4.082 s`**，16/16 `reused_market=True`（单次 `pivot_read_s = 0.001–0.006 s`）；`account_calculation_s = 113.91 s`（原 `138.4–142.0 s`）；`total_s = 133.68 s`（原 `165.0–184.0 s`），`status="ok"`、`committed=true` 且实盘正常成交。
+  - 未决观测项：正式机 Phase 2 动态 `BURST ↔ YIELD` 待下一次自然初始化现场观测，F1 `removed_series` 待下一次自然下架/休市现场观测；正式机 `/` 磁盘 `86%`（余 `25 GiB`）仍建议清理或扩容。
+
+### 本批优化实施与测试机前置验收明细（归档）
+
+按 [2026-11-19 性能深度优化规划](2026-11-19-performance-optimization-plan.md) 在本地及测试机（`43.173.122.28` / `ssh alphatest`，PM2 全程保持暂停）完成 Phase 0 与 Phase 1 全部优化及严格对拍：
+
+- **Phase 0 轻量埋点与离线 ABBA Harness**：在 `core/utils/factor_data.py`（`read_vmstat_swap`）、`core/select_coin.py`（`FACTOR_BLOCKS_PROFILE`）、`core/backtest.py`（`AGG_PROFILE`）、`core/equity.py`（`EQUITY_PROFILE`）新增纯日志结构化分段埋点（零额外磁盘文件）；新增纯离线禁网 ABBA 脚本 `tools/benchmark_phase0_abba.py`；测试机先备份原文件至 `test/phase0-backup-20261119/` 后同步 `edbbba3` 及 Phase 0 代码，Ubuntu pytest 17/17 通过。
+- **Phase 1 实测证伪撤回项（P1-1）**：测试机零干扰验证 `_calc_factor_blocks` 异步写块线程 + 乱序重排缓冲（同步 `104.535 s` vs 异步 `104.897 s`，CPU 均为 `354` 核秒），证实页缓存命中下写块属 CPU 密集、4 核上第 5 线程与 4 worker 零和抢核；已精确撤回并记入 [避坑清单](kb/rejected-and-failed-attempts.md)。
+- **Phase 1 有效优化（P1-2 ~ P1-6）**：
+  1. 新增共享缓存 Numba 核 `core/utils/fast_rolling.py`（`@njit(cache=True)` 坐标压缩+树状数组 `rolling_rank_pct`、$O(N)$ 单调队列含首 NaN 语义 `rolling_argmax_first`、带 0 残差与 `inf` 保护的 Kahan 滑窗均值及 Welford 标准差 `cci_causal_168_full` / `factor_111_param`），接入 `factors/{ZfMeanQ,浪Max23,BiasQ,BiasV1,111_输入隔离,Cci异常隔离168_因果版}.py`。
+  2. 优化 `core/data_bridge.py`：`load_coin_cap` 改为向量化 `log10`/最小众数/`searchsorted` 消除 630 万次 Python lambda，`load_coin_btc` 增加 `(path, mtime_ns, size)` 进程内缓存 + `searchsorted` 消除每轮 1260 次重读 `BTCUSDT.pkl`；`factors/CorrBTC.py` 因 3.73 亿格对拍检出 15 行微小方差 NaN 差异，精确保留原 pandas `rolling().corr()` 以守住 `0.0` 逐位一致。
+  3. 优化 `core/select_coin.py`（新增 `calc_factors_by_candle_polars` 直接由 1D 数组切片构建 `pl.DataFrame` + `.fill_nan(None)`，绕过 81 列 `pd.DataFrame + sort + pl.from_pandas` 往返，遇异常长度自动回退）及 `factors/{新币落九天用的,HoursSinceSpotAndSwap}.py` 整数纳秒向量化。
+- **测试机全量对拍与实测收益（`2026-11-18 12:25:00`，1260 币 / 4,612,601 行 / 81 列 / 120 块，`batch_size=32`）**：
+  - 全量 3.73 亿单元格对拍：**0 NaN/Inf/schema 差异**，75/81 列 `0.0` 逐位一致，`111_输入隔离 ≤ 1.42e-14`，`Cci异常隔离168_因果版 ≤ 1.84e-10`；P1-6 增量对拍 `max_abs_diff = 0.0`。
+  - 完整进程墙钟：**`106.61 s → 60.90 s`（`60.33 / 61.47 s`，净省 `45.7 s` / `-42.9%`）**；`FACTOR_BLOCKS` 阶段 **`104.95 s → 58.61 s`**；总 CPU **`350.13 → 202.47` 核秒（`-42.2%`）**；RSS 峰值 `1945 MiB`，`swap_out_pages = 0`；ABBA 证实优化后 `batch_size=32`（`60.90 s` / `1945 MiB`）显著优于 `batch_size=64`（`70.36 s` / `2488 MiB`）。
+  - 测试：`tests/test_p1_hotspot_oracles.py` + `tests/test_phase0_profiling.py` + `tests/test_shared_factor_stage.py` 本地 18/18、Ubuntu 13/13 全过。测试机 PM2 仍保持暂停；尚未开启 `dry_run` 端到端采集或推送正式机。
+
+- **Phase 2 模型初始化双阶段动态资源治理（`BURST ↔ YIELD`，已离线与真实 systemd cgroup v2 验过）**：
+  - 在 `tools/robust40/resources.py` 与 `tools/robust40/initialization_config.py` 新增纯状态机 `select_resource_mode`、`apply_mode_properties` 与扩展 `admission_decision`（由 `RESOURCE_POLICY['dynamic_burst_enabled']` 显式启用，默认 `False` 零破坏既有契约）。空闲期自动 `BURST`（`CPUWeight=100, IOWeight=100, CPUQuota=`）；检测到前台 `account_exec.py`/`server_robust40.py trade`、25s 交易前瞻预警、RAM `< 1.2 GiB` 或 PSI 超限时 0 延迟切 `YIELD`（`CPUWeight=5, IOWeight=10, CPUQuota=20%`），前台结束并稳定 `≥ 6 s` 后自动回切 `BURST`；**硬约束永不修改 `MemoryHigh`/`MemoryMax`**。
+  - 单元测试 `tests/test_phase2_burst_yield.py` + 既有 `test_initialization_resources.py` + `test_pressure_resources.py` 本地 28/28、Ubuntu 5/5 通过；真实 Ubuntu systemd 255 cgroup v2 压测（`tools/benchmark_phase2_burst_yield.py`）实测 `BURST` 吃满 `3.95/4` 核、`YIELD` 精确切至 `cpu.max="20000 100000"`、`memory.high` 全程不变，将 `CPUQuota` 从原构想 `80%`（前台劣化 `23.9%`）按实测校准为 `20%`（配合前瞻预警稳态干扰 `≤ 5%`）。
+- **测试机 `dry_run` 采集与生产机同切点双轮实测对比（`2026-11-20`）**：
+  - 硬件核查：生产机 `alphaprod`（`43.167.235.164`）为 4c Intel Xeon Platinum 8255C（Cascade Lake），测试机 `alphatest`（`43.173.122.28`）为更老的 4c Intel Xeon E5-26xx v4（Broadwell）；测试机用更慢 CPU 凭 Phase 1/2 已全面反超生产机。
+  - **`10:25` 全量初始化（`stamp=1795141500`）**：修复 Phase 2 空闲态因自身 IPC IO 导致的自限流并将前瞻预警窗由 `25s` 缩至 `10s` 后，测试机总耗时 **`629.52 s`（10.49 min）** vs 生产机 **`867.72 s`（14.46 min，`-238.2 s` / `-27.5%`）**，峰值内存同为 `4545 MiB`、0 OOM。
+  - **`11:25` 常规增量实盘（`stamp=1795145100`，`cutoff=02:25 UTC`）**：测试机 `FACTOR_BLOCKS 58.53 s`（369 万行）反超生产机 `63.80 s`，`MODEL_REPLAY total_s` `197.42 s` vs `202.39 s`；逐层产出核对显示选币明细（`367,493 B`，`3798×15`）、14/14 子策略权重、MODEL `targets[spot]`（`nz=4`）/ `targets[swap]`（`nz=128`，`sum` 差 `1e-6`，Top 15 顺序完全一致）及 `position_results`（`26,792 B`，`538×6`）高度一致。
+  - **Phase 0 埋点抓出 Phase 3 头号热点**：`11:25` 测试机 `EQUITY_PROFILE` 显示 16 次 `calc_equity` 累计 `35.17 s` worker-time 中 **`pivot_read_s = 27.82 s`（占比 79.1%）**、`kernel_s` 仅 `0.41 s`；而 `AGG_PROFILE` 14 路总墙钟仅 `1.82 s`（生产 `1.52 s`）、生产机 `完成计算目标仓位` 仅 `0.278 s`，据此决定跳过 P3-2 聚合改写与 P3-3 ticker 缓存、聚焦 P3-1。
+- **Phase 3 `P3-1` Step 6 跨 14 子策略只读 Pivot 共享（已完成 TDD 与测试机 ABBA，未发生产）**：
+  - 在 `core/backtest.py` 实现 Linux `fork` 模式下 `run_backtest_multi` Step 6 池前一次性预读 `_STEP6_FORK_MARKET`（14 策略总计读盘 `14 → 1` 次、4 worker CoW 共享，退出池 `finally` 释放并调用 `gc.collect()` + `malloc_trim(0)`）与 `spawn` 模式下 worker 内按 `(hour_offset, file_sig)` 缓存 1 份（文件 `mtime_ns`/`size` 更新自动失效）；保持 `calc_equity`/`step6_simulate_performance` 原契约 100% 兼容。
+  - 新增 `tests/test_p3_pivot_cache.py` 与 `tools/benchmark_phase3_step6.py`；本地 pytest `12/12`、Ubuntu pytest `8/8` 全过；测试机 `25m-eart1106` 真实 14 子策略 ABBA：**`15.997 s`（`18.404 / 13.589 s`）→ `5.375 s`（`5.492 / 5.258 s`，`-10.622 s` / `-66.4%`）**，0 swap，14/14 子策略 `check_exact=True` 逐位一致；已部署至 `alphatest`（备份 `test/phase3-backup-20261120/`），将随 `12:25` 自然 `dry_run` 轮次自动生效验收。
+  - **`12:25` 叠加 Phase 1 + 2 + 3 首个自然 `dry_run` 轮次（`stamp=1795148700`，`cutoff=03:25 UTC`）**：
+    - 性能：测试机（E5 v4，含 `2h replay` 多背 `+15.67 s` prepare）`FACTOR_BLOCKS 51.522 s` 反超生产机（8255C 纯增量）`63.403 s`（`-18.7%`）；Step 6 `STEP6_MARKET_PRELOAD 3.377 s` + `16/16 reused`（16 次 `pivot_read` 合计从 `27.82 s` 降至 `0.048 s`），全阶段 **`10.729 s` vs 生产 `29.301 s`（`-63.4%`）**；策略计算总耗时 **`118.84 s` vs `136.83 s`**，`account_calculation_s` **`121.41 s` vs `138.43 s`**，`total_s` **`151.74 s` vs `165.05 s`**，0 swap；测试机目标仓位拉价恢复 `1.383 s`。
+    - 产出一致性：选币明细（`367,627 B`，`3800×15`）、14/14 子策略权重、MODEL `targets[spot]`（`nz=4`）/ `targets[swap]`（`nz=129`，`sum` 差 `3e-6`，Top 15 顺序 15/15 一致）与 `position_results`（`26,792 B`，`538×6`，`nz_rows=131`）全部对齐。
+- **问题 A Phase 2（F1）：`removed_series` 分级治理与单市场熔断（已部署测试机验过，未发生产）**：
+  - 背景：2026-11-20 凌晨 `ANTBUSDT` 新增已被 `edbbba3`（A1+A′）零重建吸收；今晨 `08:37–09:27` 6 户重建由 `SNDKBUSDT`/`SNDKUSDT`（美股/TRADIFI_PERPETUAL 暂离 `TRADING`）触发 `removed_series` 引发。核对 `coin-realtime-data_v1.1.12` 原始实现确认上游 `alpha2` 非 `TRADING` 币种从 `market_dict` 消失属原版一致契约，**上游 `alpha2` 保持 0 改动**，控制点完全收敛于消费端 `tools/robust40/handoff.py`。
+  - 实现（`tools/robust40/handoff.py`）：
+    1. 新增单市场 + 比例双条件熔断 `max(30, int(0.08 * 该侧旧序列数))`（当前 spot 519→`41`、swap 764→`61`，放行 10–20 币批量下架公告、拦截真实上游断流）；超限抛 `UpstreamUniverseDropError(RuntimeError)`（非 `RebuildRequired`），不置 `complete=False`、不触发重建、不下单，记 `circuit_breaker=removed_series_surge` 遥测。
+    2. 阈值内 `raw/{spot|swap}/<sym>` 移除：懒加载 `model/state.pkl`（正常无移除轮 0 开销）经 `_extract_held_symbols` 核对主/虚拟账户 `lots` 与 `target_lots`；零持仓币种不推进 `revised_from`（零重建、避免向闭市历史注入幸存者偏差）；持仓币种核对 `pivot/{kind}/close` 历史列保留则维持续算并记 `removed_held_symbols` 告警遥测，仅当 pivot 历史列同步缺失时回退窗口起点重建。整表 `pivot/*` 缺失与 `removed_columns` 继续保持保守触发重建。
+  - 验证：新增 `tests/test_removed_series_governance.py`（12 项），联动 `test_universe_expansion_revision.py` / `test_revision_input_reads.py` / `test_shared_compute_contracts.py` 本地 `39/39`（19.73s）、Ubuntu `39/39`（9.79s）全过；测试机真实快照只读验算通过（`state.pkl` 检出 `135` 个持仓币、`SNDKUSDT/SNDKBUSDT` 均为 `False`；删 15 个零持仓币含 SNDK 返回 `None`；删 1 个持仓币 `1000BONKUSDT` 返回 `None` + 报 `removed_held_symbols`；删 65 个合约币触发 `UpstreamUniverseDropError`）；已部署 `alphatest`（备份 `test/removed-series-backup-20261120/`），PM2 在线未重启。
+  - 未决事项：待 `alphatest` 24h 自然 `dry_run` 观测完成后，由用户决定 Git 提交及生产发布窗口；另生产机 `/` 磁盘 `86%`（余 `24 GiB`），建议近期清理或扩容。
+
 ## 2026-11-19 新上币 universe 扩张误判重建修复（A1 + A′ + merge_context 回填，已部署生产）
 
 针对 11-17 与 11-19 两起新上市币触发 6 户串行全量重建事故（`plan.md` 问题 A），基于生产运行基线 `414cb05` 独立实施修复并已于 20:22:04+08:00 fast-forward 部署至 `43.167.235.164:/home/ubuntu/alphatrade`（`edbbba3`，未夹带本地未发布的 `6c02e58` 统计精简改动）：

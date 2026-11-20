@@ -1,6 +1,6 @@
 # 三套环境与 Conda / 进程拓扑
 
-> 所属体系：[统一开发入口](../README.md) · 核对时间：`2026-11-19`（正式机与本地已现场只读核对；测试机当日 SSH 公钥受限，结合 `2026-11-06` 主干整合发布审计记录整理）。
+> 所属体系：[统一开发入口](../README.md) · 核对时间：`2026-11-19`（正式机、测试机 `ssh alphatest` 与本地均已现场只读核对）。
 
 ---
 
@@ -22,7 +22,7 @@
 ## 2. 本地 Windows 环境详情
 
 - **工作仓库**：
-  - 交易端：`D:/alphaonline`（当前 `main` = `bac2443`，含已发布 `edbbba3` 及本地未发布统计精简 `6c02e58`）
+  - 交易端：`D:/alphaonline`（`main` 已合并生产 `8406c3f`，另含本地未发布统计精简 `6c02e58`）
   - 生产者：`D:/alpha`（当前 `main` = `41686c3`，与 `production/main` 同步）
 - **Conda 环境列表**（本机仅使用 `alpha311`）：
   - `alpha311`（`C:\Users\Administrator\miniconda3\envs\alpha311`）：唯一指定开发/测试环境。
@@ -33,6 +33,7 @@
 
 ## 3. 测试服务器详情（`43.173.122.28`）
 
+- **SSH 免密连接**：已配置 `~/.ssh/config` 别名 `alphatest`（`HostName 43.173.122.28`、`User ubuntu`、`IdentityFile C:\Users\Administrator\.ssh\visibility-deploy.pem`），直接使用 `ssh alphatest` 或 `scp ... alphatest:...`。
 - **硬件与 Swap**：2026-11-04 将 `/swap.img` 扩容至 **20 GiB**（活动 `21,474,832,384` 字节，权限 `600`，`swappiness=60`）。
 - **服务托管**：PM2 管理 `alphatrade-dryrun`（使用 `/home/ubuntu/alphatrade-env/upgrade233/alpha311`）与 `realtime_data`（使用 `/home/ubuntu/miniconda3/envs/alpha311`，Python `3.11.18`，Requests 间接依赖 `chardet==5.2.0` 固定以消除警告）。
 - **配置特性**：
@@ -45,11 +46,13 @@
 
 ## 4. 正式服务器详情（`43.167.235.164`）
 
-### 4.1 现行运行实例与进程（2026-11-19 实测）
+- **SSH 免密连接（严格只读优先）**：已配置 `~/.ssh/config` 别名 `alphaprod`（`HostName 43.167.235.164`、`User ubuntu`、`IdentityFile C:\Users\Administrator\.ssh\alphaprod-oldserveragent.pem`，源 `D:\alphaonline\env\oldserveragent.pem`），直接使用 `ssh alphaprod`。
+
+### 4.1 现行运行实例与进程（2026-11-20 实测）
 
 | 实例目录 | 角色 | Git HEAD | 进程 / PID | Python 环境 |
 | --- | --- | --- | --- | --- |
-| `/home/ubuntu/alphatrade` | **主实盘交易（MODEL 6 户）** | `edbbba3` | `python /home/ubuntu/alphatrade/startup.py`（PID `464274`，自 Nov06 稳定运行） | `/home/ubuntu/alphatrade-env/upgrade233/alpha311`（通过短名 `python` + 独立 `PATH` 启动） |
+| `/home/ubuntu/alphatrade` | **主实盘交易（MODEL 6 户）** | `8406c3f` | `python /home/ubuntu/alphatrade/startup.py`（PID `464274`，自 Nov06 稳定运行） | `/home/ubuntu/alphatrade-env/upgrade233/alpha311`（通过短名 `python` + 独立 `PATH` 启动） |
 | `/home/ubuntu/alpha2` | **主行情生产者（供给 `alphatrade`）** | `41686c3` | `python /home/ubuntu/alpha2/realtime_data.py`（PID `3634429`，自 Nov06 稳定运行） | `/home/ubuntu/miniconda3/envs/alpha311` |
 | `/home/ubuntu/alphatradetest` | 独立旧测试/并行交易实例（5 户） | 独立维护 | `python /home/ubuntu/alphatradetest/startup.py`（PID `3983440`） | 独立旧环境（部署主线时严禁误动） |
 | `/home/ubuntu/alpha` | 独立旧生产者（供给旧实例） | 独立维护 | `python /home/ubuntu/alpha/realtime_data.py`（PID `3982664`） | 独立旧环境（部署主线时严禁误动） |
@@ -57,10 +60,10 @@
 
 ### 4.2 正式机 Git 裸仓与部署注意事项
 
-- 私有裸仓：`/home/ubuntu/repos/alphatrade.git`（消费者，当前 `main=edbbba3`）、`/home/ubuntu/repos/alpha.git`（生产者，当前 `main=41686c3`）。
+- 私有裸仓：`/home/ubuntu/repos/alphatrade.git`（消费者，当前 `main=8406c3f`）、`/home/ubuntu/repos/alpha.git`（生产者，当前 `main=41686c3`）。
 - 生产工作区采用 **sparse checkout** 排除根 `tests/`；离线验收统一用 `tools/run_deployment_tests.py` 从已提交 Git 树在 `test/verify-*` 生成隔离副本运行。
 - **PM2 绝对路径陷阱（2026-11-06 踩坑）**：PM2 的 `ForkMode.js` 用 `interpreter.includes('bun')` 判断是否启用 Bun 容器，而 `/home/ubuntu/...` 包含子串 `bun`，传入绝对路径会触发 `ProcessContainerForkBun.js` 语法错误。**必须**使用短名 `python` 并通过环境变量 `PATH` 指定 `/home/ubuntu/alphatrade-env/upgrade233/alpha311/bin`。
-- **正式机本地未提交机器配置差异**（升级/pull 时必须保留）：`config.py`、`tools/robust40/initialization_config.py`（`data_pipeline=True`、`factor_symbol_batch_size=32`、`ARROW_DEMAND_ENABLED=True`）、`tools/deploy_alphatrade.sh` 及 `accounts/*.py`。
+- **正式机本地未提交机器配置差异**（升级/pull 时必须保留）：`config.py`、`tools/robust40/initialization_config.py`（`data_pipeline=True`、`factor_symbol_batch_size=32`、`ARROW_DEMAND_ENABLED=True`、`dynamic_burst_enabled=True`）、`tools/deploy_alphatrade.sh` 及 `accounts/*.py`。
 
 ---
 

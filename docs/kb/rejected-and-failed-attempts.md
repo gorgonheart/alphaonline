@@ -8,6 +8,7 @@
 
 | 尝试项 | 日期 | 做法 | 实测结果与撤回原因 | 证据文档 |
 | --- | --- | --- | --- | --- |
+| **因子块异步后台写线程 + 乱序重排缓冲（P1-1）** | 2026-11-19 | 将 `_calc_factor_blocks` 的 `pl.concat + store.append` 拆至单后台线程，并在 `ordered_results` 加入有界乱序缓冲 | Ubuntu 4c8g 零干扰测试（1260 币 / 4,612,601 行，`batch_size=32`）：同步 `104.535 s`（阶段 `102.884 s`，CPU `354.14` 核秒） vs 异步 `104.897 s`（阶段 `102.710 s`，CPU `353.76` 核秒，RSS `+57 MiB`）。原因：页缓存命中下写块为 CPU 密集（非 IO 阻塞），4 核已被 4 worker 吃满 `3.39` 核，后台线程与 worker 争抢同一 4 核导致零和转移；**已精确撤回** | [2026-11-19-performance-optimization-plan.md](../2026-11-19-performance-optimization-plan.md) |
 | **市值因子倍率 `log10` / 去重求幂优化** | 2026-11-06 | 在 `core/data_bridge.py` 保留逐值 `np.log10`、统一取整、按唯一指数求幂 | 1258 币精确一致、市值 CPU `29.35→19.49` 核秒，但三组交替完整因子进程中位 **`102.678 s → 107.477 s`**（未稳定提速，父写块与宿主波动掩盖收益）；**已精确撤回** | [2026-11-06-alpha1112-factor-block-implementation.md](../2026-11-06-alpha1112-factor-block-implementation.md) |
 | **修订输入 Arrow IPC 解码列投影** | 2026-11-04 | 修改 `tools/robust40/handoff.py` 在 IPC 解码时做投影读取 | 512 现货/756 合约 ABBA 暖态反慢：**`1.733 s → 2.147 s`**；**已撤回** | [2026-11-04-speed-followup-review.md](../2026-11-04-speed-followup-review.md) |
 | **选币每组删除 `gc.collect()`** | 2026-11-04 | 尝试在 `core/select_coin.py` 移除每组 GC | 完整选币反慢：**`112.764 s → 117.927 s`**；不能将局部映射 gen-0 GC 收益外推为“删所有 GC 更快”；**已撤回** | [2026-11-04-speed-followup-review.md](../2026-11-04-speed-followup-review.md) |

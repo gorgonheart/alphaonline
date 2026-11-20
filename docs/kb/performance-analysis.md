@@ -1,6 +1,7 @@
 # 重要性能分析、阶段剖面与已落地收益
 
 > 所属体系：[统一开发入口](../README.md) · 所有耗时均保留实测环境与口径，**禁止**将并行累计 CPU 秒当墙钟、将微基准线性外推整轮或将嵌套阶段相加。
+> 后续优化规划与进度跟进：[2026-11-19 Ubuntu 4c8g 性能深度优化规划与跟进](../2026-11-19-performance-optimization-plan.md)。
 
 ---
 
@@ -45,6 +46,9 @@
 | **D1 Arrow 按需发布（5000 vs 全量）** | `alpha` + `alphaonline` | 正常轮修订读取由 `~18.3 s`（14060 根）降至正式实测 `5–8 s`（5000 根），且大幅减少网络/磁盘页缓存压力 | [2026-11-05-runtime-efficiency-implementation.md](../2026-11-05-runtime-efficiency-implementation.md) |
 | **新上币 universe 扩张不再触发全量重建** | `alphaonline` | 每波新上币消除 **6 户 × ~14 分钟（合计 73–97 分钟停单）** 的串行全量初始化 | [plan.md](../../plan.md) |
 | **上游 5m 采集提前启动与 4 线程因子池** | `alpha` | Windows spawn 采集晚启动 `3.96 s → 2.3 ms`；360 币增量预处理 4 线程 `22.92 s → 20.35 s` | [2026-10-31-dispatch-prewarm.md](../../../alpha/docs/2026-10-31-dispatch-prewarm.md) |
+| **Phase 1 `FACTOR_BLOCKS` 热点核 + 直建 Polars（已上线生产 `8406c3f`）** | `alphaonline` | 测试机（E5 v4）零干扰 1260 币 / 461 万行：`106.6 s → 60.9 s`（`-42.9%`）；正式机（Xeon 8255C）`2026-11-20 14:15` 首轮实盘 369 万行 **`63.4 s → 47.44 s`（`-25.2%`）**，`swap_out_pages=1` | [2026-11-19-performance-optimization-plan.md](../2026-11-19-performance-optimization-plan.md) |
+| **Phase 2 初始化 `BURST ↔ YIELD` 动态治理（已上线生产 `8406c3f`）** | `alphaonline` | 同切点 `10:25` 全量初始化：生产基线 `867.7 s`（14.46 min） vs 测试机 **`629.5 s`（10.49 min，`-27.5%`）**，峰值内存 `4545 MiB` 持平、0 OOM；正式机已启用 `dynamic_burst_enabled=True` + `foreground_max_age_seconds=3600`（过滤遗留僵尸 `account_exec`） | [2026-11-19-performance-optimization-plan.md](../2026-11-19-performance-optimization-plan.md) |
+| **Phase 3 `P3-1` Step 6 跨 14 子策略只读 Pivot 共享（已上线生产 `8406c3f`）** | `alphaonline` | 测试机 14 子策略 ABBA `16.00 s → 5.38 s`（`-66.4%`，14/14 `check_exact=True`）；正式机 `14:15` 首轮实盘 `STEP6_MARKET_PRELOAD 4.08 s` + `16/16 reused_market=True`（单次 `pivot_read 0.001–0.006 s`），整轮 `account_calculation_s` `138.4–142.0 s → 113.91 s`、`total_s` **`165.0–184.0 s → 133.68 s`** | [2026-11-19-performance-optimization-plan.md](../2026-11-19-performance-optimization-plan.md) |
 
 ---
 

@@ -1,6 +1,7 @@
 # 未完成与未尝试的任务方向（优先级清单）
 
 > 所属体系：[统一开发入口](../README.md) · 严格区分“已设计未实施”“已本地提交未发布”“需先观测证据再定”，不把待办当已完成。
+> 专项性能规划与跟进：[2026-11-19 Ubuntu 4c8g 性能深度优化规划与跟进](../2026-11-19-performance-optimization-plan.md)（含主交易分阶段优化、初始化 Burst↔Yield 动态调度与线上统计配置矩阵）。
 
 ---
 
@@ -10,7 +11,7 @@
 | --- | --- | --- | --- |
 | **Q1** | **问题 B：24h 盈亏报告 `[未匹配]` 归属回填** | [plan.md](../../plan.md) §2 已完成设计（B1：`build_recent_strategy_backfill_map` 增加 `now` 基准、新增 `build_strategy_maps` 按 `{**backfill, **current}` 合并、`statistics.py` 与 `statis_func.py` 接入；实测 25 文件读取仅 0.106s） | 触及 `core/utils/statis_func.py` 与 `core/utils/statistics.py`，需先决定是否与未发布的本地提交 `6c02e58` 合并发布，或基于 `edbbba3` 单独发。 |
 | **Q2** | **决定本地未发布提交 `6c02e58` 的去留** | `2026-11-07` 统计展示精简与多空分侧前 5 仅在本地 `main`，未发正式/测试 | 需用户确认是否与 Q1 同批发布到生产与测试。 |
-| **Q3** | **测试机同步 `edbbba3` + 正式机自然新币上市验收** | 正式机已部署 `edbbba3` 并在 `25m` 正常跑完首轮；测试机 `43.173.122.28` 尚未同步 | 观测下一次上游新增交易对时 `logs/server_robust40.log` 中 `mode=incremental`、`added_columns`/`added_column_names` 及后续 T+1 轮零 `rebuild_required`、零 `ValueError`。 |
+| **Q3** | **正式机新上币扩张 + F1 移除治理自然实战验收** | `edbbba3` 已于 2026-11-20 凌晨 `ANTBUSDT` 新增实战通过（6 户零重建）；`8406c3f`（Phase 0–3 + F1）已于 2026-11-20 `14:15` 上线生产并在 `15m` 首轮验收性能 | 后续持续观测自然退市/美股休市（`removed_series` 分级放宽）与下一次自然初始化（Phase 2 `BURST ↔ YIELD`）线上遥测。 |
 | **Q4** | **正式机磁盘空间治理（当前可用仅 25 GiB / 86%）** | 根分区 `178G` 已用 `146G`，目录中仍存多份历史发布归档包（`*.bundle`、`*.tar.gz`、`alphatrade1` 等） | 须按 [production-limits-and-ops.md](production-limits-and-ops.md) 逐项盘点归属、经用户明确授权后再清理，严禁盲删业务状态。 |
 
 ---
@@ -19,7 +20,8 @@
 
 | 编号 | 任务方向 | 现状与依据 | 边界与要求 |
 | --- | --- | --- | --- |
-| **F1** | **问题 A Phase 2：零持仓退市/移除序列放宽** | 当前 `removed_series` / `removed_columns` 保持保守（仍触发全量重建），已埋 `removed_series_keys` / `removed_column_names` 遥测 | 连续观察两周若确认存在“仅因无持仓币移除触发重建”，再做 `state.pkl` 持仓检查（确认所有虚拟账户 `lots == 0` 才放宽）。 |
+| **F1** | **问题 A Phase 2：`removed_series` 分级治理 + 单市场熔断** | **已上线生产（`8406c3f`）与测试机**：`tools/robust40/handoff.py` 增加 `max(30, 8%)` 单市场熔断（`UpstreamUniverseDropError`）+ 懒查 `state.pkl` 零持仓放宽 + 持仓币 pivot 核对与 `removed_held_symbols` 告警；上游 `alpha2` 保持 0 改动；双端 94/94 离线测试通过 | 待下一次自然退市/停盘轮在生产日志确认零误重建。 |
+| **F1b** | **多级稀疏 Checkpoint（27–168h 每 24h 1 点）** | 当前 `CHECKPOINT_POINTS=26`（仅覆盖 26h），而 `REVISION_HISTORY_HOURS=168`（7 天）；27–168h 内若有真实历史值回补仍需全量重建 | 选做加固：在近 26h 逐小时 checkpoint 外，每 24h 额外保留 1 点（+6 点，单户 `< 2 MB`），需同步评估 `core/utils/checkpoints.py`、`sections/` 与 `ModelRobust40Strategy.py` 保留契约。 |
 | **F2** | **跨平台 21 个现货准入差异闭环（Windows vs Linux）** | `2026-10-15` 15m 对账定位：Linux `fork` 继承统一账户杠杆现货规则，Windows `spawn` 的 dummy client 重取普通现货规则；隔离实验证实显式传递规则可消除差异，**业务修复尚未实施** | 见 [DEVELOPMENT.md 2026-10-15 诊断记录](../DEVELOPMENT.md#L865-L875)。 |
 | **F3** | **时序因子前几大 CPU 热点单项优化** | `2026-11-06` 剖析：`ZfMeanQ`（29.2核秒）、`Cci异常隔离168_因果版`（23.5核秒）、`111_输入隔离`（17.0核秒）、`CorrBTC`（16.3核秒）、`BiasV1`（13.6核秒）、市值逐行处理（29.4核秒） | 必须单项独立 Python oracle + TDD + 低噪声同机全成本 ABBA 验收（严防像市值 log10 候选那样微基准快而整轮不快）。 |
 | **F4** | **真实下单相邻 `ticker` 复用评估（原 P4 延续）** | `calc_target_position` 与 `calc_order_amount` 分别请求 spot/swap ticker；现 P1 已消除中间 13s 编译延迟，可结合线上执行分段日志评估是否复用同一快照 | 不改变 TWAP、资金等待、补 BNB 与成交/失败统计语义。 |

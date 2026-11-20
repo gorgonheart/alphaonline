@@ -1,7 +1,7 @@
 # `alpha` / `alphaonline` 统一开发入口与全局摘要
 
 > **所有后续开发对话（两仓通用）请从此文件开始。**
-> 维护基准：`2026-11-19` · 交易端 `D:/alphaonline`（`main=bac2443`，生产运行 `edbbba3`）· 生产者 `D:/alpha`（`main=41686c3`，生产运行 `41686c3`）。
+> 维护基准：`2026-11-20` · 交易端 `D:/alphaonline`（`main` 含生产 `8406c3f` 及本地未发布 `6c02e58`，生产运行 `8406c3f`）· 生产者 `D:/alpha`（`main=41686c3`，生产运行 `41686c3`）。
 > 原则：历史设计/计划文档不等于已落地；遇到文档与代码冲突时，以**现行代码 + 可复现测试 + 生产只读核验**为准，并同步更新本知识库。
 
 ---
@@ -32,7 +32,8 @@
 
 - **实例**：`/home/ubuntu/alphatrade`（PM2 `alphatrade-dryrun`，运行模式 `dry_run`）与 `/home/ubuntu/alpha`（PM2 `realtime_data`），非 Git 源码增量同步。
 - **Conda 环境**：交易端使用独立 `/home/ubuntu/alphatrade-env/upgrade233/alpha311`（`xbx-py11==0.1.24` / `ccxt==4.5.88`）；生产者使用 `/home/ubuntu/miniconda3/envs/alpha311`（Python `3.11.18`，固定 `chardet==5.2.0`）。
-- **基础设施**：`/swap.img` 已扩容至 **20 GiB**；Mihomo `v1.19.33`（日本 NTT AnyTLS）常驻 `127.0.0.1:7897`；已启用 `shared_factor_pipeline=True`、32 币分片、`ARROW_DEMAND_ENABLED=True`、`coin_cap_use_proxy=True`。**尚未同步 2026-11-19 的 `edbbba3`。**
+- **SSH 连接**：已配置本机免密别名 `ssh alphatest`（或 `ssh 43.173.122.28`，私钥 `C:\Users\Administrator\.ssh\visibility-deploy.pem`）。
+- **基础设施**：`/swap.img` 已扩容至 **20 GiB**；Mihomo `v1.19.33`（日本 NTT AnyTLS）常驻 `127.0.0.1:7897`；已启用 `shared_factor_pipeline=True`、32 币分片、`ARROW_DEMAND_ENABLED=True`、`dynamic_burst_enabled=True`、`coin_cap_use_proxy=True`。**已于 2026-11-19~20 同步并验证 `edbbba3` + Phase 0–3 + F1 全部改动。**
 
 详细配置与历史记录 → **[三套环境与 Conda/进程拓扑](kb/environments.md)**
 
@@ -40,7 +41,8 @@
 
 ## 3. 正式服务器与 Conda 环境（`43.167.235.164`）
 
-- **主实盘双端**：`/home/ubuntu/alphatrade`（Git HEAD `edbbba3`，PM2 `startup.py` PID `464274`，模式 `none`）消费 `/home/ubuntu/alpha2`（Git HEAD `41686c3`，`realtime_data.py` PID `3634429`）；两仓通过 `/home/ubuntu/repos/{alphatrade,alpha}.git` 私有裸仓 fast-forward 更新，工作区 sparse checkout 排除根 `tests/`。
+- **SSH 连接（严格只读优先，变更需明确授权）**：已配置本机免密别名 `ssh alphaprod`（或 `ssh 43.167.235.164`，用户 `ubuntu`，私钥 `C:\Users\Administrator\.ssh\alphaprod-oldserveragent.pem`，源 `D:\alphaonline\env\oldserveragent.pem`）。
+- **主实盘双端**：`/home/ubuntu/alphatrade`（Git HEAD `8406c3f`，PM2 `startup.py` PID `464274`，模式 `none`）消费 `/home/ubuntu/alpha2`（Git HEAD `41686c3`，`realtime_data.py` PID `3634429`）；两仓通过 `/home/ubuntu/repos/{alphatrade,alpha}.git` 私有裸仓 fast-forward 更新，工作区 sparse checkout 排除根 `tests/`。
 - **并行旧实例（严禁误动）**：`/home/ubuntu/alphatradetest`（PID `3983440`）消费 `/home/ubuntu/alpha`（PID `3982664`），独立运行，主线部署绝不重启或修改。
 - **Conda 环境**：主实盘消费者独立运行 `/home/ubuntu/alphatrade-env/upgrade233/alpha311`（Python `3.11.14`，`xbx-py11==0.1.24` / `ccxt==4.5.88`）；生产者与旧组件保持 `/home/ubuntu/miniconda3/envs/alpha311`（`ccxt==4.5.53`）。
 - **PM2 陷阱**：PM2 遇到含 `/home/ubuntu`（含 `bun` 子串）的绝对 `interpreter` 路径会误用 Bun 容器导致语法错误，**必须**用短名 `python` + 独立 `PATH`。
