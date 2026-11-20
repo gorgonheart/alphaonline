@@ -35,6 +35,22 @@ RESOURCE_POLICY = dict(
     memory_full_limit=25., io_full_limit=50.,
     critical_available_bytes=128*1024**2, critical_seconds=30,
     telemetry_seconds=10,
+    # Phase 2 dynamic BURST <-> YIELD CPU/IO governance (never shrinks MemoryHigh).
+    # Keep False by default in repo (enabled per host like data_pipeline / ARROW_DEMAND_ENABLED).
+    dynamic_burst_enabled=False,
+    burst_cpu_weight=100,
+    burst_io_weight=100,
+    burst_cpu_quota='',
+    yield_cpu_weight=5,
+    yield_io_weight=10,
+    yield_cpu_quota='20%',
+    yield_preempt_seconds=10,
+    burst_resume_hold_seconds=6,
+    burst_min_available_bytes=int(1.5*1024**3),
+    yield_gate_available_bytes=int(1.2*1024**3),
+    yield_gate_memory_full=10.,
+    yield_gate_io_full=15.,
+    foreground_max_age_seconds=3600,
 )
 LIVE_BARS = 4050
 # Enable with alpha arrow_demand_enabled + an audited arrow_demand_min_rows.
