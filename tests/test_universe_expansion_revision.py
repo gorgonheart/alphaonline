@@ -181,7 +181,9 @@ def test_removed_column_and_removed_series_remain_conservative_revisions(monkeyp
     assert end['removed_columns'] == 1
     assert end['removed_column_names'] == ['OLDUSDT']
 
-    # Case 2: Entire series removed
+    # Case 2: Single raw series removed within circuit-breaker limit -> P0 graded governance
+    # keeps incremental (no look-ahead rebuild) while still recording removed_series telemetry;
+    # losing a pivot/* table remains conservative window-start revision.
     messages.clear()
     old_series = {
         'raw/swap/BTCUSDT': pd.DataFrame({'close': 100.0}, index=idx),
@@ -192,7 +194,7 @@ def test_removed_column_and_removed_series_remain_conservative_revisions(monkeyp
     }
     with telemetry.round_log('35m_t1104', 1794994500):
         revised_series = handoff.first_revision(old_series, new_series)
-    assert revised_series == idx[0]
+    assert revised_series is None
     end_series = _last_event(messages)
     assert end_series['removed_series'] == 1
     assert end_series['removed_series_keys'] == ['raw/swap/OLDUSDT']
