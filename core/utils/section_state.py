@@ -88,3 +88,46 @@ def run_section_blocks(conf, factor, store, columns, params, column):
         pd.to_pickle(state, temporary)
         temporary.replace(path)
     return state
+
+
+def run_section_blocks_group(conf, factor, store, param_specs):
+    """Execute multiple parameter tuples of the same block-capable section family.
+
+    When the section family has persisted state (`signal_with_state` + `conf.section_state`)
+    or only a single parameter, delegates directly to `run_section_blocks`.
+    For multi-parameter stateless/rolling-tail block sections (e.g. `TopKTo2K`, `固定回撤`, `动态回撤`),
+    reads each time block from `store` ONCE using the union of required columns and evaluates
+    all parameters on that in-memory block before moving to the next block.
+    """
+    persisted = getattr(conf, 'section_state', False) is True and hasattr(factor, 'signal_with_state')
+    if len(param_specs) <= 1 or persisted:
+        for params, column, columns in param_specs:
+            run_section_blocks(conf, factor, store, columns, params, column)
+        return
+
+    keys = store.block_keys()
+    import config
+    gate = getattr(config, 'compute_gate', None)
+    union_needed = list(dict.fromkeys([
+        '_row', 'candle_begin_time',
+        *(c for _, _, cols in param_specs for c in cols),
+    ]))
+    states = {column: None for _, column, _ in param_specs}
+    parts_by_col = {column: {} for _, column, _ in param_specs}
+
+    for key in keys:
+        if gate:
+            gate()
+        block_frame = store.read_block(key, union_needed)
+        for params, column, cols in param_specs:
+            sub_needed = list(dict.fromkeys(['_row', 'candle_begin_time', *cols]))
+            sub_frame = block_frame if sub_needed == union_needed else block_frame.select(sub_needed)
+            result, states[column] = factor.signal_block(sub_frame, params, column, states[column])
+            if not result['_row'].equals(sub_frame['_row']):
+                raise ValueError('Section block row order differs')
+            parts_by_col[column][key] = result.select('_row', column)
+            del sub_frame, result
+        del block_frame
+
+    for _, column, _ in param_specs:
+        store.add_section(column, parts_by_col[column])

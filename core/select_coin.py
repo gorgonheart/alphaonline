@@ -665,11 +665,13 @@ def _calc_section_blocks(conf, store):
         if not parameters:
             continue
         if hasattr(factor, 'signal_block'):
-            from core.utils.section_state import run_section_blocks
+            from core.utils.section_state import run_section_blocks_group
+            param_specs = []
             for params in parameters:
                 dependencies = [f'{n}_{p}' for n, p in factor.get_factor_list(params)]
                 inputs = factor.get_state_input_columns(params) if hasattr(factor, 'get_state_input_columns') else [*KLINE_COLS, *dependencies]
-                run_section_blocks(conf, factor, store, inputs, params, f'{name}_{params}')
+                param_specs.append((params, f'{name}_{params}', inputs))
+            run_section_blocks_group(conf, factor, store, param_specs)
             continue
         if gate:
             gate()

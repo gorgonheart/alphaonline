@@ -91,19 +91,24 @@ def run_by_account(acct_conf: AccountConfig, me_conf: MultiEquityBacktestConfig,
     r_time = time.time()
 
     # ====================================================================================================
-    # ** 2. 子策略回测 **
-    # 运行子策略回测，计算每一个子策略的资金曲线
-    # 💡小技巧：如果你仓位管理的子策略不变化，调试的时候可以注释这个步骤，可以加快调试的速度
+    # ** 2. 子策略回测 & 3. 整理子策略资金曲线 / 仓管准备 **
+    # 当启用 live prepare_live hook 时，通过 step6_market_handoff 将 Step 6 预加载的市场 Pivot
+    # 只读移交给同进程后续的 MODEL prepare_live，退出时立即释放内存，避免重复读取磁盘。
     # ====================================================================================================
-    me_conf.backtest_strategies(run_time)
-
-    # ====================================================================================================
-    # ** 3. 整理子策略的资金曲线 **
-    # 获取所有子策略的资金曲线信息，并且针对仓位管理策略做周期转换，并计算因子
-    # ====================================================================================================
-    me_conf.process_equities(run_time, hour_offset=acct_conf.hour_offset)
-    if me_conf.strategy.params.get('enable_live_hooks', False) and (hook := me_conf.strategy.core_funcs.get('prepare_live')) is not None:
-        hook(me_conf, acct_conf, run_time)
+    _prepare_hook = (
+        me_conf.strategy.core_funcs.get('prepare_live')
+        if me_conf.strategy.params.get('enable_live_hooks', False)
+        else None
+    )
+    if _prepare_hook is not None:
+        from core.backtest import step6_market_handoff
+        with step6_market_handoff():
+            me_conf.backtest_strategies(run_time)
+            me_conf.process_equities(run_time, hour_offset=acct_conf.hour_offset)
+            _prepare_hook(me_conf, acct_conf, run_time)
+    else:
+        me_conf.backtest_strategies(run_time)
+        me_conf.process_equities(run_time, hour_offset=acct_conf.hour_offset)
 
     # ====================================================================================================
     # ** 4. 计算仓位比例 **

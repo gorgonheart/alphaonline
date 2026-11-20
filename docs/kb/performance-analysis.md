@@ -7,7 +7,19 @@
 
 ## 1. 普通 4050 续算全流程耗时剖面（Ubuntu 4c8g）
 
-### 1.1 正式服务器现行典型耗时（`43.167.235.164`，2026-11-19 `25m-eart1106` 实测）
+### 1.0 正式服务器 Phase 0–3 上线后稳态耗时（`43.167.235.164`，2026-11-20 `04:15–05:55 UTC` 10 轮采样，`8406c3f` / `940c487`）
+
+| 阶段 / 指标 | 普通 `incremental` 轮（稳态） | 2h `replay` 轮（稳态） | 备注 |
+| --- | --- | --- | --- |
+| `FACTOR_BLOCKS`（时序因子 + 写块） | `40.2–42.4 s` | `40.2–42.4 s` | 较 Phase 1 前 `~63.4 s` 下降 `~34%` |
+| `sections`（8 个截面因子 + S3 续算） | `20.8–22.0 s` | `20.8–22.0 s` | 主体为 S3 3.68M 行 pandas `MultiIndex` 续算（WP2 目标） |
+| `selection`（14 策略流式选币） | `2.8–3.2 s` | `2.8–3.2 s` | 已充分优化 |
+| `Step 6`（14 子策略模拟，含 `fork` 预读） | `11.0–13.5 s` | `11.0–13.5 s` | 预读 `4.1–4.9 s`，16/16 `reused_market=True` |
+| `MODEL`（读态/读 Pivot/`merge_context`/续算/写态） | `14.8–16.5 s` | `14.8–16.5 s` | 含重复读 Pivot `~3.5–4.0 s` + `merge_context ~4.1–4.7 s`（WP3 目标） |
+| `account_calculation_s`（主交易计算总计） | **`107.1–108.5 s`** | **`107.1–108.5 s`** | 较上线前 `138.4–141.7 s` 净省 `~31 s` |
+| `total_s`（控制器全流程） | **`133.7–143.7 s`** | **`149.0–154.1 s`** | `replay` 含 `finish_live` 重读 `state.pkl`（`+4.1 s`） |
+
+### 1.1 正式服务器历史基线耗时（`43.167.235.164`，2026-11-19 Phase 1–3 上线前 `25m-eart1106`）
 
 | 阶段 / 指标 | 普通 `incremental` 轮（13:29–19:29） | 20:25 部署 `edbbba3` 首轮（含一次性 Numba 重编译） | 2h `replay` 轮（14:29 / 16:30） |
 | --- | --- | --- | --- |
@@ -49,6 +61,7 @@
 | **Phase 1 `FACTOR_BLOCKS` 热点核 + 直建 Polars（已上线生产 `8406c3f`）** | `alphaonline` | 测试机（E5 v4）零干扰 1260 币 / 461 万行：`106.6 s → 60.9 s`（`-42.9%`）；正式机（Xeon 8255C）`2026-11-20 14:15` 首轮实盘 369 万行 **`63.4 s → 47.44 s`（`-25.2%`）**，`swap_out_pages=1` | [2026-11-19-performance-optimization-plan.md](../2026-11-19-performance-optimization-plan.md) |
 | **Phase 2 初始化 `BURST ↔ YIELD` 动态治理（已上线生产 `8406c3f`）** | `alphaonline` | 同切点 `10:25` 全量初始化：生产基线 `867.7 s`（14.46 min） vs 测试机 **`629.5 s`（10.49 min，`-27.5%`）**，峰值内存 `4545 MiB` 持平、0 OOM；正式机已启用 `dynamic_burst_enabled=True` + `foreground_max_age_seconds=3600`（过滤遗留僵尸 `account_exec`） | [2026-11-19-performance-optimization-plan.md](../2026-11-19-performance-optimization-plan.md) |
 | **Phase 3 `P3-1` Step 6 跨 14 子策略只读 Pivot 共享（已上线生产 `8406c3f`）** | `alphaonline` | 测试机 14 子策略 ABBA `16.00 s → 5.38 s`（`-66.4%`，14/14 `check_exact=True`）；正式机 `14:15` 首轮实盘 `STEP6_MARKET_PRELOAD 4.08 s` + `16/16 reused_market=True`（单次 `pivot_read 0.001–0.006 s`），整轮 `account_calculation_s` `138.4–142.0 s → 113.91 s`、`total_s` **`165.0–184.0 s → 133.68 s`** | [2026-11-19-performance-optimization-plan.md](../2026-11-19-performance-optimization-plan.md) |
+| **Phase 4 WP1–WP3 + P4-4（本地已实现并离线验收，未发测试/生产）** | `alphaonline` + `alpha` | Windows 本地离线微基准：`_to_naive_ns` `5.953 ms → 0.0117 ms`（`511×`）、`SelectCoin` `9.445 ms → 0.261 ms`（`36.2×`）、`Atr` `3.833 ms → 2.164 ms`（`1.77×`）、`CorrBTC` 核 `2.892 ms → 1.810 ms`（`1.60×`，`0.0` 逐位一致）；3.68M 行×3 块 S3 续算 **`1.199 s`**（对比单块旧版 `6.316 s`，`>13×`）；`merge_context` `14000×760` `2.479 s → 0.189 s`（`13.1×`）；跨 Step 6→MODEL Pivot 零拷贝复用 + `finish_live` 复用内存 `bundle`；上游 `alpha` 消除临时 `*_for_pivot_batch*_{year}.pkl` 死 I/O | [DEVELOPMENT.md](../DEVELOPMENT.md) |
 
 ---
 

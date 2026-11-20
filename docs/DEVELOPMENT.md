@@ -2,6 +2,33 @@
 
 > **统一开场入口**：[docs/README.md](README.md)（汇总三套环境、账户矩阵、存储限制、主干历史、核心关系、分支状态、性能分析、待办路线、避坑清单与历史归档索引）；本文件保留按时间倒序的逐条详细技术与发布流水。
 
+## 2026-11-20 Phase 4（第一阶段）全链路性能优化与因子可读性强化（本地已实现并离线验收，未部署）
+
+基于正式机 `alphaprod`（`43.167.235.164`）在 Phase 0–3 上线后的 10 轮稳态遥测（`04:15–05:55 UTC`，`account_calculation_s = 107.1–108.5 s`，其中 `FACTOR_BLOCKS 40.2–42.4 s`、`sections 20.8–22.0 s`、`Step 6 11.0–13.5 s`、`MODEL 14.8–16.5 s`），按 TDD + 独立 Python Oracle 对拍流程在本地完成 Phase 4（WP1 / WP2 / WP3 / P4-4）代码落地，并同步强化所有涉及改动的因子与截面模块可读性（补充完整中文数学公式、边界/NaN 规则、语义化变量名与分步注释）：
+
+- **WP1（时序因子热点与数据桥接优化 + 12 个因子模块可读性强化）**：
+  1. `core/data_bridge.py`：优化 `_to_naive_ns()` 对已类型化 `datetime64` / `DatetimeTZDtype` 序列直接零拷贝视图提取纳秒整型，跳过 pandas `2.2.3` 每次 `~5.95 ms` 的 `pd.to_datetime()` 校验（本地微基准 `5.953 ms → 0.0117 ms`，`511×`）；`load_coin_cap()` 新增按 `(path, mtime_ns, size)` 键控的 `_CAP_CACHE`（上限 2048 条），避免重复读盘。
+  2. `core/factor.py`：`calc_factor_vals()` 在 `shift == 0` 时跳过无意义的 `Series.shift(0)` 复制分配（每轮省去 ~5.5 万次拷贝）。
+  3. `core/utils/fast_rolling.py` + `factors/CorrBTC.py`：新增 `rolling_corr_pandas_exact`，在单遍配对掩码上直接调用 `pandas._libs.window.aggregations.{roll_mean, roll_sum, roll_var}`，针对常数非零窗口与原版 `Series.rolling(n, min_periods=1).corr()` 保持 **`0.0` 逐位与 0 NaN 差异**，核耗时 `2.892 ms → 1.810 ms`（`1.60×`，叠加 `_to_naive_ns` 后单币总耗时大幅缩减）。
+  4. `factors/Atr.py`、`factors/SelectCoin.py`、`factors/当前回撤.py`：`Atr` 以 `np.fmax` 替代 `pd.concat(...).max(axis=1)`（`3.833 ms → 2.164 ms`，`1.77×`）；`SelectCoin`（`9.445 ms → 0.261 ms`，`36.2×`）与 `当前回撤` 对常规单币种 DataFrame 走标量快速路径并保留多币种回退。
+  5. 可读性强化：为 `factors/{CorrBTC,Atr,SelectCoin,当前回撤,111_输入隔离,Cci异常隔离168_因果版,ZfMeanQ,浪Max23,BiasQ,BiasV1,新币落九天用的,HoursSinceSpotAndSwap}.py` 补全模块级数学定义、边界条件与语义化变量名。
+- **WP2（P4-1 `sections` 阶段提速，目标 `21.3 s → ~5–6 s` + 截面可读性强化）**：
+  1. `sections/VolumeMaxBias_进出场阈值分离官方.py`：新增 `_lookup_saved_output_polars()`（按块时间窗口先切片再走 Polars hash-join + `_join_idx` 保序）；`signal_block()` 对纯历史块（`max <= cutoff`）彻底跳过 `to_pandas()` 与 pandas `MultiIndex`，混合块仅转换新 bar（`> cutoff`）；`signal_with_state()` 与 `signal_with_checkpoints()` 在增量续算（`min > orig_cutoff`）时跳过 368 万行 `drop_duplicates` + `MultiIndex`。本地 368 万行 × 3 块 S3 续算基准：**总耗时 `1.199 s`**（Block 0 `0.059 s` / Block 1 `0.455 s` / Block 2 `0.685 s`，较旧版单块 `6.316 s` 提速 **>13×**）。
+  2. `sections/TopKTo2K.py` + `core/utils/section_state.py` + `core/select_coin.py`：`TopKTo2K` 补充 `get_state_input_columns(params)` 声明最小 4 列依赖；新增 `run_section_blocks_group()` 使同族多参数无持久化状态截面（`TopKTo2K`×3、`固定回撤`×2、`动态回撤`×2）每个时间块仅读盘 1 次。同步为 `sections/{TopKTo2K,固定回撤阈值触发币数占比开仓门槛,动态回撤阈值}.py` 补全数学与状态语义文档。
+- **WP3（P4-2 跨阶段 Pivot/状态复用与 `merge_context` 快路径）**：
+  1. `core/backtest.py` + `core/real_trading.py` + `positions/ModelRobust40Strategy.py`：新增作用域上下文管理器 `step6_market_handoff()` 与一次性消费接口 `consume_round_market_pivots(hour_offset)`（校验 `_bmac_market_file_sig` 一致性并在退出/异常时 `finally` 释放并触发 `gc.collect()` + `malloc_trim(0)`），在 `run_by_account` 内将 Step 6 `fork` 预加载的只读 `pivots` 零拷贝移交给同进程 `ModelRobust40Strategy._prepare`，消除 `MODEL` 阶段 `~3.5–4.0 s` 重复读盘。
+  2. `positions/ModelRobust40Strategy.py`：`_expand_matrix` 在列未变时直接返回原 CSR 对象（跳过 28 次 `tocoo() → csr_matrix` 重建）；`merge_context` 在列集与顺序不变的常规每小时续算路径下，直接以 NumPy 切片比对 overlap 与拼接 7 张 `simulation` 行情/资金费率数组及 `close` 价格表（仅在历史篡改报错分支构造定位 DataFrame，保留新上币扩张全量回退路径）。本地 `14000×760` 生产规模基准：`2.479 s → 0.189 s`（`13.1×`）。
+  3. `positions/ModelRobust40Strategy.py` + `tools/robust40/server.py`：`replaying=True` 轮次在 `_prepare` 临时挂载 `strategy._robust40_bundle`，由 `finish_live` 复用内存 `bundle` 执行 `validate_snapshot` 并在 `finally` 立即删除引用，省去 2h replay 轮次重读 `model/state.pkl`（`~4.1 s`）。
+- **P4-4（上游 `D:/alpha/core/preprocess.py` 消除临时 Pivot 批次死 I/O）**：
+  - `gen_batch_data`、`gen_batch_data_incremental`、`gen_pivot_incremental` 新增可选内存传递参数 `year_pivot_out` / `year_pivot_data`（保持默认磁盘路径 100% 向后兼容），`preprocess_type_data` 将按年切片的 pivot 数据直接经内存交给 `gen_pivot_incremental`，消除每轮每 offset 写出、回读并立即删除的临时 `*_for_pivot_batch*_{year}.pkl` 死 I/O；新增回归测试于 `D:/alpha/tests/test_module10_preprocess_pipeline.py`。
+- **离线验证结果（Windows `alpha311`，未部署测试机/正式机）**：
+  - 新增 `tests/test_p4_optimizations.py`（9 项，覆盖 WP1/WP2/WP3 全部优化与独立 Oracle 对拍，均先 RED 后 GREEN）：**9/9 通过**（`6.15 s`）。
+  - 关联回归全套：
+    - Robust40 / P3 / Universe 扩张 / 移除治理 / 续算性能 / 契约 / 完成态（8 个文件）：**107/107 通过**（`test_p4_optimizations.py` 9/9 + 其余 7 文件 98/98）。
+    - 全量综合回归（13 个文件含 `test_p4_optimizations`、`test_p1_hotspot_oracles`、`test_p3_pivot_cache`、4 组 section 测试、`test_shared_factor_stage`、`test_corrected_factors` 等）：**127/128 通过**，唯一 1 项为既有测试 `test_corrected_factors.py::test_111_preserves_math_on_isolated_input` 的 `check_exact=True` 断言（Phase 1 `8b4280c` 引入 Numba `factor_111_param` 带来的 `9.6e-19` 浮点 ULP 差异，非 Phase 4 引入；Phase 4 未改动 `111_输入隔离` 数学实现）。
+    - 上游 `D:/alpha` 预处理与 Pivot 回归（6 个文件）：**44/44 通过**（`6.81 s`）。
+  - **未决事项**：本批改动仅在本地工作区完成离线开发与测试，尚未提交 Git，也未在测试机 `alphatest` 跑 Ubuntu ABBA / 实盘 `dry_run` 或部署正式机 `alphaprod`；待用户审查并授权后推进测试机验证与发布。
+
 ## 2026-11-20 统计展示精简（Q2 `6c02e58`）与 24h `[未匹配]` 归属回填（Q1 `940c487`）合并主干并双线发布测试与正式
 
 按用户授权，将原仅存本地 `main` 的统计展示精简提交 `6c02e58`（Q2）与新增的 24h 期初持仓价格影响策略归属回填修复 `940c487`（Q1，`plan.md` §2 问题 B）统一落地并发布至测试机与正式机，**本地 `main` 与 `production/main` 彻底对齐（0 分叉）**：

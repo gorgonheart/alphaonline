@@ -1,3 +1,16 @@
+"""
+时序因子：HoursSinceSpotAndSwap（同时拥有现货与合约后的累计小时数）
+-------------------------------------------------------------------------
+核心计算定义：
+    1. 有效双市场条件：`cond = (symbol_swap != '') & (symbol_spot != '')`；
+    2. 若币种历史上从未同时拥有现货与合约（`~cond.any()`），全序列输出 `NaN`；
+    3. 否则记首次满足 `cond` 的时刻为 `first_time`，计算：
+           hours_since_first[t] = (candle_begin_time[t] - first_time) / 3600s
+       仅在 `cond == True` 的行输出 `hours_since_first[t]`，其余行输出 `NaN`。
+    4. 实现说明：
+       - `signal_multi_params` 对常规 `RangeIndex(0, N, 1)` + `datetime64` 列走纳秒整型零拷贝快路径；
+       - 非标准索引场景保留旧版 `first_idx = df.index[first_pos]` -> `iloc[first_idx]` 兼容分支。
+"""
 import pandas as pd
 import numpy as np
 def signal(*args):

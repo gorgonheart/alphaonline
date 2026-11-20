@@ -30,23 +30,24 @@ def signal(*args):
 
 
 def signal_multi_params(df, param_list) -> dict:
-    """
-    使用同因子多参数聚合计算，可以有效提升回测、实盘 cal_factor 的速度，
-    相对于 `signal` 大概提升3倍左右
-    :param df: k线数据的dataframe
-    :param param_list: 参数列表
+    """多参数振幅均值分位数与成交量均值分位数双通道极值（浪Max23）计算。
+
+    数学定义：
+        1. 振幅均值分位数：Q1_n(t) = RankPct_n(Mean_n((high - low) / open))
+        2. 成交量均值分位数：Q2_n(t) = RankPct_n(Mean_n(volume))
+        3. 因子值：浪Max23_n(t) = max(Q1_n(t), Q2_n(t))
     """
     import pandas as pd
     from core.utils.fast_rolling import rolling_rank_pct
-    zf = (df['high'] - df['low']) / df['open']
+    amplitude = (df['high'] - df['low']) / df['open']
     idx = df.index
 
     ret = dict()
     for param in param_list:
         n = int(param)
-        ZfMean = zf.rolling(n, min_periods=1).mean()
-        ZfMeanQ = rolling_rank_pct(ZfMean.to_numpy(dtype=np.float64, copy=False), n)
-        VolumeMean = df['volume'].rolling(n, min_periods=1).mean()
-        VolumeMeanQ = rolling_rank_pct(VolumeMean.to_numpy(dtype=np.float64, copy=False), n)
-        ret[str(param)] = pd.Series(np.maximum(ZfMeanQ, VolumeMeanQ), index=idx)
+        amp_mean = amplitude.rolling(n, min_periods=1).mean()
+        amp_mean_q = rolling_rank_pct(amp_mean.to_numpy(dtype=np.float64, copy=False), n)
+        vol_mean = df['volume'].rolling(n, min_periods=1).mean()
+        vol_mean_q = rolling_rank_pct(vol_mean.to_numpy(dtype=np.float64, copy=False), n)
+        ret[str(param)] = pd.Series(np.maximum(amp_mean_q, vol_mean_q), index=idx)
     return ret

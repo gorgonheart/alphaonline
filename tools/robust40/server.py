@@ -246,9 +246,18 @@ def finish_live(strategy):
     if pending.exists():pending.replace(path/'model/revision_inputs.pkl')
     if opts.get('replaying'):
         from .warmup import validate_snapshot
-        end=validate_snapshot(path,pd.read_pickle(path/'model/state.pkl'))
+        bundle = getattr(strategy, '_robust40_bundle', None)
+        try:
+            if bundle is None:
+                bundle = pd.read_pickle(path/'model/state.pkl')
+            end = validate_snapshot(path, bundle)
+        finally:
+            if hasattr(strategy, '_robust40_bundle'):
+                delattr(strategy, '_robust40_bundle')
         for section in (path/'sections').glob('*.pkl'):
             if cutoff(pd.read_pickle(section)['cutoff'])!=end:raise ValueError('Replayed S3 cutoff differs')
+    elif hasattr(strategy, '_robust40_bundle'):
+        delattr(strategy, '_robust40_bundle')
     complete(path,meta['account'],meta['settings'],strategy._robust40_result['parent'].index[-1],meta['origin'])
     from . import telemetry
     telemetry.commit()

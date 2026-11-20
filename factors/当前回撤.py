@@ -31,17 +31,49 @@ def signal(*args):
 
 
 def signal_multi_params(df, param_list) -> dict:
+    """多参数成交均价（VWAP）滚动最高点回撤计算。
+
+    数学定义：
+        1. 单根 K 线成交均价：VWAP_t = quote_volume_t / volume_t
+        2. 滚动最大回撤（负值或 0）：
+           当前回撤_n(t) = VWAP_t / max(VWAP[t-n+1 : t], min_periods=1) - 1
+        3. 风控黑名单保护：
+           若币种属于 `LUNA_SYMBOLS`（`LUNA-USDT` / `LUNAUSDT`），全序列置为 NaN。
+
+    性能优化：
+        单币种 DataFrame 仅在首元素上做 1 次 `symbol in LUNA_SYMBOLS` 标量集合判断，
+        避免每币对 5,000 行构造字符串哈希表；混排多币种输入自动回退逐行 `.isin()` 掩码。
     """
-    使用同因子多参数聚合计算，可以有效提升回测、实盘 cal_factor 的速度，
-    相对于 `signal` 大概提升3倍左右
-    :param df: k线数据的dataframe
-    :param param_list: 参数列表
-    """
-    vwap = df['quote_volume'] / df['volume']
+    import numpy as np
+    import pandas as pd
 
     ret = dict()
-    luna_mask = df['symbol'].isin(LUNA_SYMBOLS)
+    if not param_list:
+        return ret
+
+    n_rows = len(df)
+    if n_rows == 0:
+        empty = pd.Series(dtype=np.float64, index=df.index)
+        for param in param_list:
+            ret[str(param)] = empty
+        return ret
+
+    sym_col = df['symbol']
+    sym_arr = sym_col.to_numpy(copy=False)
+    first_sym = sym_arr[0]
+    is_uniform_symbol = isinstance(first_sym, str) and bool((sym_arr == first_sym).all())
+
+    if is_uniform_symbol and first_sym in LUNA_SYMBOLS:
+        nan_series = pd.Series(np.nan, index=df.index, dtype=np.float64)
+        for param in param_list:
+            ret[str(param)] = nan_series
+        return ret
+
+    vwap = df['quote_volume'] / df['volume']
+    luna_mask = None if is_uniform_symbol else sym_col.isin(LUNA_SYMBOLS)
+
     for param in param_list:
         n = int(param)
-        ret[str(param)] = (vwap / vwap.rolling(n, min_periods=1).max() - 1).mask(luna_mask)
+        drawdown = vwap / vwap.rolling(n, min_periods=1).max() - 1
+        ret[str(param)] = drawdown if luna_mask is None else drawdown.mask(luna_mask)
     return ret

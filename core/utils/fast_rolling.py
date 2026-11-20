@@ -618,3 +618,55 @@ def rolling_corr(x, y, n: int) -> np.ndarray:
         np.ascontiguousarray(y, dtype=np.float64),
         int(n),
     )
+
+
+def rolling_corr_pandas_exact(series_x, series_y, param_list) -> dict:
+    """Bit-for-bit exact multi-window rolling Pearson correlation matching `series_x.rolling(n, min_periods=1).corr(series_y)`.
+
+    算法与性能优化原理：
+    1. 复用 pandas 底层 Cython 聚合算子 `pandas._libs.window.aggregations`（`roll_mean`、`roll_sum`、`roll_var`），
+       确保在常数非零序列（如连续恒定涨跌幅触发 Welford 浮点相消归零边界）下与 `Series.rolling().corr()` 达到 0.0 逐位与 NaN 掩码一致。
+    2. 将原本每个窗口参数重复执行的 `flex_binary_moment` / `prep_binary` 双序列 NaN 联合掩码、`x * y` 乘积数组、
+       有效观测指示数组 `valid_mask` 与窗口右边界 `window_end` 提升为单币种只预计算 1 次，消除多参数循环中的 Python/Series 包装开销。
+    """
+    import pandas as pd
+    import pandas._libs.window.aggregations as window_aggregations
+
+    ret = {}
+    if not param_list:
+        return ret
+
+    idx = getattr(series_x, 'index', None)
+    arr_x = series_x.to_numpy(dtype=np.float64, copy=False) if hasattr(series_x, 'to_numpy') else np.asarray(series_x, dtype=np.float64)
+    arr_y = series_y.to_numpy(dtype=np.float64, copy=False) if hasattr(series_y, 'to_numpy') else np.asarray(series_y, dtype=np.float64)
+    length = arr_x.shape[0]
+    if length == 0:
+        for param in param_list:
+            ret[param] = pd.Series(np.empty(0, dtype=np.float64), index=idx, copy=False)
+        return ret
+
+    with np.errstate(all='ignore'):
+        # 严格对齐 pandas prep_binary(arg1, arg2)：任一侧为 NaN 时两侧同步置为 NaN
+        paired_x = arr_x + 0.0 * arr_y
+        paired_y = arr_y + 0.0 * arr_x
+        paired_xy = paired_x * paired_y
+        valid_obs = (~np.isnan(paired_x + paired_y)).astype(np.float64)
+        window_end = np.arange(1, length + 1, dtype=np.int64)
+
+        for param in param_list:
+            window_size = int(param)
+            window_start = np.maximum(0, window_end - window_size)
+
+            mean_xy = window_aggregations.roll_mean(paired_xy, window_start, window_end, 1)
+            mean_x = window_aggregations.roll_mean(paired_x, window_start, window_end, 1)
+            mean_y = window_aggregations.roll_mean(paired_y, window_start, window_end, 1)
+            count_xy = window_aggregations.roll_sum(valid_obs, window_start, window_end, 0)
+            var_x = window_aggregations.roll_var(paired_x, window_start, window_end, 1, 1)
+            var_y = window_aggregations.roll_var(paired_y, window_start, window_end, 1, 1)
+
+            cov_xy = (mean_xy - mean_x * mean_y) * (count_xy / (count_xy - 1.0))
+            std_prod = (var_x * var_y) ** 0.5
+            corr_arr = cov_xy / std_prod
+            ret[param] = pd.Series(corr_arr, index=idx, copy=False) if idx is not None else corr_arr
+
+    return ret

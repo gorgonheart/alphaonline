@@ -40,12 +40,19 @@ def calc_factor_vals(candle_df, factor_name, factor_param_list, shift=0) -> Dict
     if hasattr(factor, 'signal_multi_params'):  # 如果存在 signal_multi_params ，使用最新的因子加速写法
         result_dict = factor.signal_multi_params(candle_df, factor_param_list)
         for param, factor_series in result_dict.items():
-            factor_series_dict[f'{factor_name}_{param}'] = factor_series.shift(shift).values
+            if shift:
+                arr = factor_series.shift(shift).values
+            elif hasattr(factor_series, 'to_numpy'):
+                arr = factor_series.to_numpy(copy=False)
+            else:
+                arr = np.asarray(factor_series)
+            factor_series_dict[f'{factor_name}_{param}'] = arr
 
     else:  # 如果存在 signal，使用之前的老因子写法
         legacy_candle_df = candle_df.copy()  # 如果是老的因子计算逻辑，单独拿出来一份数据
         for param in factor_param_list:
             factor_col_name = f'{factor_name}_{param}'
             legacy_candle_df = factor.signal(legacy_candle_df, param, factor_col_name)
-            factor_series_dict[factor_col_name] = legacy_candle_df[factor_col_name].shift(shift).values
+            col_s = legacy_candle_df[factor_col_name]
+            factor_series_dict[factor_col_name] = col_s.shift(shift).values if shift else col_s.to_numpy(copy=False)
     return factor_series_dict

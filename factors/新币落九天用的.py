@@ -8,6 +8,15 @@
 本代码仅供个人学习使用，未经授权不得复制、修改或用于商业用途。
 
 Author: 邢不行
+
+时序因子：新币落九天用的（相对币种首根 K 线的上线小时数，仅双市场有效时保留）
+-------------------------------------------------------------------------
+核心计算定义：
+    1. `total_hours[t] = (candle_begin_time[t] - candle_begin_time[0]) / 3600s`；
+    2. 掩码条件：当 `symbol_swap == ''` 或 `symbol_spot == ''`（缺少任一市场）时输出 `NaN`，
+       否则输出 `total_hours[t]`。
+    说明：本因子与窗口参数 `n` 无关，`signal_multi_params` 仅计算一次并在 `param_list` 间复用，
+    且对 `datetime64` 列直接按纳秒整型做向量差避免重复 `pd.to_datetime` 构造开销。
 """
 
 import numpy as np

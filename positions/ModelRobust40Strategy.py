@@ -994,6 +994,8 @@ def validate_context(c):
 
 
 def _expand_matrix(matrix, old, columns):
+    if old == columns:
+        return matrix
     coo = matrix.tocoo()
     dest = pd.Index(columns).get_indexer(old)
     return sparse.csr_matrix((coo.data, (coo.row, dest[coo.col])), shape=(matrix.shape[0], len(columns)))
@@ -1065,17 +1067,41 @@ def merge_context(old, new, minimum_overlap=168, warmup=1000):
         if not np.isfinite(simulation[kind+'_lot_sizes']).all():raise ValueError('Missing lot sizes')
         keys = [kind+'_'+k+'_p' for k in ('open', 'close', 'vwap1m')]
         if kind == 'swap':keys.append('funding_rates')
-        common = sorted(set(oc) & set(nc))
-        added = [c for c in cols if c not in oc]
-        shared_idx = old['index'].intersection(new['index']) if added else pd.DatetimeIndex([])
-        for key in keys:
-            a = pd.DataFrame(old['simulation'][key], index=old['index'], columns=oc).reindex(columns=cols)
-            b = pd.DataFrame(new['simulation'][key], index=new['index'], columns=nc).reindex(columns=cols)
-            _same(a.loc[overlap, common], b.loc[overlap, common], key)
-            if added and len(shared_idx):
-                a.loc[shared_idx, added] = b.loc[shared_idx, added]
-            if key == 'funding_rates':a = a.fillna(0);b = b.fillna(0)
-            simulation[key] = np.ascontiguousarray(pd.concat([a, b.loc[addition]]).to_numpy())
+        if oc == cols and nc == cols:
+            # 列集与顺序完全一致（常规每小时续算路径）：直接在 NumPy 切片上校验重叠并拼接新行，
+            # 避免构造 14 张百万级元素 DataFrame 与 reindex 拷贝；仅在触发校验失败时构造定位切片。
+            for key in keys:
+                old_arr = old['simulation'][key]
+                new_arr = new['simulation'][key]
+                old_ov = old_arr[oi]
+                new_ov = new_arr[ni]
+                if not np.allclose(old_ov, new_ov, atol=1e-10, rtol=1e-8, equal_nan=True):
+                    _same(
+                        pd.DataFrame(old_ov, index=overlap, columns=cols),
+                        pd.DataFrame(new_ov, index=overlap, columns=cols),
+                        key,
+                    )
+                if key == 'funding_rates':
+                    a_part = np.nan_to_num(old_arr, nan=0.0) if np.isnan(old_arr).any() else old_arr
+                    b_add = new_arr[ai]
+                    b_part = np.nan_to_num(b_add, nan=0.0) if np.isnan(b_add).any() else b_add
+                    simulation[key] = np.ascontiguousarray(np.concatenate([a_part, b_part], axis=0))
+                elif len(ai):
+                    simulation[key] = np.ascontiguousarray(np.concatenate([old_arr, new_arr[ai]], axis=0))
+                else:
+                    simulation[key] = np.ascontiguousarray(old_arr)
+        else:
+            common = sorted(set(oc) & set(nc))
+            added = [c for c in cols if c not in oc]
+            shared_idx = old['index'].intersection(new['index']) if added else pd.DatetimeIndex([])
+            for key in keys:
+                a = pd.DataFrame(old['simulation'][key], index=old['index'], columns=oc).reindex(columns=cols)
+                b = pd.DataFrame(new['simulation'][key], index=new['index'], columns=nc).reindex(columns=cols)
+                _same(a.loc[overlap, common], b.loc[overlap, common], key)
+                if added and len(shared_idx):
+                    a.loc[shared_idx, added] = b.loc[shared_idx, added]
+                if key == 'funding_rates':a = a.fillna(0);b = b.fillna(0)
+                simulation[key] = np.ascontiguousarray(pd.concat([a, b.loc[addition]]).to_numpy())
     for key in simulation.keys()-row_fields:
         if not isinstance(simulation[key], np.ndarray) and simulation[key] != new['simulation'][key]:
             raise ValueError(f'Simulator parameter changed: {key}')
@@ -1086,8 +1112,29 @@ def merge_context(old, new, minimum_overlap=168, warmup=1000):
         if column not in old['close'] or column not in new['close']:
             raise ValueError('Reference price history changed')
         _same(old['close'].loc[overlap, column], new['close'].loc[overlap, column], 'reference prices')
-    close = old['close'].reindex(columns=price_columns).combine_first(new['close'].reindex(columns=price_columns))
-    close = close.loc[:new['index'][-1]]
+    old_close = old['close']
+    new_close = new['close'].loc[:new['index'][-1]]
+    if (list(old_close.columns) == price_columns
+            and list(new_close.columns) == price_columns
+            and len(old_close) <= len(new_close)
+            and old_close.index.equals(new_close.index[:len(old_close)])):
+        old_vals = old_close.to_numpy(copy=False)
+        new_vals = new_close.to_numpy(copy=False)
+        if old_vals.dtype == new_vals.dtype and np.issubdtype(old_vals.dtype, np.floating):
+            n_old = len(old_close)
+            prefix_merged = np.where(np.isnan(old_vals), new_vals[:n_old], old_vals)
+            merged_vals = (
+                np.concatenate([prefix_merged, new_vals[n_old:]], axis=0)
+                if n_old < len(new_close)
+                else prefix_merged
+            )
+            close = pd.DataFrame(merged_vals, index=new_close.index, columns=price_columns)
+        else:
+            close = old['close'].reindex(columns=price_columns).combine_first(new['close'].reindex(columns=price_columns))
+            close = close.loc[:new['index'][-1]]
+    else:
+        close = old['close'].reindex(columns=price_columns).combine_first(new['close'].reindex(columns=price_columns))
+        close = close.loc[:new['index'][-1]]
     result = dict(old, index=old['index'].append(addition), columns=columns, matrices=matrices,
         leverage=pd.concat([old['leverage'], new['leverage'].loc[addition]]),
         equities=equities, simulation=simulation, close=close)
@@ -1474,8 +1521,15 @@ def _prepare(me_conf, account, run_time, *, saved, started, inputs=None):
                 path = conf.get_result_folder()/'再择时动态杠杆.csv'
                 value = pd.read_csv(path, index_col='candle_begin_time', parse_dates=True)['动态杠杆']
             value.index = utc_index(value.index);leverage[i] = value.reindex(index)
-    pivots = ({k: read_bmac_market_pivot(account.hour_offset, k) for k in ('spot', 'swap')}
-              if inputs is None else inputs['pivots'])
+    if inputs is not None:
+        pivots = inputs['pivots']
+    else:
+        from core.backtest import consume_round_market_pivots
+        pivots = consume_round_market_pivots(account.hour_offset)
+        if pivots is None:
+            pivots = {k: read_bmac_market_pivot(account.hour_offset, k) for k in ('spot', 'swap')}
+        else:
+            logger.info(f'MODEL仓管：复用Step 6预加载市场Pivot（offset={account.hour_offset}）')
     sizes = virtual_lot_sizes(saved, me_conf.ratio_dfs, read_bmac_exginfo)
     equities = me_conf.equity_dfs
     if options.get('server_init') and not initializing:
@@ -1511,6 +1565,8 @@ def _prepare(me_conf, account, run_time, *, saved, started, inputs=None):
         bundle = _update_state(saved, state, account.name, minute, context, raw_loader, expected, check, report=progress,
                                checkpoint_hours=options.get('checkpoint_hours', 0))
     strategy._robust40_result = bundle['result']
+    if options.get('replaying'):
+        strategy._robust40_bundle = bundle
     if initializing and options.get('checkpoint_hours'):
         from tools.robust40.handoff import read_inputs
         # MODEL raw is projected; revision checks need their own broader column

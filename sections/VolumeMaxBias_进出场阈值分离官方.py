@@ -330,8 +330,20 @@ def signal_with_state(df, params, factor_name, state=None):
         held, queue, initialized = [], [], False
     else:
         df = df.copy()
-        old = state['output'].set_index(keys)[factor_name]
-        df[factor_name] = old.reindex(pd.MultiIndex.from_frame(df[keys])).fillna(0).to_numpy()
+        min_ts = df.candle_begin_time.min()
+        if min_ts > state['cutoff'] or state['output'].empty:
+            df[factor_name] = 0
+        else:
+            max_ts = min(df.candle_begin_time.max(), state['cutoff'])
+            sub_old = state['output'][
+                (state['output'].candle_begin_time >= min_ts)
+                & (state['output'].candle_begin_time <= max_ts)
+            ]
+            if sub_old.empty:
+                df[factor_name] = 0
+            else:
+                old = sub_old.set_index(keys)[factor_name]
+                df[factor_name] = old.reindex(pd.MultiIndex.from_frame(df[keys])).fillna(0).to_numpy()
         held, queue, initialized = list(state['held']), list(state['ranks']), state['initialized']
         mask &= df.candle_begin_time > state['cutoff']
     # 首次的完整持仓已由signal算出；只需末尾排名重建有界队列，不再次分组整段历史。
@@ -377,9 +389,17 @@ def signal_with_state(df, params, factor_name, state=None):
             queue += [g.set_index('symbol').rank_pct for _,g in tail.groupby('candle_begin_time',sort=True)]
     queue = queue[-(n % 11):] if n % 11 else []
     output = df[keys+[factor_name]].copy()
-    if state is not None:
-        output = pd.concat([state['output'],output]).drop_duplicates(keys,keep='last')
-    output = output[output.candle_begin_time >= end-pd.Timedelta(hours=4049)]
+    retain_start = end - pd.Timedelta(hours=4049)
+    if state is not None and not state['output'].empty:
+        if df.candle_begin_time.min() > state['cutoff'] and not output.duplicated(keys).any():
+            prev_keep = state['output'][state['output'].candle_begin_time >= retain_start]
+            new_keep = output[output.candle_begin_time >= retain_start]
+            output = pd.concat([prev_keep, new_keep])
+        else:
+            output = pd.concat([state['output'], output]).drop_duplicates(keys, keep='last')
+            output = output[output.candle_begin_time >= retain_start]
+    else:
+        output = output[output.candle_begin_time >= retain_start]
     return df, dict(version=1, params=tuple(params), cutoff=end, held=held, ranks=queue,
                     initialized=initialized, output=output)
 
@@ -441,6 +461,7 @@ def signal_with_checkpoints(frame, params, column, state=None, hours=25):
         if times[-1] < state['cutoff']:raise ValueError('Section state cannot move backwards')
         if tuple(params) != state['params']:raise ValueError('Section parameters differ')
         outputs.append(state['output'])
+    orig_cutoff = state['cutoff'] if not direct else None
     empty = state['output'].iloc[:0]
     for time in times[times > state['cutoff']]:
         thin = {k:v for k,v in state.items() if k != 'checkpoints'}
@@ -451,12 +472,66 @@ def signal_with_checkpoints(frame, params, column, state=None, hours=25):
         points[time] = {k:v for k,v in state.items() if k not in ('output','checkpoints')}
     if direct:
         retained = pd.concat(outputs)
+    elif (orig_cutoff is not None
+          and times[0] > orig_cutoff
+          and frame.index.is_unique
+          and not frame.duplicated(keys).any()):
+        retain_start = state['cutoff'] - pd.Timedelta(hours=4049)
+        orig_output = outputs[0]
+        new_part = pd.concat(outputs[1:]) if len(outputs) > 1 else orig_output.iloc[:0]
+        prev_keep = orig_output[orig_output.candle_begin_time >= retain_start]
+        new_keep = new_part[new_part.candle_begin_time >= retain_start]
+        retained = pd.concat([prev_keep, new_keep])
+        result[column] = new_part[column].reindex(frame.index, fill_value=0).to_numpy()
     else:
         output = pd.concat(outputs).drop_duplicates(keys,keep='last')
         retained = output[output.candle_begin_time >= state['cutoff']-pd.Timedelta(hours=4049)]
-        result[column] = output.set_index(keys)[column].reindex(pd.MultiIndex.from_frame(frame[keys])).fillna(0).to_numpy()
+        sub_out = output[
+            (output.candle_begin_time >= times[0])
+            & (output.candle_begin_time <= times[-1])
+        ]
+        result[column] = sub_out.set_index(keys)[column].reindex(pd.MultiIndex.from_frame(frame[keys])).fillna(0).to_numpy()
     state = dict(state, output=retained, checkpoints={t:points[t] for t in sorted(points)[-hours:]})
     return result, state
+
+
+def _lookup_saved_output_polars(frame: pl.DataFrame, saved_output: pd.DataFrame, column: str) -> pl.Series:
+    """Fast Polars hash-join lookup for historical bars (`<= state['cutoff']`).
+
+    Slices `saved_output` to the block's `[min_time, max_time]` window before converting
+    to Polars and joining on `['candle_begin_time', 'symbol', 'is_spot']`, avoiding
+    3.68M-row pandas `MultiIndex` construction and full-block `to_pandas()` conversion.
+    """
+    keys = ['candle_begin_time', 'symbol', 'is_spot']
+    if frame.is_empty() or saved_output is None or saved_output.empty:
+        return pl.Series(column, np.zeros(len(frame), dtype=np.int64), dtype=pl.Int64)
+
+    t_min = pd.Timestamp(frame['candle_begin_time'].min())
+    t_max = pd.Timestamp(frame['candle_begin_time'].max())
+    sub_out = saved_output[
+        (saved_output['candle_begin_time'] >= t_min)
+        & (saved_output['candle_begin_time'] <= t_max)
+    ]
+    if sub_out.empty:
+        return pl.Series(column, np.zeros(len(frame), dtype=np.int64), dtype=pl.Int64)
+
+    right_pl = (
+        pl.from_pandas(sub_out[keys + [column]], include_index=False)
+        .unique(subset=keys, keep='last', maintain_order=False)
+        .with_columns([
+            pl.col('candle_begin_time').cast(frame.schema['candle_begin_time']),
+            pl.col('symbol').cast(frame.schema['symbol']),
+            pl.col('is_spot').cast(frame.schema['is_spot']),
+            pl.col(column).fill_null(0).cast(pl.Int64),
+        ])
+    )
+    joined = (
+        frame.select(keys)
+        .with_row_index('_join_idx')
+        .join(right_pl, on=keys, how='left')
+        .sort('_join_idx')
+    )
+    return joined[column].fill_null(0).cast(pl.Int64)
 
 
 def signal_block(frame, params, column, state=None, *, checkpoint_start=None, checkpoint_hours=0):
@@ -464,22 +539,42 @@ def signal_block(frame, params, column, state=None, *, checkpoint_start=None, ch
 
     The original kernels and snapshot schema remain authoritative. Earlier blocks
     run once in bulk; only the final checkpoint hours use hourly captures.
+    When `state` is present, bars `<= state['cutoff']` are resolved directly in Polars
+    via `_lookup_saved_output_polars`, converting only new bars (`> state['cutoff']`) to pandas.
     """
-    source = frame.select(get_state_input_columns(params)).to_pandas()
-    if '_row' in frame:
-        source.index = pd.Index(frame['_row'].to_numpy().astype('int64'))
-    cached = None
     if state is not None:
         if state['version'] != 1 or tuple(state['params']) != tuple(params):
             raise ValueError('Section state parameters/version differ')
-        keys = ['candle_begin_time', 'symbol', 'is_spot']
-        past = source[source.candle_begin_time <= state['cutoff']]
-        if len(past):
-            cached = pd.DataFrame({column: state['output'].set_index(keys)[column].reindex(
-                pd.MultiIndex.from_frame(past[keys])).fillna(0).to_numpy()}, index=past.index)
-            source = source[source.candle_begin_time > state['cutoff']]
-        if source.empty:
-            return frame.with_columns(pl.from_pandas(cached[column]).cast(pl.Int64)), state
+        if frame.is_empty():
+            return frame.with_columns(pl.lit(0, dtype=pl.Int64).alias(column)), state
+
+        cutoff = pd.Timestamp(state['cutoff'])
+        block_max_ts = pd.Timestamp(frame['candle_begin_time'].max())
+        if block_max_ts <= cutoff:
+            past_col = _lookup_saved_output_polars(frame, state['output'], column)
+            return frame.with_columns(past_col), state
+
+        block_min_ts = pd.Timestamp(frame['candle_begin_time'].min())
+        row_ids = frame['_row'].to_numpy().astype('int64') if '_row' in frame else np.arange(len(frame), dtype=np.int64)
+        if block_min_ts <= cutoff:
+            past_mask_pl = pl.col('candle_begin_time') <= pl.lit(cutoff)
+            past_mask_np = frame.select(past_mask_pl).to_series().to_numpy()
+            past_pl = frame.filter(past_mask_pl)
+            future_pl = frame.filter(~past_mask_pl)
+            past_vals = _lookup_saved_output_polars(past_pl, state['output'], column).to_numpy()
+            cached = pd.DataFrame({column: past_vals}, index=pd.Index(row_ids[past_mask_np]))
+            source = future_pl.select(get_state_input_columns(params)).to_pandas()
+            source.index = pd.Index(row_ids[~past_mask_np])
+        else:
+            cached = None
+            source = frame.select(get_state_input_columns(params)).to_pandas()
+            source.index = pd.Index(row_ids)
+    else:
+        source = frame.select(get_state_input_columns(params)).to_pandas()
+        if '_row' in frame:
+            source.index = pd.Index(frame['_row'].to_numpy().astype('int64'))
+        cached = None
+
     if checkpoint_start is None or not checkpoint_hours:
         result, state = signal_with_state(source, params, column, state)
     else:

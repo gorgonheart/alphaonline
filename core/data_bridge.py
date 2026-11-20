@@ -20,14 +20,47 @@ from core.utils.log_kit import logger
 
 _BTC_CACHE: dict = {}
 _BTC_CACHE_MAX = 8
+_CAP_CACHE: dict = {}
+_CAP_CACHE_MAX = 2048
 
 
 def _to_naive_ns(series: pd.Series) -> np.ndarray:
-    """Convert datetime Series to tz-naive int64 nanoseconds (matching pandas merge semantics)."""
+    """Convert datetime Series to tz-naive int64 nanoseconds (matching pandas merge semantics).
+
+    Fast path avoids `pd.to_datetime()` re-parsing (~5 ms/call in pandas 2.2) when
+    the Series is already `datetime64` or `DatetimeTZDtype`.
+    """
+    dtype = series.dtype
+    if isinstance(dtype, pd.DatetimeTZDtype):
+        return series.dt.tz_localize(None).to_numpy(dtype='datetime64[ns]', copy=False).view(np.int64)
+    if np.issubdtype(dtype, np.datetime64):
+        return series.to_numpy(dtype='datetime64[ns]', copy=False).view(np.int64)
     dt = pd.to_datetime(series)
     if dt.dt.tz is not None:
         dt = dt.dt.tz_localize(None)
     return dt.astype('datetime64[ns]').to_numpy(dtype=np.int64, copy=False)
+
+
+def _load_cap_file_cached(file_path: Path) -> Optional[pd.DataFrame]:
+    """Read, deduplicate, and sort a coin_cap pickle once per (path, mtime_ns, size)."""
+    try:
+        st = file_path.stat()
+    except OSError:
+        return None
+    cache_key = (str(file_path), st.st_mtime_ns, st.st_size)
+    cached = _CAP_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+    try:
+        extra_df = pd.read_pickle(file_path)
+        extra_df.drop_duplicates(subset=['candle_begin_time'], keep='last', inplace=True)
+        extra_df.sort_values('candle_begin_time', inplace=True)
+    except BaseException:
+        return None
+    if len(_CAP_CACHE) >= _CAP_CACHE_MAX:
+        _CAP_CACHE.clear()
+    _CAP_CACHE[cache_key] = extra_df
+    return extra_df
 
 
 def _ffill_1d(arr: np.ndarray) -> np.ndarray:
@@ -79,16 +112,12 @@ def load_coin_cap(file_path: str, candle_df: pd.DataFrame, save_cols: list, symb
     # bmac 那边存储的数据是 pkl，所以这里拼接 .pkl 结尾
     all_file_paths = [data_path / f'{s}.pkl' for s in symbols]
 
-    # 读取数据
+    # 读取数据（按 (path, mtime_ns, size) 进程内缓存，消除同轮 spot/swap 双侧重复读盘与去重排序）
     extra_df_list = []
     for p in all_file_paths:
-        try:
-            extra_df = pd.read_pickle(p)
-            extra_df.drop_duplicates(subset=['candle_begin_time'], keep='last', inplace=True)
-            extra_df.sort_values('candle_begin_time', inplace=True)  # 通过candle_begin_time排序
+        extra_df = _load_cap_file_cached(p)
+        if extra_df is not None:
             extra_df_list.append(extra_df)
-        except BaseException:
-            continue
 
     if not extra_df_list:
         logger.warning(f'coin_cap 没有找到任何数据，symbol={symbols}')

@@ -1,3 +1,17 @@
+"""
+截面因子：固定回撤阈值触发币数占比开仓门槛
+-------------------------------------------------------------------------
+核心计算定义（每个 `candle_begin_time` 截面独立，无跨期状态依赖）：
+    参数 `params = (window, threshold, max_pct)`，依赖基础因子 `当前回撤_{window}`。
+    1. 有效样本域 `domain`：
+       `当前回撤_{window}` 非空 & `是否交易 == 1` & `is_spot == 0`（合约）
+       & `symbol_spot != ''` & `symbol_swap != ''`（双市场均有标的）；
+    2. 触发样本 `trigger`：`domain` 且 `当前回撤_{window} < threshold`；
+    3. 截面比例门禁：统计同一时刻 `pool_count = sum(domain)` 与 `trigger_count = sum(trigger)`，
+       最大允许触发数 `max_count = ceil(pool_count * max_pct)`；
+    4. 输出：仅当 `trigger & (trigger_count <= max_count)` 时输出 `1`，其余行输出 `0`（无 NaN）。
+       （即大盘系统性暴跌导致大面积币种同时触发回撤时，触发数超上限，本截面禁止开仓。）
+"""
 import numpy as np
 import polars as pl
 

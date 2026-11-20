@@ -13,6 +13,7 @@
 | **Q2** | **本地统计展示精简提交 `6c02e58` 合发** | **已随 `940c487` 上线测试与正式（2026-11-20）**，本地 `main` 与 `production/main` 0 分叉 | 已闭环。 |
 | **Q3** | **正式机新上币扩张 + F1 移除治理自然实战验收** | `edbbba3` 已于 2026-11-20 凌晨 `ANTBUSDT` 新增实战通过（6 户零重建）；`8406c3f`（Phase 0–3 + F1）已于 2026-11-20 `14:15` 上线生产并在 `15m` 首轮验收性能 | 后续持续观测自然退市/美股休市（`removed_series` 分级放宽）与下一次自然初始化（Phase 2 `BURST ↔ YIELD`）线上遥测。 |
 | **Q4** | **正式机磁盘空间治理（当前可用仅 25 GiB / 86%）** | 根分区 `178G` 已用 `146G`，目录中仍存多份历史发布归档包（`*.bundle`、`*.tar.gz`、`alphatrade1` 等） | 须按 [production-limits-and-ops.md](production-limits-and-ops.md) 逐项盘点归属、经用户明确授权后再清理，严禁盲删业务状态。 |
+| **Q5** | **Phase 4（WP1–WP3 + P4-4）测试机 Ubuntu ABBA 与发布验收** | **本地已实现并离线验收（2026-11-20，未提交/未部署）**：覆盖时序因子/桥接提速+12 个因子及 3 个截面可读性强化、S3 Polars 续算与同族截面合读、Step 6→MODEL Pivot 复用与 `merge_context` NumPy 快路、`finish_live` 内存 bundle 校验、以及上游 `alpha` 消除临时 `*_for_pivot_batch*` 死 I/O；本地测试 `test_p4_optimizations` 9/9、Robust40/P3 107/107、`alpha` 44/44 全过 | 需用户授权后提交 Git，在测试机 `alphatest` 执行 Ubuntu 离线 ABBA 对拍与自然 `dry_run` 验收，确认收益与零数值偏差后再推进生产发布。 |
 
 ---
 

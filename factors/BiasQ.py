@@ -24,11 +24,11 @@ Author: 邢不行
 
 
 def signal_multi_params(df, param_list) -> dict:
-    """
-    使用同因子多参数聚合计算，可以有效提升回测、实盘 cal_factor 的速度，
-    相对于 `signal` 大概提升3倍左右
-    :param df: k线数据的dataframe
-    :param param_list: 参数列表
+    """多参数收盘价乖离率滚动分位数（BiasQ）计算。
+
+    数学定义：
+        1. 乖离率：bias_n(t) = close_t / Mean(close[t-n+1 : t], min_periods=1) - 1
+        2. 滚动分位数：BiasQ_n(t) = RankPct(bias_n[t-n+1 : t], ascending=True, pct=True)
     """
     import numpy as np
     import pandas as pd
@@ -37,6 +37,7 @@ def signal_multi_params(df, param_list) -> dict:
     ret = dict()
     for param in param_list:
         n = int(param)
-        Bias = df['close'] / df['close'].rolling(n, min_periods=1).mean() - 1
-        ret[str(param)] = pd.Series(rolling_rank_pct(Bias.to_numpy(dtype=np.float64, copy=False), n), index=idx)
+        bias = df['close'] / df['close'].rolling(n, min_periods=1).mean() - 1
+        rank_pct_arr = rolling_rank_pct(bias.to_numpy(dtype=np.float64, copy=False), n)
+        ret[str(param)] = pd.Series(rank_pct_arr, index=idx)
     return ret

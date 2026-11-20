@@ -16,6 +16,7 @@ import shutil
 import sys
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
+from contextlib import contextmanager
 
 import pandas as pd
 
@@ -120,6 +121,47 @@ def step5_aggregate_select_results(conf: BacktestConfig, max_candle_time, save_f
 
 _STEP6_FORK_MARKET = None
 _STEP6_WORKER_MARKET = None
+_ROUND_MARKET_HANDOFF_ACTIVE = False
+_ROUND_MARKET_PIVOTS = None
+
+
+@contextmanager
+def step6_market_handoff():
+    """Scoped one-shot handoff so Step 6 preloaded pivots can be reused by Step 8 MODEL
+    within the same live round, guaranteeing memory release on exit."""
+    global _ROUND_MARKET_HANDOFF_ACTIVE, _ROUND_MARKET_PIVOTS
+    prev_active = _ROUND_MARKET_HANDOFF_ACTIVE
+    prev_pivots = _ROUND_MARKET_PIVOTS
+    _ROUND_MARKET_HANDOFF_ACTIVE = True
+    _ROUND_MARKET_PIVOTS = None
+    try:
+        yield
+    finally:
+        had_pivots = _ROUND_MARKET_PIVOTS is not None
+        _ROUND_MARKET_HANDOFF_ACTIVE = prev_active
+        _ROUND_MARKET_PIVOTS = prev_pivots
+        if had_pivots:
+            gc.collect()
+            _trim_process_heap()
+
+
+def _publish_round_market_pivots(hour_offset: str, sig: tuple, pivots: dict) -> None:
+    global _ROUND_MARKET_PIVOTS
+    if _ROUND_MARKET_HANDOFF_ACTIVE and pivots is not None:
+        _ROUND_MARKET_PIVOTS = (hour_offset, sig, pivots)
+
+
+def consume_round_market_pivots(hour_offset: str):
+    """Pop preloaded read-only market pivots once if offset & file signature still match."""
+    global _ROUND_MARKET_PIVOTS
+    cached = _ROUND_MARKET_PIVOTS
+    if cached is None or cached[0] != hour_offset:
+        return None
+    _ROUND_MARKET_PIVOTS = None
+    saved_offset, saved_sig, pivots = cached
+    if not saved_sig or _bmac_market_file_sig(saved_offset) != saved_sig:
+        return None
+    return pivots
 
 
 def _trim_process_heap():
@@ -522,10 +564,12 @@ def run_backtest_multi(factory: BacktestConfigFactory, run_time):
         len(_sorted6) > 1
         and multiprocessing.get_context().get_start_method() == 'fork'
     )
+    _preload_sig = None
     try:
         if _preload_fork:
             _t_pre = time.perf_counter()
             _offset = f'{run_time.minute}m'
+            _preload_sig = _bmac_market_file_sig(_offset)
             _STEP6_FORK_MARKET = (_offset, _load_step6_market_inputs(_offset))
             logger.info(
                 f'STEP6_MARKET_PRELOAD offset={_offset} mode=fork '
@@ -538,9 +582,16 @@ def run_backtest_multi(factory: BacktestConfigFactory, run_time):
                 equity_map[conf.name] = f.result()
     finally:
         if _STEP6_FORK_MARKET is not None:
+            handed_off = False
+            if _ROUND_MARKET_HANDOFF_ACTIVE and _preload_sig:
+                _publish_round_market_pivots(
+                    _STEP6_FORK_MARKET[0], _preload_sig, _STEP6_FORK_MARKET[1]['pivots']
+                )
+                handed_off = True
             _STEP6_FORK_MARKET = None
-            gc.collect()
-            _trim_process_heap()
+            if not handed_off:
+                gc.collect()
+                _trim_process_heap()
     equity_list = [equity_map[conf.name] for conf in conf_list]  # 恢复原始顺序
 
     snapshot_time = max([equity['candle_begin_time'].max() for equity in equity_list])

@@ -44,17 +44,40 @@ def get_parameter():
 
 
 def signal_multi_params(df, param_list) -> dict:
-    """共享 TR，保留原窗口、首根与 NaN 语义，不写入行情。"""
+    """多参数去量纲平均真实波幅（Normalized ATR）计算。
+
+    数学定义：
+        1. 真实波幅（True Range）：
+           TR_t = max(High_t - Low_t, |High_t - Close_{t-1}|, |Low_t - Close_{t-1}|)
+           （首根 K 线因 Close_{t-1} 为 NaN，按 skipna 语义退化为 High_0 - Low_0）
+        2. 滚动均幅与中轨：
+           ATR_n(t) = Mean(TR[t-n+1 : t], min_periods=1)
+           Middle_n(t) = Mean(Close[t-n+1 : t], min_periods=1)
+        3. 去量纲化：
+           Factor_n(t) = ATR_n(t) / (Middle_n(t) + 1e-8)
+
+    性能优化：
+        用 IEEE-754 `np.fmax` 向量化逐元素取最大值替代 `pd.concat([c1, c2, c3], axis=1).max(axis=1)`，
+        避免构造二维临时 DataFrame 及行向归约开销，同时 100% 保持 skipna 与全 NaN 传播语义。
+    """
+    import numpy as np
+
     ret = dict()
     if not param_list:
         return ret
+
     close = df['close']
-    previous_close = close.shift(1)
-    tr = pd.concat([df['high'] - df['low'],
-                    abs(df['high'] - previous_close),
-                    abs(df['low'] - previous_close)], axis=1).max(axis=1)
+    high_arr = df['high'].to_numpy(dtype=np.float64, copy=False)
+    low_arr = df['low'].to_numpy(dtype=np.float64, copy=False)
+    prev_close_arr = close.shift(1).to_numpy(dtype=np.float64, copy=False)
+
+    hl_range = high_arr - low_arr
+    high_prev_gap = np.abs(high_arr - prev_close_arr)
+    low_prev_gap = np.abs(low_arr - prev_close_arr)
+    true_range = pd.Series(np.fmax(hl_range, np.fmax(high_prev_gap, low_prev_gap)), index=df.index, copy=False)
+
     for param in param_list:
-        atr = tr.rolling(param, min_periods=1).mean()
+        atr = true_range.rolling(param, min_periods=1).mean()
         middle = close.rolling(param, min_periods=1).mean()
         ret[param] = atr / (middle + eps)
     return ret

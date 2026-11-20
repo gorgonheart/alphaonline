@@ -8,6 +8,22 @@
 本代码仅供个人学习使用，未经授权不得复制、修改或用于商业用途。
 
 Author: 邢不行
+
+截面因子：TopKTo2K（前期强势进入前 10%，当前回落至 21% 名次之外的“高位回落”标志）
+-------------------------------------------------------------------------
+核心计算定义（仅作用于合约样本 `is_spot != 1`，现货样本恒为 null/NaN）：
+    1. 每根 K 线横截面内，对基础因子 `base_col = f"{base_factor}_{base_window}"` 做降序排名
+       （`method='min'`），记截面内合约币种总数为 `M`；
+    2. 强势门槛：`top_k = max(ceil(M * 0.1), 1)`，当 `rank <= top_k` 时标记 `is_top_now = 1`；
+    3. 滚动记忆：单币种过去 `n` 根 K 线内若至少出现一次 `is_top_now == 1`，记 `was_top_n = True`；
+    4. 回落门槛：`bottom_k = max(ceil(M * 0.21), 1)`（沿用研究 2.1 退出系数 `0.1 * 2.1 = 0.21`），
+       当前排名 `rank >= bottom_k` 时记 `in_bottom_now = True`；
+    5. 输出：`was_top_n & in_bottom_now`（0/1 整数），表示“近 n 小时曾跻身前 10%，当前已回落至前 21% 以外”。
+
+分块状态续算说明：
+    - `get_state_input_columns(params)` 声明最小依赖列集（仅 4 列），避免读取无关 K 线字段；
+    - `signal_block` 仅在跨块状态中保留每币种最近 `n` 根 K 线的 `_is_top_now` 尾窗，
+      不持有全历史价格表。
 """
 import numpy as np
 import pandas as pd
@@ -94,6 +110,11 @@ def get_factor_list(params):
     return [
         (base_factor, base_window)
     ]
+
+
+def get_state_input_columns(params):
+    """声明截面分块计算的最小依赖列集（避免读入 close/next_close/symbol_spot 等无关 K 线列）。"""
+    return ['candle_begin_time', 'symbol', 'is_spot', f'{params[1]}_{params[2]}']
 
 
 def _rank_block(lf, params):
