@@ -48,12 +48,18 @@ def is_foreground(arguments):
     return False
 
 
-def foreground_running():
+def foreground_running(now=None, max_age_seconds=None):
     import psutil
-    for process in psutil.process_iter(['cmdline']):
+    current = time.time() if now is None else float(now)
+    max_age = POLICY.get('foreground_max_age_seconds', 3600) if max_age_seconds is None else max_age_seconds
+    for process in psutil.process_iter(['cmdline', 'create_time']):
         try:
-            if is_foreground(process.info['cmdline'] or []):
-                return True
+            if not is_foreground(process.info['cmdline'] or []):
+                continue
+            created = process.info.get('create_time')
+            if max_age and created is not None and (current - float(created)) > max_age:
+                continue
+            return True
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
     return False
@@ -129,7 +135,7 @@ def pressure_snapshot():
                 io_full=_pressure('/proc/pressure/io'))
 
 
-def admission_decision(sample):
+def admission_decision(sample, *, foreground=False, dynamic_yield=False):
     """Only defer NEW bounded work under actual pressure, not worker existence."""
     available = sample['system_available']
     if available < POLICY['admission_min_available_bytes']:
@@ -141,7 +147,80 @@ def admission_decision(sample):
             return False, 'memory_pressure'
         if sample['io_full'] >= POLICY['io_full_limit']:
             return False, 'io_pressure'
+    if dynamic_yield and foreground:
+        if available < POLICY.get('yield_gate_available_bytes', int(1.2 * 1024**3)):
+            return False, 'foreground_yield_ram'
+        if sample['memory_full'] >= POLICY.get('yield_gate_memory_full', 10.):
+            return False, 'foreground_yield_memory'
+        if sample['io_full'] >= POLICY.get('yield_gate_io_full', 15.):
+            return False, 'foreground_yield_io'
     return True, 'available'
+
+
+def select_resource_mode(now, system, foreground, prev_mode, idle_since, policy=None):
+    """Pure state machine for BURST <-> YIELD CPU/IO governance (never shrinks MemoryHigh).
+
+    Returns ``(mode, reason, next_idle_since)`` where ``mode`` is ``'burst'`` or ``'yield'``.
+    """
+    pol = POLICY if policy is None else policy
+    period = pol.get('period_seconds', 300)
+    preempt = pol.get('yield_preempt_seconds', 25)
+    elapsed = now % period
+    in_preempt = preempt > 0 and elapsed >= (period - preempt)
+
+    yield_reason = None
+    avail = system['system_available']
+    tight_ram = avail < pol.get('yield_gate_available_bytes', int(1.2 * 1024**3))
+    if foreground:
+        yield_reason = 'foreground_active'
+    elif in_preempt:
+        yield_reason = 'preempt_window'
+    elif avail < pol.get('pressure_available_bytes', 1024**3):
+        # Genuine system-wide RAM shortage (< 1.0 GiB) yields even when idle.
+        yield_reason = 'low_available_ram'
+    elif tight_ram and system['memory_full'] >= pol.get('yield_gate_memory_full', 10.):
+        yield_reason = 'memory_pressure'
+    elif tight_ram and system['io_full'] >= pol.get('yield_gate_io_full', 15.):
+        # Only yield on IO pressure when RAM is also tight; otherwise idle initializer's
+        # own IPC block reads/writes would self-throttle to 20% CPU quota.
+        yield_reason = 'io_pressure'
+
+    if yield_reason is not None:
+        return 'yield', yield_reason, None
+
+    # No immediate yield trigger; check burst headroom and hysteresis hold.
+    if system['system_available'] < pol.get('burst_min_available_bytes', int(1.5 * 1024**3)):
+        return ('yield' if prev_mode != 'burst' else 'burst'), 'headroom_hysteresis', None
+
+    if prev_mode == 'yield':
+        hold = pol.get('burst_resume_hold_seconds', 6)
+        started_idle = now if idle_since is None else idle_since
+        if (now - started_idle) < hold:
+            return 'yield', 'resume_hold', started_idle
+
+    return 'burst', 'idle_exclusive', None
+
+
+def apply_mode_properties(unit, mode, policy=None, ctl=None):
+    """Apply runtime cgroup v2 CPU/IO properties for `burst` or `yield`. Never touches Memory*."""
+    pol = POLICY if policy is None else policy
+    run_ctl = _systemctl if ctl is None else ctl
+    if mode == 'burst':
+        cpu_w = int(pol.get('burst_cpu_weight', 100))
+        io_w = int(pol.get('burst_io_weight', 100))
+        quota = str(pol.get('burst_cpu_quota', ''))
+    elif mode == 'yield':
+        cpu_w = int(pol.get('yield_cpu_weight', 5))
+        io_w = int(pol.get('yield_io_weight', 10))
+        quota = str(pol.get('yield_cpu_quota', '20%'))
+    else:
+        raise ValueError(f'Unknown resource mode: {mode}')
+    return run_ctl(
+        'set-property', '--runtime', unit,
+        f'CPUWeight={cpu_w}',
+        f'IOWeight={io_w}',
+        f'CPUQuota={quota}',
+    )
 
 
 def group_snapshot(group):
@@ -176,13 +255,15 @@ def phase(label):
 
 
 def wait_for_window():
-    """Historical hook name; now admits based on pressure, not clock/MemoryHigh."""
+    """Historical hook name; admits based on pressure and optional dynamic foreground yield."""
     if sys.platform != 'linux' or UNIT_ENV not in os.environ:
         return
     started = None
     reason = None
+    dynamic = bool(POLICY.get('dynamic_burst_enabled', False))
     while True:
-        allowed, why = admission_decision(pressure_snapshot())
+        fg = foreground_running() if dynamic else False
+        allowed, why = admission_decision(pressure_snapshot(), foreground=fg, dynamic_yield=dynamic)
         if allowed:
             if started is not None:
                 print(f'INIT_ADMISSION event=resume pid={os.getpid()} wait_s={time.monotonic()-started:.3f}',flush=True)
@@ -222,14 +303,31 @@ def watch_resources(process, unit, market, emit):
             peak = 0
             last_emit = 0.
             critical_since = None
+            current_mode = None
+            idle_since = None
+            dynamic = bool(POLICY.get('dynamic_burst_enabled', False))
             while process.poll() is None and group is not None:
                 task = group_snapshot(group)
                 system = pressure_snapshot()
                 peak = max(peak,task['memory'],task['peak'])
                 now = time.monotonic()
+                if dynamic:
+                    fg = foreground_running()
+                    wall_now = time.time()
+                    next_mode, mode_reason, idle_since = select_resource_mode(
+                        wall_now, system, fg, current_mode, idle_since, POLICY
+                    )
+                    if next_mode != current_mode:
+                        apply_mode_properties(unit, next_mode, POLICY)
+                        emit('INIT_RESOURCE_MODE ' + json.dumps(dict(
+                            unit=unit, time=wall_now, prev=current_mode, mode=next_mode,
+                            reason=mode_reason, foreground=fg,
+                            available_mib=system['system_available'] // 2**20,
+                        )))
+                        current_mode = next_mode
                 if now-last_emit >= POLICY['telemetry_seconds']:
                     emit('INIT_RESOURCE '+json.dumps(dict(unit=unit,time=time.time(),task=task,system=system,
-                         admission=admission_decision(system))))
+                         mode=current_mode,admission=admission_decision(system))))
                     last_emit = now
                 critical = (system['system_available'] < POLICY['critical_available_bytes']
                             and system['system_swap_free'] < POLICY['swap_reserve_bytes']

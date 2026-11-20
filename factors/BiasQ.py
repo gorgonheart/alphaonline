@@ -30,14 +30,13 @@ def signal_multi_params(df, param_list) -> dict:
     :param df: k线数据的dataframe
     :param param_list: 参数列表
     """
+    import numpy as np
+    import pandas as pd
+    from core.utils.fast_rolling import rolling_rank_pct
+    idx = df.index
     ret = dict()
     for param in param_list:
         n = int(param)
-
         Bias = df['close'] / df['close'].rolling(n, min_periods=1).mean() - 1
-
-
-
-
-        ret[str(param)] = Bias.rolling(n, min_periods=1).rank(ascending=True, pct=True)
+        ret[str(param)] = pd.Series(rolling_rank_pct(Bias.to_numpy(dtype=np.float64, copy=False), n), index=idx)
     return ret

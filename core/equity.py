@@ -91,6 +91,7 @@ def calc_equity(conf: BacktestConfig, run_time, leverage: float | pd.Series = No
     # ====================================================================================================
     # 1. 读入下单资金占比数据
     # ====================================================================================================
+    t_total_start = time.perf_counter()
     # Optional read-only inputs for initialization; defaults retain live I/O.
     if ratio_inputs is not None:
         df_spot_ratio, df_swap_ratio = (d.copy(deep=False) for d in ratio_inputs)
@@ -105,6 +106,7 @@ def calc_equity(conf: BacktestConfig, run_time, leverage: float | pd.Series = No
 
         df_spot_ratio.index = df_spot_ratio.index.tz_localize('UTC')
         df_swap_ratio.index = df_swap_ratio.index.tz_localize('UTC')
+    ratio_read_s = time.perf_counter() - t_total_start
 
     # ====================================================================================================
     # 2. 等待实盘数据就绪，并读入数据
@@ -114,6 +116,7 @@ def calc_equity(conf: BacktestConfig, run_time, leverage: float | pd.Series = No
     #     logger.warning(f'Pivot data 未就绪')
     #     return
 
+    t_pivot_start = time.perf_counter()
     hour_offset = f'{run_time.minute}m'
     pivot_dict_spot = read_bmac_market_pivot(hour_offset, 'spot') if market_inputs is None else dict(market_inputs['pivots']['spot'])
     pivot_dict_swap = read_bmac_market_pivot(hour_offset, 'swap') if market_inputs is None else dict(market_inputs['pivots']['swap'])
@@ -122,10 +125,12 @@ def calc_equity(conf: BacktestConfig, run_time, leverage: float | pd.Series = No
 
     df_exginfo_spot = (read_bmac_exginfo('spot') if market_inputs is None else market_inputs['units']['spot']).set_index('symbol')
     df_exginfo_swap = (read_bmac_exginfo('swap') if market_inputs is None else market_inputs['units']['swap']).set_index('symbol')
+    pivot_read_s = time.perf_counter() - t_pivot_start
 
     # ====================================================================================================
     # 3. 根据缓存的状态，恢复模拟交易的状态
     # ====================================================================================================
+    t_align_start = time.perf_counter()
     if state_name:
         state_path = conf.get_snapshot_folder() / f'lots_{state_name}.pkl'
         has_snapshot = state_path.exists()
@@ -229,6 +234,7 @@ def calc_equity(conf: BacktestConfig, run_time, leverage: float | pd.Series = No
 
     # 从后往前截取一下数据，保证杠杆的数据与 ratio 的数据长度是一致的
     leverages = leverages[-len(df_spot_ratio):]
+    align_s = time.perf_counter() - t_align_start
     # ====================================================================================================
     # 2. 开始模拟交易
     # 开始策马奔腾啦 🐎
@@ -262,7 +268,9 @@ def calc_equity(conf: BacktestConfig, run_time, leverage: float | pd.Series = No
         sim_swap=sim_swap,  # 永续合约模拟器
         lookback_hours=max(conf.incremental_lookback_hours, getattr(conf, 'checkpoint_hours', 0)),
     )
-    logger.ok(f'完成模拟交易，花费时间: {time.perf_counter() - s_time:.3f}秒')
+    kernel_s = time.perf_counter() - s_time
+    logger.ok(f'完成模拟交易，花费时间: {kernel_s:.3f}秒')
+    t_save_start = time.perf_counter()
 
     # 增量回退：将快照队列中的 bar_index 转换为实际时间戳
     for snap in snapshot_queue:
@@ -341,6 +349,13 @@ def calc_equity(conf: BacktestConfig, run_time, leverage: float | pd.Series = No
             'snapshot_queue': snapshot_queue,
         }
         pd.to_pickle(state, state_path)
+    save_s = time.perf_counter() - t_save_start
+    total_s = time.perf_counter() - t_total_start
+    logger.info(
+        f'EQUITY_PROFILE conf={conf.name} state={state_name} reused_market={market_inputs is not None} '
+        f'bars={len(candle_begin_times)} ratio_read_s={ratio_read_s:.3f} pivot_read_s={pivot_read_s:.3f} '
+        f'align_s={align_s:.3f} kernel_s={kernel_s:.3f} save_s={save_s:.3f} total_s={total_s:.3f}'
+    )
     return account_df
 
 

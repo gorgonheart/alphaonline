@@ -16,6 +16,49 @@ RAW_COLUMNS = ('open','high','low','close','volume','quote_volume','trade_num',
                'avg_price_1m','funding_rate','是否交易','symbol_spot','symbol_swap',
                'is_spot','first_candle_time','funding_fee')
 
+# Per-market circuit breaker for simultaneous raw series disappearance:
+# tolerates 10-20 project delist announcements (even dual spot+swap) while
+# aborting genuine upstream feed outages without corrupting snapshots or
+# triggering 6-account full rebuilds.
+REMOVED_RAW_MIN_LIMIT = 30
+REMOVED_RAW_RATIO_LIMIT = 0.08
+
+
+class UpstreamUniverseDropError(RuntimeError):
+    """Excessive simultaneous raw series disappearance; abort round without rebuild or orders."""
+
+
+def _extract_held_symbols(bundle):
+    """Return {(kind, canonical_symbol)} with non-zero lots or target_lots across main & virtual accounts."""
+    from .offline import canonical
+
+    cols = bundle.get('context', {}).get('columns', [])
+    by_kind = {
+        kind: [canonical(c.split(':', 1)[1]) for c in cols if isinstance(c, str) and c.startswith(f'{kind}:')]
+        for kind in ('spot', 'swap')
+    }
+    result = bundle.get('result', {})
+    accounts = list(result.get('virtual_accounts', []))
+    if result.get('account') is not None:
+        accounts.append(result['account'])
+    held = set()
+    for acc in accounts:
+        sim_state = getattr(acc, 'attrs', {}).get('simulation_state')
+        if not sim_state or len(sim_state) < 2:
+            continue
+        for idx, kind in enumerate(('spot', 'swap')):
+            syms = by_kind[kind]
+            state_tuple = sim_state[idx]
+            if not state_tuple or len(state_tuple) < 3:
+                continue
+            lots = np.asarray(state_tuple[1])
+            target_lots = np.asarray(state_tuple[2])
+            n = min(len(syms), len(lots), len(target_lots))
+            for i in range(n):
+                if lots[i] != 0 or target_lots[i] != 0:
+                    held.add((kind, syms[i]))
+    return held
+
 
 def utc_times(values):
     index=pd.DatetimeIndex(values)
@@ -49,10 +92,58 @@ def input_frames(raw, pivots, end, start=None):
     return out
 
 
-def first_revision(old, new):
-    """Exact values, NaN equals NaN. Return earliest changed closed input bar."""
+def first_revision(
+    old,
+    new,
+    *,
+    held_symbols=None,
+    removed_raw_min_limit=REMOVED_RAW_MIN_LIMIT,
+    removed_raw_ratio_limit=REMOVED_RAW_RATIO_LIMIT,
+):
+    """Exact values, NaN equals NaN. Return earliest changed closed input bar.
+
+    Universe removals on ``raw/{spot|swap}/<symbol>`` are governed in two tiers:
+    1. Per-market surge circuit breaker (``> max(30, int(0.08 * old_market_count))``):
+       raises ``UpstreamUniverseDropError`` (retryable, non-rebuild) to abort on feed outage.
+    2. Within-threshold removals (e.g. bStocks halt or 10-20 coin delist announcement):
+       do not rewrite closed history before T (avoiding look-ahead/survivorship bias).
+       Unheld symbols stay incremental; held symbols require intact historical pivot
+       columns and emit ``removed_held_symbols`` telemetry alerts (otherwise fall back
+       to conservative window-start revision).
+    Missing ``pivot/*`` tables or ``removed_columns`` on shared pivots stay conservative.
+    """
     if not old:raise ValueError('Missing revision input coverage')
     end = max(f.index.max() for f in old.values())
+
+    # 1. Per-market circuit breaker BEFORE inspecting state or comparing cells.
+    removed_raw_spot = sorted(k for k in old if k.startswith('raw/spot/') and k not in new)
+    removed_raw_swap = sorted(k for k in old if k.startswith('raw/swap/') and k not in new)
+    if removed_raw_spot or removed_raw_swap:
+        old_spot_count = sum(1 for k in old if k.startswith('raw/spot/'))
+        old_swap_count = sum(1 for k in old if k.startswith('raw/swap/'))
+        spot_limit = max(int(removed_raw_min_limit), int(removed_raw_ratio_limit * old_spot_count))
+        swap_limit = max(int(removed_raw_min_limit), int(removed_raw_ratio_limit * old_swap_count))
+        if len(removed_raw_spot) > spot_limit or len(removed_raw_swap) > swap_limit:
+            all_removed = removed_raw_spot + removed_raw_swap
+            telemetry.add(removed_series=len(all_removed))
+            telemetry.fields(all_removed, key='removed_series_keys')
+            telemetry.record(
+                circuit_breaker='removed_series_surge',
+                removed_raw_spot=len(removed_raw_spot),
+                removed_raw_swap=len(removed_raw_swap),
+                removed_raw_spot_limit=spot_limit,
+                removed_raw_swap_limit=swap_limit,
+            )
+            raise UpstreamUniverseDropError(
+                f'Upstream raw universe drop exceeds limit: '
+                f'spot={len(removed_raw_spot)}/{spot_limit} (old={old_spot_count}), '
+                f'swap={len(removed_raw_swap)}/{swap_limit} (old={old_swap_count})'
+            )
+
+    resolved_held = None
+    if (removed_raw_spot or removed_raw_swap) and held_symbols is not None:
+        resolved_held = held_symbols() if callable(held_symbols) else set(held_symbols)
+
     earliest = []
     for key in old.keys() | new.keys():
         if key not in old:
@@ -63,9 +154,18 @@ def first_revision(old, new):
             continue
         a = old[key]
         if key not in new:
-            earliest.append(a.index.min())
             telemetry.add(removed_series=1)
             telemetry.fields([key], key='removed_series_keys')
+            if key.startswith(('raw/spot/', 'raw/swap/')):
+                _, kind, sym = key.split('/', 2)
+                is_held = resolved_held is not None and (kind, sym) in resolved_held
+                if is_held:
+                    telemetry.fields([f'{kind}:{sym}'], key='removed_held_symbols')
+                    pivot_close = new.get(f'pivot/{kind}/close')
+                    if pivot_close is None or sym not in pivot_close.columns:
+                        earliest.append(a.index.min())
+                continue
+            earliest.append(a.index.min())
             continue
         b = new[key]
         # Earlier revision snapshots never projected raw funding_fee. Compare
@@ -356,8 +456,14 @@ def _prepare(destination, values, run_time, minute, end):
     telemetry.record(input_start=start,input_frames=len(old))
     with telemetry.phase('input_read_s'):
         current=read_inputs(run_time,minute,end,start=start)
+    def _held_loader():
+        state_path = destination / 'model/state.pkl'
+        if not state_path.exists():
+            return None
+        return _extract_held_symbols(pd.read_pickle(state_path))
+
     with telemetry.phase('compare_s'):
-        revised=first_revision(old,current)
+        revised=first_revision(old,current,held_symbols=_held_loader)
     if revised is None:
         telemetry.record(mode='incremental')
         return None,trim_inputs(current,end)

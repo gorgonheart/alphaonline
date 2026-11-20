@@ -41,17 +41,22 @@ def signal(*args):
 
 def signal_multi_params(df, param_list) -> dict:
     """仅取公式所需列；兼容旧版丢弃缺 close 行及重置索引的行为。"""
+    from core.utils.fast_rolling import rolling_argmax_first
     ret = dict()
     if not param_list:
         return ret
-    prices = df.loc[df['close'].notna(), ['close', 'high', 'low']].reset_index(drop=True)
-    tp = (prices['close'] + prices['high'] + prices['low']) / 3
+    mask = df['close'].notna()
+    close = df['close'].loc[mask].reset_index(drop=True)
+    high = df['high'].loc[mask].reset_index(drop=True)
+    low = df['low'].loc[mask].reset_index(drop=True)
+    tp = (close + high + low) / 3
+    high_arr = high.to_numpy(dtype=np.float64, copy=False)
+    idx_arr = np.arange(len(close), dtype=np.float64)
     for param in param_list:
         n = int(param)
-        add_index = np.where(prices.index >= n, prices.index - n + 1, 0)
-        hm_index = prices['high'].rolling(n, min_periods=1).apply(lambda x: get_idx(x), raw=True)
-        hm_index += add_index
-        distance = prices.index - hm_index + 1
+        add_index = np.where(idx_arr >= n, idx_arr - n + 1.0, 0.0)
+        hm_index = rolling_argmax_first(high_arr, n) + add_index
+        distance = idx_arr - hm_index + 1.0
         ma = tp.rolling(n, min_periods=1).mean()
         ret[param] = (tp / ma) / distance
     return ret
