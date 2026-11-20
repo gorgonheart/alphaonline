@@ -36,14 +36,17 @@ def signal_multi_params(df, param_list) -> dict:
     :param df: k线数据的dataframe
     :param param_list: 参数列表
     """
+    import pandas as pd
+    from core.utils.fast_rolling import rolling_rank_pct
     zf = (df['high'] - df['low']) / df['open']
+    idx = df.index
 
     ret = dict()
     for param in param_list:
         n = int(param)
         ZfMean = zf.rolling(n, min_periods=1).mean()
-        ZfMeanQ = ZfMean.rolling(n, min_periods=1).rank(ascending=True, pct=True)
+        ZfMeanQ = rolling_rank_pct(ZfMean.to_numpy(dtype=np.float64, copy=False), n)
         VolumeMean = df['volume'].rolling(n, min_periods=1).mean()
-        VolumeMeanQ = VolumeMean.rolling(n, min_periods=1).rank(ascending=True, pct=True)
-        ret[str(param)] = np.maximum(ZfMeanQ, VolumeMeanQ)
+        VolumeMeanQ = rolling_rank_pct(VolumeMean.to_numpy(dtype=np.float64, copy=False), n)
+        ret[str(param)] = pd.Series(np.maximum(ZfMeanQ, VolumeMeanQ), index=idx)
     return ret

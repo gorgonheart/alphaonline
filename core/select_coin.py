@@ -95,16 +95,8 @@ def trans_period_for_day(df, date_col='candle_begin_time', factor_dict=None):
 
 
 # region 因子计算相关函数
-def calc_factors_by_candle(candle_df, conf: BacktestConfig, factor_col_name_list) -> pd.DataFrame:
-    """
-    针对单一比对，计算所有因子的数值
-    :param candle_df: 一个币种的k线数据 dataframe
-    :param conf: 回测配置
-    :param factor_col_name_list: 需要计算的因子列
-    :return: 包含所有因子的 dataframe(目前是包含k线数据的）
-    """
-    # 遍历每个因子，计算每个因子的数据
-
+def _compute_factor_columns_dict(candle_df, conf: BacktestConfig, factor_col_name_list) -> dict:
+    """Compute per-symbol factor dict and assemble column mapping (shared by pandas/Polars paths)."""
     factor_series_dict = {}
     precompute_set = {
         fn: set(ps)
@@ -158,53 +150,40 @@ def calc_factors_by_candle(candle_df, conf: BacktestConfig, factor_col_name_list
         for col_name in sorted(extra_keys):
             ordered_factor_series[col_name] = factor_series_dict[col_name]
 
-    # 将结果 DataFrame 与原始 DataFrame 合并
-    kline_with_factor_dict = {
+    close_vals = candle_df['close'].to_numpy(dtype=np.float64, copy=False)
+    next_close = np.empty(close_vals.shape[0], dtype=np.float64)
+    if close_vals.shape[0] > 0:
+        next_close[:-1] = close_vals[1:]
+        next_close[-1] = np.nan
+
+    def _str_col(s: pd.Series):
+        arr = s.to_numpy(copy=False)
+        if arr.dtype == object and not s.isna().any():
+            return arr
+        return s.astype(str).to_numpy(copy=False)
+
+    return {
         'candle_begin_time': candle_df['candle_begin_time'].values,
         'symbol': candle_df['symbol'].values,
         'is_spot': candle_df['is_spot'].values,
         'close': candle_df['close'].values,
-        # 'has_swap': candle_df['has_swap'],
-        # 'next_avg_price': candle_df['next_avg_price'].values,
-        'next_close': candle_df['close'].shift(-1).values,  # 后面周期排除需要用
-        # 'next_funding_fee': candle_df['funding_fee'].shift(-1).values,
-        'symbol_spot': candle_df['symbol_spot'].astype(str).values,
-        'symbol_swap': candle_df['symbol_swap'].astype(str).values,
+        'next_close': next_close,  # 后面周期排除需要用
+        'symbol_spot': _str_col(candle_df['symbol_spot']),
+        'symbol_swap': _str_col(candle_df['symbol_swap']),
         **ordered_factor_series,
         '是否交易': candle_df['是否交易'].values,
     }
 
+
+def _finalize_kline_factor_pandas(candle_df, conf: BacktestConfig, kline_with_factor_dict: dict) -> pd.DataFrame:
     kline_with_factor_df = pd.DataFrame(kline_with_factor_dict, copy=False)
     kline_with_factor_df.sort_values(by='candle_begin_time', inplace=True)
 
     # 抛弃一开始的一段k线，保留后面的数据
     first_candle_time = candle_df.iloc[0]['first_candle_time'] + pd.to_timedelta(f'{conf.min_kline_num}h')
 
-    # # 调整 symbol_spot 和 symbol_swap
-    # for col in ['symbol_spot', 'symbol_swap']:
-    #     symbol_start_time = candle_df[
-    #         (candle_df[col] != '') & (candle_df[col].shift(1) == '') & (~candle_df[col].shift(1).isna())
-    #         ]['candle_begin_time']
-    #     if not symbol_start_time.empty:
-    #         condition = pd.Series(False, index=kline_with_factor_df.index)
-    #         for symbol_time in symbol_start_time:
-    #             _cond1 = kline_with_factor_df['candle_begin_time'] >= symbol_time
-    #             _cond2 = kline_with_factor_df['candle_begin_time'] <= symbol_time + pd.to_timedelta(
-    #                 f'{conf.min_kline_num}h')
-    #             condition |= (_cond1 & _cond2)
-    #         kline_with_factor_df.loc[condition, col] = ''
-    #     kline_with_factor_df[col] = kline_with_factor_df[col].astype('category')
-
     # 需要对数据进行裁切
     kline_with_factor_df = kline_with_factor_df[kline_with_factor_df['candle_begin_time'] >= first_candle_time]
-
-    # 下架币/拆分币，去掉最后一个周期不全的数据
-    # if kline_with_factor_df['candle_begin_time'].max() < pd.to_datetime(conf.end_date):
-    #     _temp_time = kline_with_factor_df['candle_begin_time'] + pd.Timedelta(conf.max_hold_period)
-    #     _del_time = kline_with_factor_df[kline_with_factor_df.loc[_temp_time.index, 'next_close'].isna()][
-    #         'candle_begin_time']
-    #     kline_with_factor_df = kline_with_factor_df[
-    #         kline_with_factor_df['candle_begin_time'] <= _del_time.min() - pd.Timedelta(conf.max_hold_period)]
 
     snapshot_time = get_snapshot_time(conf.name)
     # 只保留最近的数据
@@ -217,8 +196,86 @@ def calc_factors_by_candle(candle_df, conf: BacktestConfig, factor_col_name_list
         )
         kline_with_factor_df = kline_with_factor_df[kline_with_factor_df['candle_begin_time'] >= cut_off_time]
 
-    # 只保留需要的字段
     return kline_with_factor_df
+
+
+def calc_factors_by_candle(candle_df, conf: BacktestConfig, factor_col_name_list) -> pd.DataFrame:
+    """
+    针对单一比对，计算所有因子的数值
+    :param candle_df: 一个币种的k线数据 dataframe
+    :param conf: 回测配置
+    :param factor_col_name_list: 需要计算的因子列
+    :return: 包含所有因子的 dataframe(目前是包含k线数据的）
+    """
+    kline_with_factor_dict = _compute_factor_columns_dict(candle_df, conf, factor_col_name_list)
+    return _finalize_kline_factor_pandas(candle_df, conf, kline_with_factor_dict)
+
+
+def calc_factors_by_candle_polars(candle_df, conf: BacktestConfig, factor_col_name_list) -> pl.DataFrame:
+    """Direct array->Polars path avoiding 81-column pd.DataFrame + sort + pl.from_pandas roundtrip.
+
+    Falls back automatically to pandas finalization if any factor returned a
+    non-aligned/short Series or Categorical dtype, preserving 100% exact parity.
+    """
+    kline_with_factor_dict = _compute_factor_columns_dict(candle_df, conf, factor_col_name_list)
+    n_rows = len(candle_df)
+    if n_rows == 0:
+        return pl.DataFrame()
+
+    raw_arrays = {}
+    for k, v in kline_with_factor_dict.items():
+        if isinstance(v, pd.Series):
+            if isinstance(v.dtype, pd.CategoricalDtype) or len(v) != n_rows:
+                pdf = _finalize_kline_factor_pandas(candle_df, conf, kline_with_factor_dict)
+                return pl.from_pandas(pdf) if len(pdf) else pl.DataFrame()
+            if not (isinstance(v.index, pd.RangeIndex) and v.index.start == 0 and v.index.step == 1):
+                if not v.index.equals(candle_df.index):
+                    pdf = _finalize_kline_factor_pandas(candle_df, conf, kline_with_factor_dict)
+                    return pl.from_pandas(pdf) if len(pdf) else pl.DataFrame()
+            arr = v.to_numpy(copy=False)
+        else:
+            arr = np.asarray(v)
+            if arr.ndim != 1 or arr.shape[0] != n_rows:
+                pdf = _finalize_kline_factor_pandas(candle_df, conf, kline_with_factor_dict)
+                return pl.from_pandas(pdf) if len(pdf) else pl.DataFrame()
+        raw_arrays[k] = arr
+
+    ts = raw_arrays['candle_begin_time']
+    if not np.issubdtype(ts.dtype, np.datetime64):
+        pdf = _finalize_kline_factor_pandas(candle_df, conf, kline_with_factor_dict)
+        return pl.from_pandas(pdf) if len(pdf) else pl.DataFrame()
+
+    ts_ns = ts.astype('datetime64[ns]').view('int64')
+    is_sorted = ts_ns.size <= 1 or not bool(np.any(ts_ns[1:] < ts_ns[:-1]))
+
+    first_ts = pd.Timestamp(candle_df.iloc[0]['first_candle_time']) + pd.to_timedelta(f'{conf.min_kline_num}h')
+    min_ns = first_ts.value
+    snapshot_time = get_snapshot_time(conf.name)
+    if snapshot_time and not conf.has_section_factor:
+        cut_off_time = (
+            pd.to_datetime(snapshot_time).replace(tzinfo=None)
+            - max(pd.Timedelta(conf.max_hold_period),
+                  pd.Timedelta(days=conf.lookback_days),
+                  pd.Timedelta(hours=conf.incremental_lookback_hours))
+        )
+        if cut_off_time.value > min_ns:
+            min_ns = cut_off_time.value
+
+    if is_sorted:
+        k0 = int(np.searchsorted(ts_ns, min_ns, side='left'))
+        if k0 >= n_rows:
+            return pl.DataFrame()
+        sliced = {k: (arr[k0:] if k0 > 0 else arr) for k, arr in raw_arrays.items()}
+    else:
+        order = np.argsort(ts_ns, kind='mergesort')
+        sorted_ns = ts_ns[order]
+        k0 = int(np.searchsorted(sorted_ns, min_ns, side='left'))
+        if k0 >= n_rows:
+            return pl.DataFrame()
+        sel = order[k0:]
+        sliced = {k: arr[sel] for k, arr in raw_arrays.items()}
+
+    return pl.DataFrame(sliced).with_columns(pl.col(pl.Float64, pl.Float32).fill_nan(None))
 
 
 def process_candle_df(candle_df: pd.DataFrame, conf: BacktestConfig, factor_col_name_list: List[str], idx: int):
@@ -265,12 +322,21 @@ def write_factor_file_polars(args):
 
 def process_candle_df_return_polars(candle_df: pd.DataFrame, conf: BacktestConfig, factor_col_name_list: List[str],
                                     idx: int):
-    """process_candle_df 的包装：在子进程内完成 pd→pl 转换。
-    转换工作分散到多个子进程并行完成，主进程 concat 接近零开销。"""
-    idx, factor_df = process_candle_df(candle_df, conf, factor_col_name_list, idx)
-    if len(factor_df) == 0:
-        return idx, pl.DataFrame()
-    return idx, pl.from_pandas(factor_df)
+    """process_candle_df 的包装：在子进程内直接构造 Polars，避免 81 列 pd→sort→pl 往返。"""
+    factor_dict = {'first_candle_time': 'first', 'last_candle_time': 'last'}
+    for strategy in conf.strategy_list:
+        symbol = candle_df['symbol'].iloc[-1]
+        candle_df, _factor_dict, _ = strategy.after_merge_index(candle_df, symbol, factor_dict, {})
+        factor_dict.update(_factor_dict)
+
+    candle_df['next_avg_price'] = candle_df[conf.avg_price_col].shift(-1)
+
+    if conf.is_day_period:
+        candle_df = trans_period_for_day(candle_df, factor_dict=factor_dict)
+
+    candle_df.dropna(subset=['symbol'], inplace=True)
+    candle_df.reset_index(drop=True, inplace=True)
+    return idx, calc_factors_by_candle_polars(candle_df, conf, factor_col_name_list)
 
 
 def iter_candle_descriptors(conf,run_time):
@@ -336,7 +402,7 @@ def _calc_factor_blocks(conf, run_time, store):
     """Shared producer: bounded coin tasks, one conversion, downstream time blocks."""
     import config
     from core.utils.functions import iter_preprocessed_candles
-    from core.utils.factor_data import ordered_results
+    from core.utils.factor_data import ordered_results, read_vmstat_swap
     strict = getattr(conf, 'input_mode', 'auto') in ('arrow_full_strict', 'arrow_strict')
     source = iter_candle_descriptors(conf, run_time) if strict else iter_preprocessed_candles(conf, run_time)
     function = process_descriptor if strict else _factor_symbol
@@ -348,22 +414,52 @@ def _calc_factor_blocks(conf, run_time, store):
             for index, frame in enumerate(source))
     gate = getattr(config, 'compute_gate', None)
     started = time.perf_counter()
+    cpu_started = time.process_time()
+    _, swap_out_start = read_vmstat_swap()
+    parent_write_s = 0.0
+    ordered_wait_s = 0.0
+    total_symbols = 0
+    nonempty_symbols = 0
     batch, shard = [], 0
     with ProcessPoolExecutor(max_workers=job_num, mp_context=multiprocessing.get_context('spawn')) as pool:
-        for _, result in ordered_results(pool, function, args, max_pending=2*job_num, before_submit=gate):
+        results_iter = ordered_results(pool, function, args, max_pending=2*job_num, before_submit=gate)
+        while True:
+            t_wait = time.perf_counter()
+            try:
+                _, result = next(results_iter)
+            except StopIteration:
+                ordered_wait_s += time.perf_counter() - t_wait
+                break
+            ordered_wait_s += time.perf_counter() - t_wait
+            total_symbols += 1
             if result.height:
+                nonempty_symbols += 1
                 batch.append(result)
             del result
             if len(batch) == size:
+                t_write = time.perf_counter()
                 store.append(pl.concat(batch), shard)
                 batch.clear()
+                parent_write_s += time.perf_counter() - t_write
                 shard += 1
         if batch:
+            t_write = time.perf_counter()
             store.append(pl.concat(batch), shard)
             batch.clear()
+            parent_write_s += time.perf_counter() - t_write
+            shard += 1
     if not store.rows:
         raise ValueError('Direct factor output is empty')
-    logger.info(f'FACTOR_BLOCKS rows={store.rows} elapsed={time.perf_counter()-started:.3f}s (read/compute/write)')
+    elapsed = time.perf_counter() - started
+    parent_cpu_s = time.process_time() - cpu_started
+    _, swap_out_end = read_vmstat_swap()
+    logger.info(f'FACTOR_BLOCKS rows={store.rows} elapsed={elapsed:.3f}s (read/compute/write)')
+    logger.info(
+        f'FACTOR_BLOCKS_PROFILE rows={store.rows} batches={shard} symbols={total_symbols} '
+        f'nonempty={nonempty_symbols} elapsed_s={elapsed:.3f} ordered_wait_s={ordered_wait_s:.3f} '
+        f'parent_concat_write_s={parent_write_s:.3f} parent_cpu_s={parent_cpu_s:.3f} '
+        f'swap_out_pages={max(0, swap_out_end - swap_out_start)}'
+    )
     return store
 
 

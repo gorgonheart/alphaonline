@@ -29,15 +29,28 @@ def signal_multi_params(df, param_list) -> dict:
     ret = dict()
     if not param_list:
         return ret
-    candle_series = pd.to_datetime(pd.Series(df['candle_begin_time']))
-    cond = (df['symbol_swap'] != '') & (df['symbol_spot'] != '')
+    if len(df) == 0:
+        empty = pd.Series(dtype=np.float64, index=df.index)
+        for param in param_list:
+            ret[param] = empty
+        return ret
+    swap_vals = df['symbol_swap'].to_numpy(copy=False)
+    spot_vals = df['symbol_spot'].to_numpy(copy=False)
+    cond = (swap_vals != '') & (spot_vals != '')
     if cond.any():
-        first_idx = cond[cond].index[0]
-        first_time = candle_series.iloc[first_idx]
-        hours_since_first = (candle_series - first_time).dt.total_seconds() / 3600
-        values = pd.Series(np.where(cond, hours_since_first, np.nan), index=df.index)
+        first_pos = int(np.argmax(cond))
+        col = df['candle_begin_time']
+        if np.issubdtype(col.dtype, np.datetime64) and isinstance(df.index, pd.RangeIndex) and df.index.start == 0 and df.index.step == 1:
+            ts_ns = col.astype('datetime64[ns]').to_numpy(dtype=np.int64, copy=False)
+            hours_since_first = (ts_ns - ts_ns[first_pos]) / 3.6e12
+        else:
+            candle_series = pd.to_datetime(pd.Series(col))
+            first_idx = df.index[first_pos]
+            first_time = candle_series.iloc[first_idx]
+            hours_since_first = ((candle_series - first_time).dt.total_seconds() / 3600).to_numpy(dtype=np.float64, copy=False)
+        values = pd.Series(np.where(cond, hours_since_first, np.nan), index=df.index, dtype=np.float64)
     else:
-        values = pd.Series(np.nan, index=df.index)
+        values = pd.Series(np.nan, index=df.index, dtype=np.float64)
     for param in param_list:
         ret[param] = values
     return ret

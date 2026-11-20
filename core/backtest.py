@@ -9,8 +9,11 @@
 
 Author: 邢不行
 """
+import gc
 import logging
+import multiprocessing
 import shutil
+import sys
 import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 
@@ -73,9 +76,16 @@ def save_latest_period(conf, select_results, max_candle_time):
 
 
 def step5_aggregate_select_results(conf: BacktestConfig, max_candle_time, save_final_result=False):
+    from core.utils.factor_data import read_vmstat_swap
+    t0 = time.perf_counter()
+    _, swap_out_start = read_vmstat_swap()
     logger.info(f'整理{conf.name}选币结果...')
     # 整理选币结果
+    t_concat = time.perf_counter()
     concat_select_results(conf)  # 合并多个策略的选币结果
+    concat_s = time.perf_counter() - t_concat
+
+    t_transfer = time.perf_counter()
     select_results = transfer_spot_to_swap(conf)  # 把现货币对换成合约来节省手续费，如果是纯多或者合约的话，就直接跳过
     save_latest_period(conf, select_results, max_candle_time)
     logger.debug(f'💾 {conf.name}选币结果df大小：'
@@ -83,30 +93,109 @@ def step5_aggregate_select_results(conf: BacktestConfig, max_candle_time, save_f
     if save_final_result:
         # 存储最终的选币结果
         select_results.to_pickle(backtest_path / 'final_select_results.pkl')
+    transfer_s = time.perf_counter() - t_transfer
 
     # 聚合大杂烩中多策略的权重，以及多offset选币的权重聚合
-    s_time = time.time()
+    s_time = time.perf_counter()
     logger.debug(f'🔃 开始{conf.name}权重聚合...')
     df_spot_ratio, df_swap_ratio = agg_multi_strategy_ratio(conf, select_results, max_candle_time)
+    agg_s = time.perf_counter() - s_time
 
     # 始终输出ratios
+    t_save = time.perf_counter()
     df_spot_ratio.to_pickle(conf.get_result_folder() / 'df_spot_ratio.pkl')
     df_swap_ratio.to_pickle(conf.get_result_folder() / 'df_swap_ratio.pkl')
+    save_s = time.perf_counter() - t_save
 
-    logger.ok(f'完成{conf.name}权重聚合，花费时间： {time.time() - s_time:.3f}秒')
+    total_s = time.perf_counter() - t0
+    _, swap_out_end = read_vmstat_swap()
+    logger.ok(f'完成{conf.name}权重聚合，花费时间： {agg_s + save_s:.3f}秒')
+    logger.info(
+        f'AGG_PROFILE conf={conf.name} rows={len(select_results)} concat_s={concat_s:.3f} '
+        f'transfer_s={transfer_s:.3f} agg_s={agg_s:.3f} save_s={save_s:.3f} '
+        f'total_s={total_s:.3f} swap_out_pages={max(0, swap_out_end - swap_out_start)}'
+    )
     return df_spot_ratio, df_swap_ratio
 
 
-def step6_simulate_performance(conf: BacktestConfig, run_time):
+_STEP6_FORK_MARKET = None
+_STEP6_WORKER_MARKET = None
+
+
+def _trim_process_heap():
+    """Return freed glibc heap arenas to the OS on Linux after dropping shared Pivot frames."""
+    if sys.platform != 'linux':
+        return
+    try:
+        import ctypes
+        ctypes.CDLL('libc.so.6').malloc_trim(0)
+    except Exception:
+        pass
+
+
+def _bmac_market_file_sig(hour_offset: str) -> tuple:
+    """Lightweight (path, mtime_ns, size) signature matching datatools pivot & exginfo inputs."""
+    from core.utils import datatools
+
+    sig = []
+    offset_dir = datatools.bmac_data_path / hour_offset
+    if offset_dir.exists():
+        for symbol_type in ('spot', 'swap'):
+            for fp in sorted(offset_dir.rglob(f'market_pivot_{symbol_type}_*.pkl')):
+                try:
+                    st = fp.stat()
+                    sig.append((str(fp), st.st_mtime_ns, st.st_size))
+                except OSError:
+                    pass
+    cache_dir = datatools.get_folder_path('data', 'cache', as_path_type=True)
+    for symbol_type in ('spot', 'swap'):
+        for base in (cache_dir, datatools.bmac_exginfo_path):
+            fp = base / f'exginfo_{symbol_type}.pkl'
+            if fp.exists():
+                try:
+                    st = fp.stat()
+                    sig.append((str(fp), st.st_mtime_ns, st.st_size))
+                except OSError:
+                    pass
+                break
+    return tuple(sig)
+
+
+def _load_step6_market_inputs(hour_offset: str) -> dict:
+    from core.utils.datatools import read_bmac_market_pivot, read_bmac_exginfo
+
+    return {
+        'pivots': {k: read_bmac_market_pivot(hour_offset, k) for k in ('spot', 'swap')},
+        'units': {k: read_bmac_exginfo(k) for k in ('spot', 'swap')},
+    }
+
+
+def _get_worker_step6_market_inputs(hour_offset: str) -> dict:
+    """Return read-only market_inputs shared across strategies within one Step 6 pool.
+
+    On fork (Linux): reuses parent-preloaded _STEP6_FORK_MARKET (1 total disk read, CoW pages).
+    On spawn (Windows/non-fork): bounded 1-entry per-worker cache keyed by (hour_offset, file_sig).
+    Callers (calc_equity) wrap inner pivot dicts in fresh outer dict shells and never mutate DataFrames.
+    """
+    global _STEP6_WORKER_MARKET
+    fork_shared = _STEP6_FORK_MARKET
+    if fork_shared is not None and fork_shared[0] == hour_offset:
+        return fork_shared[1]
+    sig = _bmac_market_file_sig(hour_offset)
+    if sig and _STEP6_WORKER_MARKET is not None and _STEP6_WORKER_MARKET[0] == (hour_offset, sig):
+        return _STEP6_WORKER_MARKET[1]
+    market_inputs = _load_step6_market_inputs(hour_offset)
+    _STEP6_WORKER_MARKET = ((hour_offset, sig), market_inputs) if sig else None
+    return market_inputs
+
+
+def step6_simulate_performance(conf: BacktestConfig, run_time, *, market_inputs=None):
     logger.info(f'{conf.name} 开始模拟交易...')
     has_timing_signal = isinstance(conf.timing, TimingSignal)
-    market_inputs = None
-    if has_timing_signal:
+    if market_inputs is None and has_timing_signal:
         # Only this child's state0/state1 share inputs; no cross-round/global cache.
-        from core.utils.datatools import read_bmac_market_pivot, read_bmac_exginfo
         offset = f'{run_time.minute}m'
-        market_inputs = dict(pivots={k: read_bmac_market_pivot(offset, k) for k in ('spot', 'swap')},
-                             units={k: read_bmac_exginfo(k) for k in ('spot', 'swap')})
+        market_inputs = _load_step6_market_inputs(offset)
     account_df = calc_equity(conf, run_time, state_name='state0', market_inputs=market_inputs)
 
     save_performance_df_csv(conf, 资金曲线=account_df)
@@ -182,7 +271,8 @@ def _step6_worker(conf, run_time):
     from core.utils.log_kit import logger
     _wait_for_compute_window()
     logger.debug(f"🔃 聚合{conf.name}的{len(conf.strategy_list)}个子策略，并计算资金曲线...")
-    return step6_simulate_performance(conf, run_time)
+    market_inputs = _get_worker_step6_market_inputs(f'{run_time.minute}m')
+    return step6_simulate_performance(conf, run_time, market_inputs=market_inputs)
 
 
 # ====================================================================================================
@@ -427,11 +517,30 @@ def run_backtest_multi(factory: BacktestConfigFactory, run_time):
     # LPT 排序 + as_completed：长任务先提交，完成即收割，不等整批
     _sorted6 = sorted(conf_list, key=lambda c: len(c.strategy_list), reverse=True)
     equity_map = {}
-    with ProcessPoolExecutor(max_workers=pool_workers) as executor:
-        futures = {executor.submit(_step6_worker, conf, run_time): conf for conf in _sorted6}
-        for f in as_completed(futures):
-            conf = futures[f]
-            equity_map[conf.name] = f.result()
+    global _STEP6_FORK_MARKET
+    _preload_fork = (
+        len(_sorted6) > 1
+        and multiprocessing.get_context().get_start_method() == 'fork'
+    )
+    try:
+        if _preload_fork:
+            _t_pre = time.perf_counter()
+            _offset = f'{run_time.minute}m'
+            _STEP6_FORK_MARKET = (_offset, _load_step6_market_inputs(_offset))
+            logger.info(
+                f'STEP6_MARKET_PRELOAD offset={_offset} mode=fork '
+                f'elapsed_s={time.perf_counter() - _t_pre:.3f}'
+            )
+        with ProcessPoolExecutor(max_workers=pool_workers) as executor:
+            futures = {executor.submit(_step6_worker, conf, run_time): conf for conf in _sorted6}
+            for f in as_completed(futures):
+                conf = futures[f]
+                equity_map[conf.name] = f.result()
+    finally:
+        if _STEP6_FORK_MARKET is not None:
+            _STEP6_FORK_MARKET = None
+            gc.collect()
+            _trim_process_heap()
     equity_list = [equity_map[conf.name] for conf in conf_list]  # 恢复原始顺序
 
     snapshot_time = max([equity['candle_begin_time'].max() for equity in equity_list])

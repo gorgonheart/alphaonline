@@ -16,11 +16,13 @@ def signal(*args):
 
 
 def signal_multi_params(df, param_list) -> dict:
+    from core.utils.fast_rolling import rolling_rank_pct
     ret = dict()
     if not param_list:
         return ret
     amplitude = (df['high'] - df['low']) / df['open']
+    idx = df.index
     for param in param_list:
         mean = amplitude.rolling(param, min_periods=1).mean()
-        ret[param] = mean.rolling(param, min_periods=1).rank(ascending=True, pct=True)
+        ret[param] = pd.Series(rolling_rank_pct(mean.to_numpy(dtype=np.float64, copy=False), param), index=idx)
     return ret

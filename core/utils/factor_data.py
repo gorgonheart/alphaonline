@@ -43,6 +43,21 @@ def temporary_gc(collection_context=None):
                 gc.disable()
 
 
+def read_vmstat_swap(path=Path('/proc/vmstat')):
+    """Read Linux (pswpin, pswpout) page counters; return (0, 0) when unavailable."""
+    try:
+        text = Path(path).read_text(encoding='utf-8')
+    except OSError:
+        return 0, 0
+    pswpin = pswpout = 0
+    for line in text.splitlines():
+        if line.startswith('pswpin '):
+            pswpin = int(line.split()[1])
+        elif line.startswith('pswpout '):
+            pswpout = int(line.split()[1])
+    return pswpin, pswpout
+
+
 @contextmanager
 def compute_phase(label):
     """Actual shared-stage boundaries, including child startup and completion.
