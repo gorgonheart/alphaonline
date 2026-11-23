@@ -994,9 +994,9 @@ class MultiEquityBacktestConfig:
     @staticmethod
     def _agg_side_ratios(side_frames: List[pd.DataFrame], pos_ratio: pd.DataFrame,
                          target_index: pd.Index) -> pd.DataFrame:
-        # 复刻连续 DataFrame.add(..., fill_value=0) 的列排序并集与行索引对齐顺序
-        all_cols = pd.DataFrame().columns
-        for df in side_frames:
+        # 复刻连续 DataFrame.add(..., fill_value=0) 的列排序并集（保留 columns.name）与行索引对齐顺序
+        all_cols = side_frames[0].columns
+        for df in side_frames[1:]:
             all_cols = all_cols.union(df.columns)
         if len(all_cols) > 0 and not all_cols.is_monotonic_increasing:
             all_cols = all_cols.sort_values()

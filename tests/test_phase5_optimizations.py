@@ -41,12 +41,12 @@ def test_p5_d1_agg_pos_ratio_matches_oracle_across_shapes_and_edges():
     sub_idx = full_idx[[35, 10, 0, 22, 15, 39, 3]]
     all_cols = [f'SYM{i:02d}-USDT' for i in range(25)]
 
-    # 1. 14 strategies with sparse/overlapping columns
+    # 1. 14 strategies with sparse/overlapping columns (with real pivot columns.name='symbol')
     pos_ratio = pd.DataFrame(rng.uniform(0.0, 0.15, (len(sub_idx), 14)), index=sub_idx, columns=range(14))
     ratio_dfs = []
     for k in range(14):
-        c_spot = list(rng.choice(all_cols, size=10, replace=False))
-        c_swap = list(rng.choice(all_cols, size=12, replace=False))
+        c_spot = pd.Index(rng.choice(all_cols, size=10, replace=False), name='symbol')
+        c_swap = pd.Index(rng.choice(all_cols, size=12, replace=False), name='symbol')
         sp = pd.DataFrame(rng.uniform(0.0, 0.2, (len(full_idx), len(c_spot))), index=full_idx, columns=c_spot)
         sw = pd.DataFrame(rng.uniform(-0.2, 0.2, (len(full_idx), len(c_swap))), index=full_idx, columns=c_swap)
         ratio_dfs.append((sp, sw))
