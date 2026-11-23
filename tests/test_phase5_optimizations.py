@@ -313,3 +313,174 @@ def test_p5_b2_restore_snapshot_propagates_child_error_after_draining_workers(tm
         h.restore_snapshot(snap, times[-3], values)
     # All concurrent worker threads must have exited before restore_snapshot propagated the error
     assert sibling_exited.is_set()
+
+
+# ==============================================================================
+# P5-A1: 3-way parallel read_inputs & multi-unit zero-copy read_arrow_tail
+# ==============================================================================
+
+def _write_typed_arrow(path, times_arr, extra_cols, symbols):
+    import json
+    import pyarrow as pa
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    arrays = {'candle_begin_time': times_arr, **extra_cols}
+    table = pa.table(arrays)
+    meta = dict(table.schema.metadata or {})
+    meta[b'symbols'] = json.dumps(symbols).encode('utf-8')
+    table = table.replace_schema_metadata(meta)
+    with pa.OSFile(str(path), 'wb') as fout:
+        with pa.ipc.new_file(fout, table.schema) as writer:
+            for _ in symbols:
+                writer.write_table(table)
+
+
+@pytest.mark.parametrize('unit,tz', [
+    ('ns', 'UTC'),
+    ('ms', 'UTC'),
+    ('us', None),
+    ('s', 'Asia/Hong_Kong'),
+])
+@pytest.mark.parametrize('sub_ns_offset', [0, 500])
+def test_p5_a1_read_arrow_tail_multi_unit_and_tz_matches_reference(tmp_path, monkeypatch, unit, tz, sub_ns_offset):
+    import pyarrow as pa
+    from core.utils.arrow_reader import arrow_snapshot_path
+    from tools.robust40 import handoff as h
+
+    run = pd.Timestamp('2026-10-31 08:25', tz='Asia/Hong_Kong').to_pydatetime()
+    base_end = pd.Timestamp('2026-10-30 23:25')
+    idx_ns = pd.date_range(base_end - pd.Timedelta(hours=220), periods=222, freq='h', tz='UTC')
+    unit_div = {'ns': 1, 'us': 10**3, 'ms': 10**6, 's': 10**9}[unit]
+    ticks = (idx_ns.asi8 // unit_div).astype(np.int64)
+    ts_arr = pa.array(ticks, type=pa.timestamp(unit, tz=tz))
+    close_arr = pa.array(np.arange(len(ticks), dtype=np.float64))
+
+    path = arrow_snapshot_path(tmp_path, 'swap', run)
+    _write_typed_arrow(path, ts_arr, {'close': close_arr}, ['BTC-USDT'])
+
+    end = base_end + pd.Timedelta(nanoseconds=sub_ns_offset)
+    start = (base_end - pd.Timedelta(hours=40)) + pd.Timedelta(nanoseconds=sub_ns_offset)
+
+    # Independent mathematical oracle: exact [start, end] interval (avoids pandas 2.2 coarse-unit
+    # DatetimeIndex.searchsorted sub-unit truncation quirk) and last-10 rows <= end for tail mode.
+    ref_idx = h.utc_times(ts_arr.to_numpy())
+    in_window = (ref_idx >= start) & (ref_idx <= end)
+    ref_indexed = pd.DataFrame(
+        {'close': np.arange(len(ticks), dtype=np.float64)[in_window], 'funding_fee': np.nan},
+        index=ref_idx[in_window].copy(deep=True).rename('candle_begin_time'),
+    )
+    le_end = np.flatnonzero(ref_idx <= end)
+    r_ref = int(le_end[-1]) + 1 if len(le_end) else 0
+    l_tail = max(0, r_ref - 10)
+    ref_tail = pd.DataFrame({
+        'candle_begin_time': ts_arr.slice(l_tail, r_ref - l_tail).to_pandas(date_as_object=False),
+        'close': np.arange(len(ticks), dtype=np.float64)[l_tail:r_ref],
+    })
+
+    # Fast path must NOT invoke utc_times on candle_begin_time when schema is a non-null Arrow TimestampType
+    def _forbid_utc_times(*args, **kwargs):
+        raise AssertionError('read_arrow_tail fast path should not call utc_times on candle_begin_time')
+
+    monkeypatch.setattr(h, 'utc_times', _forbid_utc_times)
+    actual_indexed = h.read_arrow_tail(tmp_path, 'swap', run, end, start=start, indexed=True)['BTC-USDT']
+    pd.testing.assert_frame_equal(actual_indexed, ref_indexed, check_exact=True)
+
+    actual_tail = h.read_arrow_tail(tmp_path, 'swap', run, end, start=start, indexed=False, tail=10)['BTC-USDT']
+    pd.testing.assert_frame_equal(actual_tail.reset_index(drop=True), ref_tail.reset_index(drop=True), check_exact=True)
+
+
+def test_p5_a1_read_arrow_tail_null_timestamp_falls_back_safely(tmp_path):
+    import pyarrow as pa
+    from core.utils.arrow_reader import arrow_snapshot_path
+    from tools.robust40 import handoff as h
+
+    run = pd.Timestamp('2026-10-31 08:25', tz='Asia/Hong_Kong').to_pydatetime()
+    end = pd.Timestamp('2026-10-30 23:25')
+    # 1. Non-timestamp (string) column triggers fallback to utc_times cleanly
+    path = arrow_snapshot_path(tmp_path, 'spot', run)
+    str_times = pa.array([str(end - pd.Timedelta(hours=1)), str(end)], type=pa.string())
+    _write_typed_arrow(path, str_times, {'close': pa.array([1.0, 2.0])}, ['ETH-USDT'])
+
+    out = h.read_arrow_tail(tmp_path, 'spot', run, end, start=end - pd.Timedelta(hours=2), indexed=True)
+    assert list(out['ETH-USDT']['close']) == [1.0, 2.0]
+
+    # 2. Nullable timestamp[ms, UTC] column with a null entry falls back safely without ArrowInvalid
+    ms_vals = [None, (end - pd.Timedelta(hours=1)).value // 10**6, end.value // 10**6]
+    null_ts = pa.array(ms_vals, type=pa.timestamp('ms', tz='UTC'))
+    _write_typed_arrow(path, null_ts, {'close': pa.array([30.0, 10.0, 20.0])}, ['ETH-USDT'])
+    out_null = h.read_arrow_tail(tmp_path, 'spot', run, end, start=end - pd.Timedelta(hours=2), indexed=True)
+    assert 'ETH-USDT' in out_null and 10.0 in out_null['ETH-USDT']['close'].values and 20.0 in out_null['ETH-USDT']['close'].values
+
+
+def test_p5_a1_read_inputs_parallel_three_way_preserves_telemetry_and_errors(tmp_path, monkeypatch):
+    import json
+    import threading
+    import config
+    from core.utils.arrow_reader import arrow_snapshot_path
+    from tools.robust40 import handoff as h, telemetry
+
+    run = pd.Timestamp('2026-10-31 08:25', tz='Asia/Hong_Kong').to_pydatetime()
+    end = pd.Timestamp('2026-10-30 23:25')
+    start = end - pd.Timedelta(hours=10)
+    idx = pd.date_range(start, end, freq='h')
+
+    # Create dummy arrow files so path.exists() checks pass if needed
+    for kind in ('spot', 'swap'):
+        p = arrow_snapshot_path(tmp_path, kind, run)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_bytes(b'x')
+    monkeypatch.setattr(config, 'bmac_data_path', tmp_path)
+
+    # 1. All 3 branches execute concurrently via Barrier(3) and emit all 3 telemetry phase fields
+    barrier = threading.Barrier(3, timeout=2.0)
+
+    def fake_arrow(root, kind, rt, e, s, indexed=False):
+        barrier.wait()
+        return {'BTC-USDT': pd.DataFrame({'close': np.ones(len(idx))}, index=idx)}
+
+    def fake_pivot(root, minute, e, s):
+        barrier.wait()
+        return {'pivot/spot/close': pd.DataFrame({'BTC-USDT': np.ones(len(idx))}, index=idx)}
+
+    monkeypatch.setattr(h, 'read_arrow_tail', fake_arrow)
+    monkeypatch.setattr(h, 'read_pivot_inputs', fake_pivot)
+
+    events = []
+    monkeypatch.setattr(telemetry, '_write', lambda msg: events.append(json.loads(msg.split(' ', 1)[1])))
+    with telemetry.round_log('acct_a1', int(run.timestamp())):
+        out = h.read_inputs(run, 25, end, start=start)
+
+    assert set(out.keys()) == {'raw/spot/BTCUSDT', 'raw/swap/BTCUSDT', 'pivot/spot/close'}
+    end_event = events[-1]
+    for field in ('revision_arrow_spot_s', 'revision_arrow_swap_s', 'revision_pivot_s'):
+        assert field in end_event and isinstance(end_event[field], float) and end_event[field] >= 0.0
+
+    # 2. Failure in pivot branch propagates original exception and sets failed_phase='revision_pivot_s'
+    def ok_arrow(root, kind, rt, e, s, indexed=False):
+        return {'BTC-USDT': pd.DataFrame({'close': np.ones(len(idx))}, index=idx)}
+
+    def fail_pivot(root, minute, e, s):
+        raise RuntimeError('pivot disk error')
+
+    monkeypatch.setattr(h, 'read_arrow_tail', ok_arrow)
+    monkeypatch.setattr(h, 'read_pivot_inputs', fail_pivot)
+    events.clear()
+    with pytest.raises(RuntimeError, match='pivot disk error'):
+        with telemetry.round_log('acct_a1', int(run.timestamp())):
+            h.read_inputs(run, 25, end, start=start)
+    assert events[-1].get('failed_phase') == 'revision_pivot_s'
+
+    # 3. Empty spot Arrow raises ValueError WITHOUT setting failed_phase='revision_arrow_spot_s'
+    def empty_spot_arrow(root, kind, rt, e, s, indexed=False):
+        return {} if kind == 'spot' else {'BTC-USDT': pd.DataFrame({'close': np.ones(len(idx))}, index=idx)}
+
+    def ok_pivot(root, minute, e, s):
+        return {'pivot/spot/close': pd.DataFrame({'BTC-USDT': np.ones(len(idx))}, index=idx)}
+
+    monkeypatch.setattr(h, 'read_arrow_tail', empty_spot_arrow)
+    monkeypatch.setattr(h, 'read_pivot_inputs', ok_pivot)
+    events.clear()
+    with pytest.raises(ValueError, match='Missing same-round spot Arrow'):
+        with telemetry.round_log('acct_a1', int(run.timestamp())):
+            h.read_inputs(run, 25, end, start=start)
+    assert events[-1].get('failed_phase') != 'revision_arrow_spot_s'

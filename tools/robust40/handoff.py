@@ -4,6 +4,7 @@ from contextlib import contextmanager, nullcontext
 from pathlib import Path
 import shutil
 import tempfile
+import time as _time
 import numpy as np
 import pandas as pd
 from .warmup import cutoff
@@ -207,6 +208,17 @@ def first_revision(
     return min(earliest) if earliest else None
 
 
+_TS_UNIT_TO_NS = {'s': 10**9, 'ms': 10**6, 'us': 10**3, 'ns': 1}
+
+
+def _timed_call(fn, *args, **kwargs):
+    started = _time.perf_counter()
+    try:
+        return fn(*args, **kwargs), round(_time.perf_counter() - started, 6), None
+    except BaseException as exc:
+        return None, round(_time.perf_counter() - started, 6), exc
+
+
 def read_inputs(run_time, minute, end, start=None, initializing=False, raw_swap=None, pivots=None):
     from config import bmac_data_path
     from core.utils.datatools import read_bmac_market_pivot
@@ -214,17 +226,36 @@ def read_inputs(run_time, minute, end, start=None, initializing=False, raw_swap=
     from core.utils.arrow_reader import arrow_snapshot_path
     if raw_swap is None and (not initializing or all(
             arrow_snapshot_path(bmac_data_path,k,run_time).exists() for k in ('spot','swap'))):
-        # Arrow already projects the required rows/columns: normalize that result
-        # in place, rather than sending 1,000+ tiny frames through input_frames again.
-        out={}
-        for kind in ('spot','swap'):
-            with telemetry.phase(f'revision_arrow_{kind}_s'):
-                source=read_arrow_tail(bmac_data_path,kind,run_time,end,start,indexed=True)
-            if not source:raise ValueError(f'Missing same-round {kind} Arrow for revision checks')
-            out.update({f'raw/{kind}/{canonical(s)}':f for s,f in source.items()})
-        with telemetry.phase('revision_pivot_s'):
-            out.update(input_frames({},pivots,end,start) if pivots is not None else
-                       read_pivot_inputs(bmac_data_path,minute,end,start))
+        # Arrow already projects the required rows/columns: read spot/swap/pivot
+        # concurrently and aggregate telemetry on the main thread (ContextVar-safe).
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            spot_fut = pool.submit(_timed_call, read_arrow_tail, bmac_data_path, 'spot', run_time, end, start, indexed=True)
+            swap_fut = pool.submit(_timed_call, read_arrow_tail, bmac_data_path, 'swap', run_time, end, start, indexed=True)
+            pivot_fut = (
+                pool.submit(_timed_call, input_frames, {}, pivots, end, start)
+                if pivots is not None
+                else pool.submit(_timed_call, read_pivot_inputs, bmac_data_path, minute, end, start)
+            )
+            results = (
+                ('spot', 'revision_arrow_spot_s', spot_fut.result()),
+                ('swap', 'revision_arrow_swap_s', swap_fut.result()),
+                ('pivot', 'revision_pivot_s', pivot_fut.result()),
+            )
+        out = {}
+        active = telemetry.active()
+        for kind, phase_name, (value, elapsed_s, exc) in results:
+            if active:
+                telemetry.add(**{phase_name: elapsed_s})
+            if exc is not None:
+                if active:
+                    telemetry._current.get().setdefault('failed_phase', phase_name)
+                raise exc
+            if kind in ('spot', 'swap'):
+                if not value:
+                    raise ValueError(f'Missing same-round {kind} Arrow for revision checks')
+                out.update({f'raw/{kind}/{canonical(s)}': f for s, f in value.items()})
+            else:
+                out.update(value)
         return out
     raw = {}
     for kind in ('spot','swap'):
@@ -259,21 +290,40 @@ def read_arrow_tail(root, kind, run_time, end, start=None, indexed=False, column
         columns=['candle_begin_time']+[c for c in (RAW_COLUMNS if columns is None else columns)
                                       if c != 'candle_begin_time' and c in reader.schema.names]
         data_columns=[c for c in columns if not indexed or c!='candle_begin_time']
+        ts_type = reader.schema.field('candle_begin_time').type
+        ts_unit = ts_type.unit if pa.types.is_timestamp(ts_type) and ts_type.unit in _TS_UNIT_TO_NS else None
+        if ts_unit is not None:
+            scale = _TS_UNIT_TO_NS[ts_unit]
+            end_key = end.as_unit('ns').value // scale
+            start_key = (start.as_unit('ns').value + scale - 1) // scale
+            index_dtype = f'datetime64[{ts_unit}]'
         for i,symbol in enumerate(names):
             batch=reader.get_batch(i)
-            idx=utc_times(batch.column('candle_begin_time').to_numpy())
-            right=idx.searchsorted(end,side='right')
-            # MODEL features retain the original last-N-rows convention even
-            # for sparse histories. Revision checks keep their time window.
-            left=max(0,right-tail) if tail is not None else idx.searchsorted(start)
-            if right<=left:continue
-            frame=batch.select(data_columns).slice(int(left),int(right-left)).to_pandas(use_threads=False)
+            ts_col=batch.column('candle_begin_time')
+            if ts_unit is not None and ts_col.null_count == 0:
+                raw=ts_col.cast(pa.int64()).to_numpy(zero_copy_only=False)
+                right=int(np.searchsorted(raw,end_key,side='right'))
+                # MODEL features retain the original last-N-rows convention even
+                # for sparse histories. Revision checks keep their time window.
+                left=max(0,right-tail) if tail is not None else int(np.searchsorted(raw,start_key,side='left'))
+                if right<=left:continue
+                frame=batch.select(data_columns).slice(left,right-left).to_pandas(use_threads=False)
+                if indexed:
+                    if missing_revision_fee:
+                        frame['funding_fee'] = np.nan
+                    # Preserve Arrow native timestamp unit while detaching from mmap buffer.
+                    frame.index=pd.DatetimeIndex(raw[left:right].copy(),dtype=index_dtype,name='candle_begin_time')
+            else:
+                idx=utc_times(ts_col.to_numpy(zero_copy_only=False))
+                right=idx.searchsorted(end,side='right')
+                left=max(0,right-tail) if tail is not None else idx.searchsorted(start)
+                if right<=left:continue
+                frame=batch.select(data_columns).slice(int(left),int(right-left)).to_pandas(use_threads=False)
+                if indexed:
+                    if missing_revision_fee:
+                        frame['funding_fee'] = np.nan
+                    frame.index=idx[left:right].copy(deep=True).rename('candle_begin_time')
             if indexed:
-                if missing_revision_fee:
-                    frame['funding_fee'] = np.nan
-                # The time index already exists. Do not convert a duplicate
-                # timestamp column or retain its full-history backing buffer.
-                frame.index=idx[left:right].copy(deep=True).rename('candle_begin_time')
                 if not frame.index.is_unique:raise ValueError('Duplicate revision input time')
                 if 'first_candle_time' in frame:
                     frame['first_candle_time']=utc_times(frame.first_candle_time).to_numpy()
