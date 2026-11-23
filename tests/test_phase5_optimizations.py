@@ -135,3 +135,181 @@ def test_p5_d1_agg_pos_ratio_avoids_dataframe_add(monkeypatch):
     act_spot, act_swap = _make_me_conf(ratio_dfs).agg_pos_ratio(pos_ratio)
     pd.testing.assert_frame_equal(act_spot, exp_spot, check_exact=True)
     pd.testing.assert_frame_equal(act_swap, exp_swap, check_exact=True)
+
+
+# ==============================================================================
+# P5-B2: parallel restore_child in restore_snapshot
+# ==============================================================================
+
+def _build_restore_snapshot_fixture(root, n_children=4):
+    """Build a self-contained snapshot that passes real restore_model & validate_snapshot."""
+    from scipy import sparse
+    from core.simulator import Simulator
+    from tools.robust40 import server
+
+    times = pd.date_range('2026-10-01 00:40:00', periods=30, freq='h')
+    utc_times = times.tz_localize('UTC')
+    pool = [dict(name=f'child{i}', re_timing=(True if i == 1 else None)) for i in range(n_children)]
+
+    cols = ['spot:S', 'swap:U']
+    mat = sparse.csr_matrix(np.tile(np.array([[0.1, -0.1]]), (len(times), 1)))
+    base_state = ((10000.0, np.zeros(1), np.zeros(1)), (10000.0, np.zeros(1), np.zeros(1)))
+    layout = (('spot', ('S',), (1.0,)), ('swap', ('U',), (1.0,)))
+
+    def _make_account_df():
+        df = pd.DataFrame({'equity': np.linspace(10000.0, 10100.0, len(times))}, index=times)
+        df.attrs['checkpoints'] = {t: base_state for t in times[-25:]}
+        df.attrs['simulation_state'] = base_state
+        df.attrs['checkpoint_layout'] = layout
+        return df
+
+    context = dict(
+        index=times,
+        minute=40,
+        columns=cols,
+        leverage=pd.Series(1.0, index=times),
+        equities=[pd.DataFrame({'candle_begin_time': times, 'equity': 10000.0}) for _ in range(n_children)],
+        matrices=[mat.copy() for _ in range(n_children)],
+        close=pd.DataFrame({'spot:S': 100.0, 'swap:U': 100.0}, index=times),
+        simulation=dict(
+            spot_open_p=np.full((len(times), 1), 100.0),
+            spot_close_p=np.full((len(times), 1), 100.0),
+            swap_open_p=np.full((len(times), 1), 100.0),
+            swap_close_p=np.full((len(times), 1), 100.0),
+            spot_lot_sizes=np.array([1.0]),
+            swap_lot_sizes=np.array([1.0]),
+            funding_rates=np.zeros((len(times), 1)),
+            leverages=np.ones(len(times)),
+            require_rebalance=np.ones(len(times), dtype=bool),
+            capital_flow_arr=np.zeros(len(times)),
+        ),
+    )
+    result = dict(
+        virtual_accounts=[_make_account_df()],
+        account=_make_account_df(),
+        parent=pd.DataFrame(1.0 / n_children, index=times, columns=range(n_children)),
+        base=pd.DataFrame(1.0 / n_children, index=times, columns=range(n_children)),
+        delta=pd.DataFrame(0.0, index=times, columns=['U']),
+        views=[pd.DataFrame(1.0 / n_children, index=times, columns=range(n_children))],
+        targets=dict(
+            spot=pd.DataFrame(0.1, index=times, columns=['S']),
+            swap=pd.DataFrame(-0.1, index=times, columns=['U']),
+        ),
+        weekly_mix=pd.DataFrame({'w': [1.0]}, index=pd.DatetimeIndex([times[0]])),
+        predictions=pd.DataFrame({'time': pd.Series(dtype='datetime64[ns]'), 'forward24': pd.Series(dtype=float)}),
+        train_windows=pd.DataFrame({'quarter': pd.Series(dtype='datetime64[ns]')}),
+        models={},
+    )
+    bundle = dict(context=context, result=result, minute=40, account_identity='acct_b2', strategy_pool=pool)
+
+    (root / 'model').mkdir(parents=True)
+    pd.to_pickle(bundle, root / 'model/state.pkl')
+    for i, spec in enumerate(pool):
+        child = root / f'S{i + 1}-{spec["name"]}'
+        child.mkdir()
+        pd.DataFrame({'candle_begin_time': utc_times, 'val': np.arange(len(times)) + i}).to_pickle(child / '选币结果.pkl')
+        pd.DataFrame({'S': np.full(len(times), 0.1)}, index=utc_times).to_pickle(child / 'ratio_spot.pkl')
+        pd.DataFrame({'U': np.full(len(times), -0.1)}, index=utc_times).to_pickle(child / 'ratio_swap.pkl')
+        for suffix in (('state0', 'state1') if spec['re_timing'] else ('state0',)):
+            st = {
+                'spot': dict(columns=pd.Index(['S']), sim=Simulator(10000.0, np.array([1.0]), 0.001, np.zeros(1, dtype=np.int64), 5.0)),
+                'swap': dict(columns=pd.Index(['U']), sim=Simulator(10000.0, np.array([1.0]), 0.0006, np.zeros(1, dtype=np.int64), 5.0)),
+            }
+            st.update(
+                simulate_to=utc_times[-1],
+                snapshot_queue=[
+                    dict(time=t, spot=st['spot']['sim'].snapshot(), swap=st['swap']['sim'].snapshot())
+                    for t in utc_times[-25:]
+                ],
+            )
+            pd.to_pickle(st, child / f'lots_{suffix}.pkl')
+            pd.DataFrame({'candle_begin_time': utc_times, 'equity': 10000.0 + i}).to_pickle(child / f'account_{suffix}.pkl')
+
+    (root / 'sections').mkdir()
+    points = {t: dict(cutoff=t, held=[], ranks=[], params=(17, 0.1, 0.9, '2026-01-01'), initialized=True, version=1) for t in times[-25:]}
+    section = dict(points[times[-1]], checkpoints=points, output=pd.DataFrame({'candle_begin_time': times, 'chosen': 1}))
+    pd.to_pickle(section, root / 'sections/s3.pkl')
+    (root / 'snapshot_time.txt').write_text(str(utc_times[-1]))
+    server.complete(root, 'acct_b2', {'strategy_pool': pool}, times[-1], '2026-01-01 00:40')
+    return times, {'strategy_pool': pool}
+
+
+def test_p5_b2_restore_snapshot_runs_children_concurrently_and_matches_serial(tmp_path, monkeypatch):
+    import shutil
+    import threading
+    from tools.robust40 import handoff as h
+
+    serial_snap = tmp_path / 'serial'
+    parallel_snap = tmp_path / 'parallel'
+    times, values = _build_restore_snapshot_fixture(serial_snap, n_children=4)
+    shutil.copytree(serial_snap, parallel_snap)
+    revised = times[-3]
+
+    # 1. Run true serial reference (1-by-1 restore_child) on serial_snap
+    orig_restore_child = h.restore_child
+    expected_time = times[-4]
+    for child in sorted({p.parent for p in serial_snap.glob('S*/lots_state*.pkl')}):
+        orig_restore_child(child, expected_time)
+
+    # 2. Prove parallel_snap overlaps at least 2 children concurrently via Barrier
+    barrier = threading.Barrier(2, timeout=2.0)
+    entered = 0
+    lock = threading.Lock()
+
+    def spy_restore_child(child, t):
+        nonlocal entered
+        with lock:
+            entered += 1
+            should_wait = entered <= 2
+        if should_wait:
+            barrier.wait()
+        return orig_restore_child(child, t)
+
+    monkeypatch.setattr(h, 'restore_child', spy_restore_child)
+    actual_time = h.restore_snapshot(parallel_snap, revised, values)
+    assert actual_time == expected_time
+
+    # 3. Verify every child artifact matches serial reference identically
+    for i, spec in enumerate(values['strategy_pool']):
+        child_rel = f'S{i + 1}-{spec["name"]}'
+        for s_path in sorted((serial_snap / child_rel).glob('*.pkl')):
+            p_path = parallel_snap / child_rel / s_path.name
+            s_obj = pd.read_pickle(s_path)
+            p_obj = pd.read_pickle(p_path)
+            if isinstance(s_obj, pd.DataFrame):
+                pd.testing.assert_frame_equal(p_obj, s_obj, check_exact=True)
+            else:
+                assert p_obj['simulate_to'] == s_obj['simulate_to']
+                assert [x['time'] for x in p_obj['snapshot_queue']] == [x['time'] for x in s_obj['snapshot_queue']]
+
+
+def test_p5_b2_restore_snapshot_propagates_child_error_after_draining_workers(tmp_path, monkeypatch):
+    import threading
+    import time
+    from tools.robust40 import handoff as h
+
+    snap = tmp_path / 'err_snap'
+    times, values = _build_restore_snapshot_fixture(snap, n_children=4)
+    orig_restore_child = h.restore_child
+
+    sibling_started = threading.Event()
+    sibling_exited = threading.Event()
+
+    def faulty_restore_child(child, t):
+        if child.name.startswith('S1-'):
+            sibling_started.wait(timeout=2.0)
+            raise RuntimeError('corrupted child S1')
+        if child.name.startswith('S2-'):
+            sibling_started.set()
+            try:
+                time.sleep(0.08)
+                return orig_restore_child(child, t)
+            finally:
+                sibling_exited.set()
+        return orig_restore_child(child, t)
+
+    monkeypatch.setattr(h, 'restore_child', faulty_restore_child)
+    with pytest.raises(RuntimeError, match='corrupted child S1'):
+        h.restore_snapshot(snap, times[-3], values)
+    # All concurrent worker threads must have exited before restore_snapshot propagated the error
+    assert sibling_exited.is_set()

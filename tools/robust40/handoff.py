@@ -1,4 +1,5 @@
 """Account-locked common recovery. No exchange calls and no historical orders."""
+from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager, nullcontext
 from pathlib import Path
 import shutil
@@ -345,8 +346,15 @@ def restore_snapshot(snapshot, revised_from, values):
     time=common_before(groups,cutoff(revised_from))
     if time.minute!=bundle['minute']:raise ValueError('Common checkpoint offset differs')
     restored,_=restore_model(bundle['context'],bundle['result'],revised_from,time)
-    for child in {p.parent for p in lots}:
-        restore_child(child,time)
+    children=sorted({p.parent for p in lots})
+    if len(children)<=1:
+        for child in children:
+            restore_child(child,time)
+    else:
+        with ThreadPoolExecutor(max_workers=min(4,len(children))) as pool:
+            futures=[pool.submit(restore_child,child,time) for child in children]
+            for fut in futures:
+                fut.result()
     for path,state in sections.items():
         points=state['checkpoints'];key=next(t for t in points if cutoff(t)==time)
         output=state['output'];keep=pd.to_datetime(output.candle_begin_time,utc=True)<=time.tz_localize('UTC')
