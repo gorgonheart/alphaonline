@@ -112,8 +112,12 @@ def first_revision(
        Unheld symbols stay incremental; held symbols require intact historical pivot
        columns and emit ``removed_held_symbols`` telemetry alerts (otherwise fall back
        to conservative window-start revision).
-    Missing ``pivot/*`` tables or ``removed_columns`` on shared pivots stay conservative.
+    Missing entire ``pivot/*`` tables and non-pivot ``removed_columns`` stay conservative;
+    ``removed_columns`` on shared ``pivot/{spot|swap}/*`` follow the same per-market
+    surge circuit breaker and zero-holding relaxation (canonicalized via ``canonical``).
     """
+    from .offline import canonical
+
     if not old:raise ValueError('Missing revision input coverage')
     end = max(f.index.max() for f in old.values())
 
@@ -142,9 +146,53 @@ def first_revision(
                 f'swap={len(removed_raw_swap)}/{swap_limit} (old={old_swap_count})'
             )
 
+    # 2. Per-market circuit breaker for removed_columns across shared pivot/{spot|swap}/* tables.
+    removed_pivot_spot = set()
+    removed_pivot_swap = set()
+    for key in old.keys() & new.keys():
+        if key.startswith('pivot/spot/'):
+            diff = old[key].columns.difference(new[key].columns, sort=False)
+            if len(diff):
+                removed_pivot_spot.update(canonical(c) for c in diff)
+        elif key.startswith('pivot/swap/'):
+            diff = old[key].columns.difference(new[key].columns, sort=False)
+            if len(diff):
+                removed_pivot_swap.update(canonical(c) for c in diff)
+    if removed_pivot_spot or removed_pivot_swap:
+        def _pivot_old_count(kind):
+            close_key = f'pivot/{kind}/close'
+            if close_key in old:
+                return len(old[close_key].columns)
+            return max((len(old[k].columns) for k in old if k.startswith(f'pivot/{kind}/')), default=0)
+
+        old_pivot_spot_count = _pivot_old_count('spot')
+        old_pivot_swap_count = _pivot_old_count('swap')
+        pivot_spot_limit = max(int(removed_raw_min_limit), int(removed_raw_ratio_limit * old_pivot_spot_count))
+        pivot_swap_limit = max(int(removed_raw_min_limit), int(removed_raw_ratio_limit * old_pivot_swap_count))
+        if len(removed_pivot_spot) > pivot_spot_limit or len(removed_pivot_swap) > pivot_swap_limit:
+            all_removed_piv = sorted(
+                [f'spot:{s}' for s in removed_pivot_spot] + [f'swap:{s}' for s in removed_pivot_swap]
+            )
+            telemetry.add(removed_columns=len(all_removed_piv))
+            telemetry.fields(all_removed_piv, key='removed_column_names')
+            telemetry.record(
+                circuit_breaker='removed_pivot_columns_surge',
+                removed_pivot_spot=len(removed_pivot_spot),
+                removed_pivot_swap=len(removed_pivot_swap),
+                removed_pivot_spot_limit=pivot_spot_limit,
+                removed_pivot_swap_limit=pivot_swap_limit,
+            )
+            raise UpstreamUniverseDropError(
+                f'Upstream pivot universe drop exceeds limit: '
+                f'spot={len(removed_pivot_spot)}/{pivot_spot_limit} (old={old_pivot_spot_count}), '
+                f'swap={len(removed_pivot_swap)}/{pivot_swap_limit} (old={old_pivot_swap_count})'
+            )
+
     resolved_held = None
-    if (removed_raw_spot or removed_raw_swap) and held_symbols is not None:
-        resolved_held = held_symbols() if callable(held_symbols) else set(held_symbols)
+    if (removed_raw_spot or removed_raw_swap or removed_pivot_spot or removed_pivot_swap) and held_symbols is not None:
+        raw_held = held_symbols() if callable(held_symbols) else held_symbols
+        if raw_held is not None:
+            resolved_held = {(kind, canonical(sym)) for kind, sym in raw_held}
 
     earliest = []
     for key in old.keys() | new.keys():
@@ -160,9 +208,10 @@ def first_revision(
             telemetry.fields([key], key='removed_series_keys')
             if key.startswith(('raw/spot/', 'raw/swap/')):
                 _, kind, sym = key.split('/', 2)
-                is_held = resolved_held is not None and (kind, sym) in resolved_held
+                canon_sym = canonical(sym)
+                is_held = resolved_held is not None and (kind, canon_sym) in resolved_held
                 if is_held:
-                    telemetry.fields([f'{kind}:{sym}'], key='removed_held_symbols')
+                    telemetry.fields([f'{kind}:{canon_sym}'], key='removed_held_symbols')
                     pivot_close = new.get(f'pivot/{kind}/close')
                     if pivot_close is None or sym not in pivot_close.columns:
                         earliest.append(a.index.min())
@@ -187,7 +236,21 @@ def first_revision(
         if len(removed_columns):
             telemetry.add(removed_columns=len(removed_columns))
             telemetry.fields(removed_columns, key='removed_column_names')
-            earliest.append(a.index.min())
+            if key.startswith(('pivot/spot/', 'pivot/swap/')):
+                kind = key.split('/', 2)[1]
+                if resolved_held is None:
+                    earliest.append(a.index.min())
+                else:
+                    held_hits = [
+                        f'{kind}:{canonical(c)}'
+                        for c in removed_columns
+                        if (kind, canonical(c)) in resolved_held
+                    ]
+                    if held_hits:
+                        telemetry.fields(held_hits, key='removed_held_symbols')
+                        earliest.append(a.index.min())
+            else:
+                earliest.append(a.index.min())
         columns = a.columns.intersection(b.columns)
         if not len(columns):
             continue
