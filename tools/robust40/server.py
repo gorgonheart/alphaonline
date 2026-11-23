@@ -62,11 +62,11 @@ def save_meta(path,meta):
     temp=path/'warmup.tmp';pd.to_pickle(meta,temp);temp.replace(path/'warmup.pkl')
 
 
-def complete(path,account,values,end,origin):
+def complete(path,account,values,end,origin,*,history_trim_date=None):
     sections=[str(p.relative_to(path)) for p in (Path(path)/'sections').glob('*.pkl')]
     if not sections:raise ValueError('S3 section state missing')
     save_meta(path,dict(account=account,settings=values,cutoff=cutoff(end),origin=str(origin),checkpoint_version=1,
-                        complete=True,sections=sections))
+                        complete=True,sections=sections,history_trim_date=history_trim_date))
 
 
 def begin(path):
@@ -301,7 +301,8 @@ def finish_live(strategy):
             if cutoff(pd.read_pickle(section)['cutoff'])!=end:raise ValueError('Replayed S3 cutoff differs')
     elif hasattr(strategy, '_robust40_bundle'):
         delattr(strategy, '_robust40_bundle')
-    complete(path,meta['account'],meta['settings'],strategy._robust40_result['parent'].index[-1],meta['origin'])
+    complete(path,meta['account'],meta['settings'],strategy._robust40_result['parent'].index[-1],meta['origin'],
+             history_trim_date=meta.get('history_trim_date'))
     from . import telemetry
     telemetry.commit()
 

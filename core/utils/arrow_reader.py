@@ -72,6 +72,18 @@ def arrow_snapshot_path(bmac_data_path, symbol_type: str, run_time: datetime) ->
     return Path(bmac_data_path) / f'{run_time.minute}m' / f'{symbol_type}_dict_{ts}.arrow'
 
 
+def read_arrow_history_trim_date(arrow_path: str | Path) -> str | None:
+    """只读 Arrow schema metadata 中的 b'history_trim_date'；缺失或空值返回 None。"""
+    arrow_path = Path(arrow_path)
+    with pa.memory_map(str(arrow_path), 'r') as source:
+        reader = pa.ipc.open_file(source)
+        raw = (reader.schema.metadata or {}).get(b'history_trim_date')
+    if not raw:
+        return None
+    text = raw.decode('utf-8').strip()
+    return text or None
+
+
 def read_arrow_market_dict_for_run_time(bmac_data_path, symbol_type: str, run_time: datetime, max_rows=5000):
     """按 run_time 读 Arrow 快照；文件缺失或读取失败 → 返回 None（上层 fallback）。
 

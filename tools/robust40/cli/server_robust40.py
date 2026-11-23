@@ -163,6 +163,39 @@ def prepare(account, workspace, stamp, destination):
     return True
 
 
+def check_upstream_history_trim_date(bmac_data_path, minute, stamp, saved_trim):
+    """Compare spot/swap Arrow header history_trim_date against saved snapshot value.
+
+    Raises ValueError if spot and swap headers disagree (partial publish/crash).
+    Returns (need_rebuild, saved_trim, upstream_trim); only advances strictly later
+    than saved_trim trigger rebuild.
+    """
+    import pandas as pd
+    from core.utils.arrow_reader import arrow_snapshot_path, read_arrow_history_trim_date
+    from tools.robust40.server import cutoff
+    run_time = pd.Timestamp(int(stamp), unit='s', tz='UTC').to_pydatetime()
+    spot_path = arrow_snapshot_path(bmac_data_path, 'spot', run_time)
+    swap_path = arrow_snapshot_path(bmac_data_path, 'swap', run_time)
+    if run_time.minute != int(minute):
+        folder = Path(bmac_data_path) / f'{int(minute)}m'
+        spot_path = folder / f'spot_dict_{int(stamp)}.arrow'
+        swap_path = folder / f'swap_dict_{int(stamp)}.arrow'
+    if not spot_path.exists() or not swap_path.exists():
+        return False, saved_trim, None
+    spot_trim = read_arrow_history_trim_date(spot_path)
+    swap_trim = read_arrow_history_trim_date(swap_path)
+    if spot_trim != swap_trim:
+        raise ValueError(
+            f'spot/swap Arrow history_trim_date mismatch: spot={spot_trim!r}, swap={swap_trim!r}'
+        )
+    upstream_trim = spot_trim
+    if upstream_trim is None or upstream_trim == saved_trim:
+        return False, saved_trim, upstream_trim
+    if saved_trim is None or cutoff(upstream_trim) > cutoff(saved_trim):
+        return True, saved_trim, upstream_trim
+    return False, saved_trim, upstream_trim
+
+
 def initialize(account,workspace,stamp,destination,prepared_conf=None):
     from tools.robust40 import server, lifecycle
     # The caller already owns initialization lock. Snapshot lock excludes an
@@ -200,6 +233,7 @@ def _initialize(account,workspace,stamp,destination,prepared_conf=None):
     (workspace/'config.json').write_text(json.dumps(public),encoding='utf8')
     freeze_inputs(config.bmac_data_path,config.bmac_exginfo_path,workspace/'frozen_market',minute,stamp,ready,
                   full_arrow=True)
+    _,_,history_trim_date=check_upstream_history_trim_date(workspace/'frozen_market',minute,stamp,None)
     swap_arrow=workspace/'frozen_market'/f'{minute}m'/f'swap_dict_{stamp}.arrow'
     if swap_arrow.exists():
         min_kline_num=int(values.get('min_kline_num') or 0)
@@ -233,7 +267,8 @@ def _initialize(account,workspace,stamp,destination,prepared_conf=None):
     pd.to_pickle(rules,workspace/'frozen_market/exginfo/market_rules.pkl')
     if server.settings(account)[0]!=values:raise ValueError('Configuration changed while freezing initialization inputs')
     print(f'{account.stem}: 输入和市场规则已冻结，启动完整计算；S3 origin={origin}',flush=True)
-    payload=dict(account=str(account),root=str(workspace),origin=str(origin),initializing=True)
+    payload=dict(account=str(account),root=str(workspace),origin=str(origin),initializing=True,
+                 history_trim_date=history_trim_date)
     env=dict(os.environ,ROBUST40_SERVER_WORKER=json.dumps(payload),PYTHONIOENCODING='utf-8')
     with server.account_lock(destination):
         server.record_initialization_attempt(destination,values,stamp)
@@ -330,8 +365,10 @@ def compute(account,workspace,stamp,destination):
     for p in (snapshot/'sections').glob('*.pkl'):
         if server.cutoff(pd.read_pickle(p)['cutoff'])!=end:raise ValueError('Section cutoff differs')
     if server.settings(account)[0]!=values:raise ValueError('Configuration changed during initialization')
-    origin=json.loads(os.environ['ROBUST40_SERVER_WORKER'])['origin']
-    server.complete(snapshot,account.stem,values,end,origin)
+    worker_spec=json.loads(os.environ['ROBUST40_SERVER_WORKER'])
+    origin=worker_spec['origin']
+    history_trim_date=worker_spec.get('history_trim_date')
+    server.complete(snapshot,account.stem,values,end,origin,history_trim_date=history_trim_date)
     server.install(snapshot,destination,destination.parent)
     print(f'Initialized {account.stem}: {bundle["context"]["index"][0]} -> {end}; origin={origin}',flush=True)
 
@@ -365,6 +402,17 @@ def _trade(account,stamp):
     original=pd.read_pickle(destination/'warmup.pkl')
     end=pd.Timestamp(stamp,unit='s')-pd.Timedelta(hours=1)
     run=(pd.Timestamp(stamp,unit='s')+pd.Timedelta(hours=config.utc_offset)).to_pydatetime()
+    need_rebuild,old_t,new_t=check_upstream_history_trim_date(
+        config.bmac_data_path,end.minute,stamp,original.get('history_trim_date')
+    )
+    if need_rebuild:
+        server.begin(destination)
+        telemetry.record(
+            mode='rebuild_required',
+            status='rebuild_required',
+            recovery_reason=f'upstream history_trim_date changed: {old_t} -> {new_t}',
+        )
+        return REBUILD_REQUIRED_EXIT
     try:
         stage,inputs=handoff.prepare(destination,values,run,end.minute,end)
     except RebuildRequired as exc:
