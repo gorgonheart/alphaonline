@@ -31,8 +31,15 @@ def apply_profile(config, origin, snapshot, initializing):
     from tools.robust40.server import configured_s3, cutoff
     from tools.robust40.initialization_config import LIVE_BARS, MODEL_JOB_NUM, CHECKPOINT_POINTS, INITIALIZATION, RESOURCE_POLICY
     from tools.robust40.warmup import account_minute
-    configured,_=configured_s3({'strategy_pool':config.strategy_pool},account_minute(config.account_config))
-    if cutoff(origin)!=configured:raise ValueError('S3 saved/profile origin differs from configured date; rebuild required')
+    minute=account_minute(config.account_config)
+    configured,_=configured_s3({'strategy_pool':config.strategy_pool},minute)
+    try:
+        parsed=cutoff(origin)
+    except (TypeError,ValueError) as exc:
+        raise ValueError('S3 saved/profile origin differs from configured date; rebuild required') from exc
+    if (pd.isna(parsed) or parsed<configured or parsed.hour!=0 or parsed.minute!=minute
+            or parsed.second!=0 or parsed.microsecond!=0 or parsed.nanosecond!=0):
+        raise ValueError('S3 saved/profile origin differs from configured date; rebuild required')
     config.strategy_pool=copy.deepcopy(config.strategy_pool)
     def resolve(value):
         if isinstance(value,dict):return {k:resolve(v) for k,v in value.items()}
@@ -41,7 +48,7 @@ def apply_profile(config, origin, snapshot, initializing):
             if len(parts)>1 and parts[0]=='VolumeMaxBias_进出场阈值分离官方':
                 # ISO basic format retains the minute but is legal in Windows
                 # factor-cache filenames; core uses the parameter's literal repr.
-                param=list(parts[1]);param[3]=pd.Timestamp(origin).strftime('%Y%m%dT%H%M%S');parts[1]=tuple(param)
+                param=list(parts[1]);param[3]=parsed.strftime('%Y%m%dT%H%M%S');parts[1]=tuple(param)
             else:parts=[resolve(v) for v in parts]
             return tuple(parts) if isinstance(value,tuple) else parts
         return value
@@ -172,10 +179,12 @@ def _initialize(account,workspace,stamp,destination,prepared_conf=None):
     import pandas as pd
     from tools.robust40.market_inputs import freeze_inputs, freeze_extra, latest_ready, prepare_public_market, PublicationUnavailable
     from tools.robust40 import server
+    from tools.robust40.initialization_config import INITIALIZATION
     values,options=server.settings(account)
     minute=options['minute']
-    origin,_=server.configured_s3(values,minute)
-    if origin>pd.Timestamp(stamp,unit='s')-pd.Timedelta(hours=1):raise ValueError('S3 configured date is after the last closed candle')
+    configured_origin,n=server.configured_s3(values,minute)
+    end_bar=pd.Timestamp(stamp,unit='s')-pd.Timedelta(hours=1)
+    if configured_origin>end_bar:raise ValueError('S3 configured date is after the last closed candle')
     # Coordinator passes account explicitly; no credential/config files are copied.
     os.environ['X3S_TRADING_ACCOUNT']=str(account)
     import config
@@ -191,6 +200,19 @@ def _initialize(account,workspace,stamp,destination,prepared_conf=None):
     (workspace/'config.json').write_text(json.dumps(public),encoding='utf8')
     freeze_inputs(config.bmac_data_path,config.bmac_exginfo_path,workspace/'frozen_market',minute,stamp,ready,
                   full_arrow=True)
+    swap_arrow=workspace/'frozen_market'/f'{minute}m'/f'swap_dict_{stamp}.arrow'
+    if swap_arrow.exists():
+        min_kline_num=int(values.get('min_kline_num') or 0)
+        earliest_bar=server.scan_arrow_earliest_bar(
+            swap_arrow,
+            INITIALIZATION['minimum_history_bars'],
+        )
+        origin=server.resolve_initialization_s3_origin(configured_origin,earliest_bar,n,min_kline_num,end_bar)
+        if origin>configured_origin:
+            print(f'{account.stem}: 上游全量历史起点={earliest_bar}（min_kline_num={min_kline_num}, n={n}），'
+                  f'滚动推进 S3 origin: {configured_origin} -> {origin}',flush=True)
+    else:
+        origin=configured_origin
     # Freeze auxiliary factor inputs actually requested by this strategy as well.
     from core.model.backtest_config import MultiEquityBacktestConfig
     from core.utils.factor_hub import FactorHub

@@ -149,6 +149,49 @@ def configured_s3(values,minute):
     return origins.pop(),max(int(p[0]) for p in definitions)
 
 
+def resolve_initialization_s3_origin(configured_origin, earliest_bar, n, min_kline_num, end_bar, *, min_model_days=365):
+    """Keep configured S3 origin when history covers min_kline_num+n; otherwise advance to 00:{minute}:00 UTC grid."""
+    configured = cutoff(configured_origin)
+    earliest = cutoff(earliest_bar)
+    end = cutoff(end_bar)
+    earliest_safe = earliest + pd.Timedelta(hours=int(min_kline_num) + int(n))
+    if earliest_safe <= configured:
+        resolved = configured
+    else:
+        day_grid = earliest_safe.normalize() + pd.Timedelta(minutes=configured.minute)
+        resolved = day_grid if earliest_safe <= day_grid else day_grid + pd.Timedelta(days=1)
+    if end - resolved < pd.Timedelta(days=int(min_model_days)):
+        raise ValueError(
+            f'Resolved S3 origin {resolved} leaves less than {min_model_days} days before end_bar {end}'
+        )
+    return resolved
+
+
+def scan_arrow_earliest_bar(arrow_path, minimum_history_bars):
+    """PyArrow-only scan of candle_begin_time[0] across batches meeting minimum_history_bars."""
+    import pyarrow as pa
+    earliest = None
+    with pa.memory_map(str(arrow_path), 'r') as source:
+        reader = pa.ipc.open_file(source)
+        if 'candle_begin_time' not in reader.schema.names:
+            raise ValueError('Full raw history is not ready for initialization')
+        for index in range(reader.num_record_batches):
+            batch = reader.get_batch(index)
+            if batch.num_rows < minimum_history_bars:
+                continue
+            value = batch.column('candle_begin_time')[0].as_py()
+            if value is None:
+                continue
+            ts = cutoff(value)
+            if pd.isna(ts):
+                continue
+            if earliest is None or ts < earliest:
+                earliest = ts
+    if earliest is None:
+        raise ValueError('Full raw history is not ready for initialization')
+    return earliest
+
+
 def validate_initial_history(raw,origin,n,min_kline_num):
     """Reuse MODEL's already loaded/UTC-normalized raw data; never scan on resume."""
     from .initialization_config import INITIALIZATION
