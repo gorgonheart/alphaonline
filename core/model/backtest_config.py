@@ -16,6 +16,7 @@ from itertools import product
 from pathlib import Path
 from typing import List, Dict, Optional, Set, Tuple
 
+import numpy as np
 import pandas as pd
 import pytz
 
@@ -990,19 +991,87 @@ class MultiEquityBacktestConfig:
         df_ratio.to_csv(self.factory.result_folder / '仓位比例.csv')
         return df_ratio
 
-    def agg_pos_ratio(self, pos_ratio) -> Tuple[pd.DataFrame, pd.DataFrame]:
-        df_spot_ratio_sum = pd.DataFrame()
-        df_swap_ratio_sum = pd.DataFrame()
-        for idx, (df_spot_ratio, df_swap_ratio) in enumerate(self.ratio_dfs):
-            # 获取仓位管理ratio
-            group_ratio = pos_ratio[idx]
-            # 裁切对应的资金权重
-            spot_ratio = df_spot_ratio.loc[pos_ratio.index, :].mul(group_ratio, axis=0)
-            swap_ratio = df_swap_ratio.loc[pos_ratio.index, :].mul(group_ratio, axis=0)
-            # 累加
-            df_spot_ratio_sum = df_spot_ratio_sum.add(spot_ratio, fill_value=0)
-            df_swap_ratio_sum = df_swap_ratio_sum.add(swap_ratio, fill_value=0)
+    @staticmethod
+    def _agg_side_ratios(side_frames: List[pd.DataFrame], pos_ratio: pd.DataFrame,
+                         target_index: pd.Index) -> pd.DataFrame:
+        # 复刻连续 DataFrame.add(..., fill_value=0) 的列排序并集与行索引对齐顺序
+        all_cols = pd.DataFrame().columns
+        for df in side_frames:
+            all_cols = all_cols.union(df.columns)
+        if len(all_cols) > 0 and not all_cols.is_monotonic_increasing:
+            all_cols = all_cols.sort_values()
+        if target_index.is_monotonic_increasing:
+            out_index = target_index
+            weight_order = None
+        else:
+            weight_order = np.argsort(target_index.to_numpy(), kind='mergesort')
+            out_index = target_index[weight_order]
+        if len(all_cols) == 0:
+            return pd.DataFrame(index=out_index, columns=all_cols)
 
+        n_rows = len(out_index)
+        n_cols = len(all_cols)
+        # 转置布局 (n_cols, n_rows)，使逐列累加 acc[c] 连续访问内存、避免花式索引散写拷贝
+        acc = np.zeros((n_cols, n_rows), dtype=np.float64)
+        touched_col = np.zeros(n_cols, dtype=bool)
+        seen_finite = None
+        seen_nan = None
+
+        for idx, df in enumerate(side_frames):
+            if df.shape[1] == 0:
+                if not df.index.equals(out_index):
+                    df.loc[out_index, :]  # 保留缺索引抛 KeyError 语义
+                continue
+
+            if df.index.equals(out_index):
+                arr = df.to_numpy(dtype=np.float64, copy=False)
+            elif df.index.is_unique:
+                row_pos = df.index.get_indexer(out_index)
+                if (row_pos < 0).any():
+                    df.loc[out_index, :]  # 保留既有 KeyError 错误信息
+                arr = df.to_numpy(dtype=np.float64, copy=False)[row_pos]
+            else:
+                arr = df.loc[out_index, :].to_numpy(dtype=np.float64, copy=False)
+
+            w = pos_ratio[idx].to_numpy(dtype=np.float64, copy=False)
+            if weight_order is not None:
+                w = w[weight_order]
+            col_pos = all_cols.get_indexer(df.columns)
+
+            if not np.isnan(arr).any() and not np.isnan(w).any():
+                for j, c in enumerate(col_pos):
+                    acc[c] += arr[:, j] * w
+                if seen_finite is None:
+                    touched_col[col_pos] = True
+                else:
+                    seen_finite[col_pos, :] = True
+            else:
+                if seen_finite is None:
+                    seen_finite = np.zeros((n_cols, n_rows), dtype=bool)
+                    seen_finite[touched_col, :] = True
+                    seen_nan = np.zeros((n_cols, n_rows), dtype=bool)
+                for j, c in enumerate(col_pos):
+                    prod = arr[:, j] * w
+                    is_nan = np.isnan(prod)
+                    acc[c] += np.where(is_nan, 0.0, prod)
+                    seen_finite[c] |= ~is_nan
+                    seen_nan[c] |= is_nan
+
+        if seen_nan is not None:
+            acc[seen_nan & ~seen_finite] = np.nan
+
+        return pd.DataFrame(acc.T, index=out_index, columns=all_cols)
+
+    def agg_pos_ratio(self, pos_ratio) -> Tuple[pd.DataFrame, pd.DataFrame]:
+        if not self.ratio_dfs:
+            return pd.DataFrame(), pd.DataFrame()
+        target_index = pos_ratio.index
+        df_spot_ratio_sum = self._agg_side_ratios(
+            [pair[0] for pair in self.ratio_dfs], pos_ratio, target_index
+        )
+        df_swap_ratio_sum = self._agg_side_ratios(
+            [pair[1] for pair in self.ratio_dfs], pos_ratio, target_index
+        )
         return df_spot_ratio_sum, df_swap_ratio_sum
 
     def backtest_strategies(self, run_time):
