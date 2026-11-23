@@ -1007,6 +1007,9 @@ class MultiEquityBacktestConfig:
             weight_order = np.argsort(target_index.to_numpy(), kind='mergesort')
             out_index = target_index[weight_order]
         if len(all_cols) == 0:
+            for df in side_frames:
+                if not df.index.equals(out_index):
+                    df.loc[out_index, :]  # 保留 0 列侧缺索引抛 KeyError 语义
             return pd.DataFrame(index=out_index, columns=all_cols)
 
         n_rows = len(out_index)

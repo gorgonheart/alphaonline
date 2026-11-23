@@ -112,11 +112,19 @@ def test_p5_d1_agg_pos_ratio_nan_and_missing_index_semantics():
     pd.testing.assert_frame_equal(act_fs, exp_fs, check_exact=True)
     pd.testing.assert_frame_equal(act_fw, exp_fw, check_exact=True)
 
-    # Missing timestamp in pos_ratio.index must still raise KeyError
+    # Missing timestamp in pos_ratio.index must still raise KeyError (including 0-column pure-swap side)
     bad_idx = idx.append(pd.DatetimeIndex([idx[-1] + pd.Timedelta(hours=1)]))
     bad_pos = pd.DataFrame({0: np.ones(len(bad_idx)), 1: np.ones(len(bad_idx)), 2: np.ones(len(bad_idx))}, index=bad_idx)
     with pytest.raises(KeyError):
         _make_me_conf(ratio_dfs).agg_pos_ratio(bad_pos)
+
+    zero_col_spot_dfs = [
+        (pd.DataFrame(index=idx), pd.DataFrame({'BTC-USDT': np.ones(len(bad_idx))}, index=bad_idx)),
+        (pd.DataFrame(index=idx), pd.DataFrame({'ETH-USDT': np.ones(len(bad_idx))}, index=bad_idx)),
+    ]
+    bad_pos_2 = pd.DataFrame({0: np.ones(len(bad_idx)), 1: np.ones(len(bad_idx))}, index=bad_idx)
+    with pytest.raises(KeyError):
+        _make_me_conf(zero_col_spot_dfs).agg_pos_ratio(bad_pos_2)
 
 
 def test_p5_d1_agg_pos_ratio_avoids_dataframe_add(monkeypatch):
