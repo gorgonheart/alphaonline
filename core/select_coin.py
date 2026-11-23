@@ -657,22 +657,60 @@ def _calc_section_blocks(conf, store):
     just like calc_cross_sections_pandas; families never share mutable frames.
     """
     import config
-    from core.utils.section_state import run_section
+    from core.utils.section_state import (
+        compute_section_blocks_group,
+        publish_section_outputs,
+        run_section,
+        run_section_blocks_group,
+    )
     gate = getattr(config, 'compute_gate', None)
+    entries = []
     for name, parameters in conf.section_params_dict.items():
         factor = FactorHub.get_by_name(name)
         parameters = [p for p in parameters if f'{name}_{p}' in conf.factor_col_name_list]
         if not parameters:
             continue
         if hasattr(factor, 'signal_block'):
-            from core.utils.section_state import run_section_blocks_group
             param_specs = []
             for params in parameters:
                 dependencies = [f'{n}_{p}' for n, p in factor.get_factor_list(params)]
                 inputs = factor.get_state_input_columns(params) if hasattr(factor, 'get_state_input_columns') else [*KLINE_COLS, *dependencies]
                 param_specs.append((params, f'{name}_{params}', inputs))
-            run_section_blocks_group(conf, factor, store, param_specs)
+            entries.append(('block', name, factor, param_specs))
+        else:
+            entries.append(('legacy', name, factor, parameters))
+
+    block_entries = [entry for entry in entries if entry[0] == 'block']
+    block_results = None
+    if len(block_entries) > 1 and gate is None:
+        # 实盘低并发优化（P5-C1）：各 signal_block 截面族只读 FactorBlocks 且彼此无依赖，
+        # 最多 3 线程并行计算，全部完成后再由主线程按原始声明顺序提交并原子写盘。
+        block_results = {}
+        futures = []
+        fut = None
+        try:
+            with ThreadPoolExecutor(max_workers=min(3, len(block_entries))) as pool:
+                futures = [
+                    (name, pool.submit(compute_section_blocks_group, conf, factor, store, param_specs))
+                    for _, name, factor, param_specs in block_entries
+                ]
+                for name, fut in futures:
+                    block_results[name] = fut.result()
+        except BaseException:
+            # 异常退出前释放已完成的 Polars mmap 块引用，避免 Windows 无法清理 store 目录
+            block_results.clear()
+            futures.clear()
+            fut = None
+            raise
+
+    for kind, name, factor, payload in entries:
+        if kind == 'block':
+            if block_results is not None:
+                publish_section_outputs(store, block_results.pop(name))
+            else:
+                run_section_blocks_group(conf, factor, store, payload)
             continue
+        parameters = payload
         if gate:
             gate()
         dependencies = list(dict.fromkeys(f'{n}_{p}' for param in parameters

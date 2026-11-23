@@ -484,3 +484,275 @@ def test_p5_a1_read_inputs_parallel_three_way_preserves_telemetry_and_errors(tmp
         with telemetry.round_log('acct_a1', int(run.timestamp())):
             h.read_inputs(run, 25, end, start=start)
     assert events[-1].get('failed_phase') != 'revision_arrow_spot_s'
+
+
+# ==============================================================================
+# P5-C1: 3-thread signal_block sections & live _polars_threads=budget
+# ==============================================================================
+
+def _make_section_blocks_frame():
+    import polars as pl
+
+    rng = np.random.default_rng(2026)
+    ts = pd.date_range('2026-01-01 00:20:00', periods=40, freq='1h')
+    rows = []
+    for t in ts:
+        for i in range(6):
+            rows.append({
+                'candle_begin_time': t,
+                'symbol': f'SYM{i}USDT',
+                'is_spot': 0 if i < 4 else 1,
+                'symbol_spot': f'SYM{i}USDT',
+                'symbol_swap': f'SYM{i}USDT',
+                '是否交易': 1,
+                'VolumeMaxBias_17': float(rng.uniform(0.05, 1.0)),
+                'Cci过滤无现货删数据_1000': float(rng.normal(0, 100)),
+                'Cci过滤无现货删数据_1440': float(rng.normal(0, 100)),
+                '当前回撤_53': -abs(float(rng.normal(0, 0.15))),
+                '当前回撤_109': -abs(float(rng.normal(0, 0.15))),
+                '当前回撤_168': -abs(float(rng.normal(0, 0.25))),
+            })
+    return pl.DataFrame(rows)
+
+
+def test_p5_c1_parallel_block_sections_match_serial_and_preserve_order(tmp_path, monkeypatch):
+    import importlib
+    from types import SimpleNamespace
+    import config
+    import polars as pl
+    from core import select_coin as sc
+    from core.utils.factor_data import FactorBlocks
+
+    full_pl = _make_section_blocks_frame()
+    s3_mod = importlib.import_module('sections.VolumeMaxBias_进出场阈值分离官方')
+    topk_mod = importlib.import_module('sections.TopKTo2K')
+    fix_mod = importlib.import_module('sections.固定回撤阈值触发币数占比开仓门槛')
+    dyn_mod = importlib.import_module('sections.动态回撤阈值')
+
+    # Interleaved legacy (signal_polars-only) family to verify mixed declaration order preservation
+    legacy_mod = SimpleNamespace(
+        signal_polars=lambda lf, p, col: lf.with_columns((pl.col('当前回撤_53') * p).alias(col)),
+        get_factor_list=lambda p: [('当前回撤', 53)],
+        is_cross=True,
+    )
+    hub_map = {
+        'VolumeMaxBias_进出场阈值分离官方': s3_mod,
+        'TopKTo2K': topk_mod,
+        'LegacyMix': legacy_mod,
+        '固定回撤阈值触发币数占比开仓门槛': fix_mod,
+        '动态回撤阈值': dyn_mod,
+    }
+    monkeypatch.setattr(sc, 'KLINE_COLS', ['candle_begin_time', 'symbol', 'is_spot', 'symbol_spot', 'symbol_swap', '是否交易'])
+    monkeypatch.setattr(sc.FactorHub, 'get_by_name', lambda name: hub_map[name])
+
+    section_params = {
+        'VolumeMaxBias_进出场阈值分离官方': [(17, 0.25, 0.6, '2026-01-01 18:20')],
+        'TopKTo2K': [(3, 'Cci过滤无现货删数据', 1000), (5, 'Cci过滤无现货删数据', 1440)],
+        'LegacyMix': [2],
+        '固定回撤阈值触发币数占比开仓门槛': [(168, -0.20, 0.04)],
+        '动态回撤阈值': [53, 109],
+    }
+    factor_cols = [f'{n}_{p}' for n, ps in section_params.items() for p in ps]
+
+    def _run_with_gate(tag, gate_val):
+        store = FactorBlocks(tmp_path / f'blocks_{tag}', hours=15, minute=20)
+        store.append(full_pl, 0)
+        snap = tmp_path / f'snap_{tag}'
+        conf = SimpleNamespace(
+            section_state=True,
+            checkpoint_hours=10,
+            incremental_lookback_hours=0,
+            get_snapshot_folder=lambda: snap,
+            section_params_dict=section_params,
+            factor_col_name_list=factor_cols,
+        )
+        monkeypatch.setattr(config, 'compute_gate', gate_val, raising=False)
+        sc.calc_cross_sections(conf, store=store)
+        return store, snap
+
+    store_ser, snap_ser = _run_with_gate('ser', lambda: None)
+    store_par, snap_par = _run_with_gate('par', None)
+    try:
+        assert store_par.section_columns == store_ser.section_columns == factor_cols
+        for col in factor_cols:
+            s_vals = store_ser.read_history([col])[col].to_numpy()
+            p_vals = store_par.read_history([col])[col].to_numpy()
+            np.testing.assert_allclose(p_vals, s_vals, rtol=0.0, atol=1e-15, equal_nan=True)
+        # Verify S3 persisted checkpoint matches identically
+        ser_pkls = sorted((snap_ser / 'sections').glob('*.pkl'))
+        par_pkls = sorted((snap_par / 'sections').glob('*.pkl'))
+        assert [p.name for p in par_pkls] == [p.name for p in ser_pkls] and len(ser_pkls) == 1
+        st_ser = pd.read_pickle(ser_pkls[0])
+        st_par = pd.read_pickle(par_pkls[0])
+        assert list(st_par['checkpoints']) == list(st_ser['checkpoints'])
+        pd.testing.assert_frame_equal(st_par['output'], st_ser['output'], check_exact=True)
+    finally:
+        store_ser.close()
+        store_par.close()
+
+
+def test_p5_c1_block_families_execute_concurrently_when_gate_is_none_and_serially_when_gated(tmp_path, monkeypatch):
+    import threading
+    from types import SimpleNamespace
+    import config
+    import polars as pl
+    from core import select_coin as sc
+    from core.utils.factor_data import FactorBlocks
+
+    frame = pl.DataFrame({
+        'candle_begin_time': pd.date_range('2026-01-01', periods=8, freq='h'),
+        'symbol': ['A'] * 8,
+        'f_1': np.arange(8, dtype=float),
+    })
+    monkeypatch.setattr(sc, 'KLINE_COLS', ['candle_begin_time', 'symbol'])
+
+    # 1. With compute_gate=None, 2 block families MUST overlap concurrently via Barrier(2)
+    barrier = threading.Barrier(2, timeout=2.0)
+
+    def _make_barrier_factor(mult):
+        def _sig(block, params, col, state=None):
+            if state is None:
+                barrier.wait()
+            return block.with_columns((pl.col('f_1') * mult).alias(col)), {'seen': True}
+
+        return SimpleNamespace(
+            signal_block=_sig,
+            get_factor_list=lambda p: [('f', 1)],
+            get_state_input_columns=lambda p: ['candle_begin_time', 'symbol', 'f_1'],
+        )
+
+    hub = {'B1': _make_barrier_factor(1.0), 'B2': _make_barrier_factor(2.0)}
+    monkeypatch.setattr(sc.FactorHub, 'get_by_name', lambda name: hub[name])
+
+    store1 = FactorBlocks(tmp_path / 'b_par', hours=4, minute=0)
+    store1.append(frame, 0)
+    conf = SimpleNamespace(
+        section_state=False,
+        section_params_dict={'B1': [1], 'B2': [1]},
+        factor_col_name_list=['B1_1', 'B2_1'],
+    )
+    monkeypatch.setattr(config, 'compute_gate', None, raising=False)
+    try:
+        sc.calc_cross_sections(conf, store=store1)
+        assert store1.section_columns == ['B1_1', 'B2_1']
+    finally:
+        store1.close()
+
+    # 2. With compute_gate set (initialization mode), families MUST run serially on main thread
+    main_tid = threading.get_ident()
+    seen_tids = []
+
+    def _make_tid_factor(mult):
+        def _sig(block, params, col, state=None):
+            seen_tids.append(threading.get_ident())
+            return block.with_columns((pl.col('f_1') * mult).alias(col)), None
+
+        return SimpleNamespace(
+            signal_block=_sig,
+            get_factor_list=lambda p: [('f', 1)],
+            get_state_input_columns=lambda p: ['candle_begin_time', 'symbol', 'f_1'],
+        )
+
+    hub_ser = {'B1': _make_tid_factor(1.0), 'B2': _make_tid_factor(2.0)}
+    monkeypatch.setattr(sc.FactorHub, 'get_by_name', lambda name: hub_ser[name])
+    store2 = FactorBlocks(tmp_path / 'b_ser', hours=4, minute=0)
+    store2.append(frame, 0)
+    monkeypatch.setattr(config, 'compute_gate', lambda: None, raising=False)
+    try:
+        sc.calc_cross_sections(conf, store=store2)
+        assert seen_tids and all(tid == main_tid for tid in seen_tids)
+    finally:
+        store2.close()
+
+
+def test_p5_c1_parallel_section_failure_leaves_zero_partial_store_or_state(tmp_path, monkeypatch):
+    from types import SimpleNamespace
+    import config
+    import polars as pl
+    from core import select_coin as sc
+    from core.utils.factor_data import FactorBlocks
+
+    frame = pl.DataFrame({
+        'candle_begin_time': pd.date_range('2026-01-01', periods=6, freq='h'),
+        'symbol': ['A'] * 6,
+        'f_1': np.arange(6, dtype=float),
+    })
+    monkeypatch.setattr(sc, 'KLINE_COLS', ['candle_begin_time', 'symbol'])
+
+    ok_persisted = SimpleNamespace(
+        signal_block=lambda b, p, col, st=None, **kw: (b.with_columns(pl.lit(1.0).alias(col)), {'cutoff': b['candle_begin_time'].max()}),
+        signal_with_state=lambda *a, **kw: None,
+        get_factor_list=lambda p: [('f', 1)],
+        get_state_input_columns=lambda p: ['candle_begin_time', 'symbol', 'f_1'],
+    )
+
+    def _fail_block(b, p, col, st=None, **kw):
+        raise RuntimeError('boom in sibling section')
+
+    bad_family = SimpleNamespace(
+        signal_block=_fail_block,
+        get_factor_list=lambda p: [('f', 1)],
+        get_state_input_columns=lambda p: ['candle_begin_time', 'symbol', 'f_1'],
+    )
+    hub = {'PersistedOk': ok_persisted, 'BadBlock': bad_family}
+    monkeypatch.setattr(sc.FactorHub, 'get_by_name', lambda name: hub[name])
+
+    snap = tmp_path / 'snap_atomic'
+    snap.mkdir()
+    store = FactorBlocks(tmp_path / 'b_atomic', hours=3, minute=0)
+    store.append(frame, 0)
+    conf = SimpleNamespace(
+        section_state=True,
+        checkpoint_hours=0,
+        incremental_lookback_hours=0,
+        get_snapshot_folder=lambda: snap,
+        section_params_dict={'PersistedOk': [1], 'BadBlock': [1]},
+        factor_col_name_list=['PersistedOk_1', 'BadBlock_1'],
+    )
+    monkeypatch.setattr(config, 'compute_gate', None, raising=False)
+    try:
+        with pytest.raises(RuntimeError, match='boom in sibling section'):
+            sc.calc_cross_sections(conf, store=store)
+        assert store.section_columns == []
+        assert list(snap.rglob('*')) == []
+    finally:
+        store.close()
+
+
+@pytest.mark.parametrize('gate_val,expected_section_threads', [
+    (None, 4),
+    (lambda: None, 2),
+])
+def test_p5_c1_prepare_factor_selection_polars_threads_respects_compute_gate(
+    tmp_path, monkeypatch, gate_val, expected_section_threads
+):
+    from types import SimpleNamespace
+    import config
+    from core import backtest
+    from test_streaming_selection import inputs, strategy
+
+    frame = inputs(tmp_path / 'source')
+    conf = SimpleNamespace(name='test', input_mode='arrow_strict', max_hold_period='3h', lookback_days=0,
+                           incremental_lookback_hours=7)
+    child = SimpleNamespace(strategy_list=[strategy()], unified_time='2017-01-01', get_result_folder=lambda: tmp_path)
+    factory = SimpleNamespace(config_list=[child], generate_all_factor_config=lambda: conf)
+    budgets = []
+
+    monkeypatch.setattr(config, 'job_num', 4)
+    monkeypatch.setattr(config, 'compute_gate', gate_val, raising=False)
+    monkeypatch.setattr(config, 'selection_block_hours', 6, raising=False)
+    monkeypatch.setattr(backtest, 'apply_bstocks_black_list', lambda c: None)
+    monkeypatch.setattr(backtest, 'get_snapshot_time', lambda _: None)
+
+    def run_stage(fn, *a, _polars_threads=1, **kw):
+        budgets.append(_polars_threads)
+        return fn(*a, **kw)
+
+    monkeypatch.setattr(backtest, '_run_block_stage', run_stage, raising=False)
+    monkeypatch.setattr(backtest, 'calc_factors', lambda c, **kw: kw['store'].append(frame, 0))
+    monkeypatch.setattr(backtest, 'calc_cross_sections', lambda c, **kw: ({}, []))
+    store, _ = backtest.prepare_factor_selection(factory, pd.Timestamp('2025-01-02 07:55'), directory=tmp_path / 'shared')
+    try:
+        assert budgets == [1, expected_section_threads, 4]
+    finally:
+        store.close()

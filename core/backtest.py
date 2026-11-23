@@ -390,9 +390,11 @@ def prepare_factor_selection(factory, run_time, *, directory):
         with phase('initialization.direct_factors'):
             store = _run_block_stage(_produce_factor_store, conf, run_time, store)
         budget = max(1, config.job_num)
+        gate = getattr(config, 'compute_gate', None)
+        section_threads = budget if gate is None else min(2, budget)
         with phase('initialization.sections'):
             store.sections, store.section_columns = _run_block_stage(calc_cross_sections, conf, store=store,
-                _polars_threads=min(2, budget))
+                _polars_threads=section_threads)
         snapshot = get_snapshot_time(conf.name)
         start = None if not snapshot else pd.to_datetime(snapshot).replace(tzinfo=None) - max(
             pd.Timedelta(conf.max_hold_period), pd.Timedelta(days=conf.lookback_days),

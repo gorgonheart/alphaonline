@@ -38,7 +38,7 @@ def test_initialize_continue_replay_use_same_factor_selection_entry(tmp_path,mon
     actual=pd.read_pickle(tmp_path/'oracle.pkl')
     pd.testing.assert_frame_equal(actual,expected.to_pandas(),check_categorical=False)
     assert calls==['factor','section']
-    assert budgets==[1,min(2,budget),budget]
+    assert budgets==[1,budget,budget]
     assert conf.incremental_lookback_hours==7
     assert store.read_history(['symbol','close']).height==frame.height
     store.close()

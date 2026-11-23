@@ -40,8 +40,8 @@ def run_section(conf, factor, frame, params, column, polars=False):
     return result
 
 
-def run_section_blocks(conf, factor, store, columns, params, column):
-    """Stage all section outputs; publish state only after every block succeeds."""
+def compute_section_blocks(conf, factor, store, columns, params, column):
+    """Compute all block outputs without mutating `store` or writing checkpoint files."""
     persisted = getattr(conf, 'section_state', False) is True and hasattr(factor, 'signal_with_state')
     path = None
     previous = None
@@ -81,29 +81,35 @@ def run_section_blocks(conf, factor, store, columns, params, column):
     finalize = getattr(factor, 'finalize_block_state', None)
     if persisted and previous is None and finalize is not None:
         state = finalize(state, **options)
-    store.add_section(column, parts)
-    if path is not None:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        temporary = path.with_suffix('.tmp')
-        pd.to_pickle(state, temporary)
-        temporary.replace(path)
-    return state
+    return column, parts, path, state
 
 
-def run_section_blocks_group(conf, factor, store, param_specs):
-    """Execute multiple parameter tuples of the same block-capable section family.
+def publish_section_outputs(store, outputs):
+    """Commit precomputed block sections and atomic checkpoints on the main thread."""
+    for column, parts, path, state in outputs:
+        store.add_section(column, parts)
+        if path is not None:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            temporary = path.with_suffix('.tmp')
+            pd.to_pickle(state, temporary)
+            temporary.replace(path)
 
-    When the section family has persisted state (`signal_with_state` + `conf.section_state`)
-    or only a single parameter, delegates directly to `run_section_blocks`.
-    For multi-parameter stateless/rolling-tail block sections (e.g. `TopKTo2K`, `固定回撤`, `动态回撤`),
-    reads each time block from `store` ONCE using the union of required columns and evaluates
-    all parameters on that in-memory block before moving to the next block.
-    """
+
+def run_section_blocks(conf, factor, store, columns, params, column):
+    """Stage all section outputs; publish state only after every block succeeds."""
+    output = compute_section_blocks(conf, factor, store, columns, params, column)
+    publish_section_outputs(store, [output])
+    return output[3]
+
+
+def compute_section_blocks_group(conf, factor, store, param_specs):
+    """Compute multiple parameter tuples of one block-capable family without mutating `store`."""
     persisted = getattr(conf, 'section_state', False) is True and hasattr(factor, 'signal_with_state')
     if len(param_specs) <= 1 or persisted:
-        for params, column, columns in param_specs:
-            run_section_blocks(conf, factor, store, columns, params, column)
-        return
+        return [
+            compute_section_blocks(conf, factor, store, columns, params, column)
+            for params, column, columns in param_specs
+        ]
 
     keys = store.block_keys()
     import config
@@ -129,5 +135,17 @@ def run_section_blocks_group(conf, factor, store, param_specs):
             del sub_frame, result
         del block_frame
 
-    for _, column, _ in param_specs:
-        store.add_section(column, parts_by_col[column])
+    return [(column, parts_by_col[column], None, None) for _, column, _ in param_specs]
+
+
+def run_section_blocks_group(conf, factor, store, param_specs):
+    """Execute multiple parameter tuples of the same block-capable section family.
+
+    When the section family has persisted state (`signal_with_state` + `conf.section_state`)
+    or only a single parameter, delegates directly to `run_section_blocks`.
+    For multi-parameter stateless/rolling-tail block sections (e.g. `TopKTo2K`, `固定回撤`, `动态回撤`),
+    reads each time block from `store` ONCE using the union of required columns and evaluates
+    all parameters on that in-memory block before moving to the next block.
+    """
+    outputs = compute_section_blocks_group(conf, factor, store, param_specs)
+    publish_section_outputs(store, outputs)
