@@ -373,18 +373,100 @@ def compute(account,workspace,stamp,destination):
     print(f'Initialized {account.stem}: {bundle["context"]["index"][0]} -> {end}; origin={origin}',flush=True)
 
 
-def trade(account,stamp,stage='all',scale=1.0):
+def trade(account,stamp,stage='all',scale=1.0,wait_ready=False):
     if stage=='trade':
         from core.account_exec import main
         sys.argv=[sys.argv[0],str(stamp),'--stage','trade','--scale',repr(scale)]
         main()
         return 0
+    if wait_ready:
+        return _trade_wait_ready(account,stamp,stage=stage)
     from tools.robust40 import telemetry
     with telemetry.round_log(account.stem,stamp):
         return _trade(account,stamp,stage=stage)
 
 
-def _trade(account,stamp,stage='all'):
+def _trade_wait_ready(account,stamp,stage='all'):
+    import time
+    import pandas as pd
+    import config
+    from tools.robust40 import handoff, server, telemetry
+    from tools.robust40.initialization_config import DATA_READY_WAIT_SECONDS
+    from tools.robust40.replay import REBUILD_REQUIRED_EXIT, WAIT_FOR_DATA_EXIT
+
+    prewarm_start=time.perf_counter()
+    # Pre-import trading entry point without holding account_lock during idle prewarm window.
+    from core.account_exec import main as _account_exec_main  # noqa: F401
+    values,_=server.settings(account)
+    destination=server.location(ROOT,account,values)
+    warmup_path=destination/'warmup.pkl'
+    rev_path=destination/'model/revision_inputs.pkl'
+    try:
+        with server.account_lock(destination):
+            st=warmup_path.stat()
+            warmup_sig=(st.st_mtime_ns,st.st_size)
+            original=pd.read_pickle(warmup_path)
+            old_inputs=pd.read_pickle(rev_path)
+    except OSError:
+        with server.account_lock(destination):
+            with telemetry.round_log(account.stem,stamp):
+                return _trade(account,stamp,stage=stage)
+
+    end=pd.Timestamp(stamp,unit='s')-pd.Timedelta(hours=1)
+    run=(pd.Timestamp(stamp,unit='s')+pd.Timedelta(hours=config.utc_offset)).to_pydatetime()
+    start=min(f.index.min() for f in old_inputs.values())
+    required={f'{name}_{p}' for name,ps in values['precompute_factor_configs'].items() for p in ps}
+    deadline=stamp+DATA_READY_WAIT_SECONDS
+
+    stream_status,current_inputs,trims,stream_stats=handoff.wait_and_read_inputs_streaming(
+        config.bmac_data_path,run,end.minute,stamp,end,start,required,deadline=deadline
+    )
+    prewarm_s=round(time.perf_counter()-prewarm_start,6)
+
+    with telemetry.round_log(account.stem,stamp):
+        telemetry.reset_timer(prewarm_s=prewarm_s,**stream_stats)
+        if stream_status=='timeout':
+            telemetry.record(mode='waiting_data_timeout',status='waiting_data_timeout')
+            return WAIT_FOR_DATA_EXIT
+        with server.account_lock(destination):
+            try:
+                st_now=warmup_path.stat()
+                sig_now=(st_now.st_mtime_ns,st_now.st_size)
+            except OSError:
+                sig_now=None
+            if sig_now!=warmup_sig:
+                return _trade(account,stamp,stage=stage)
+            if stream_status=='missing_arrow':
+                telemetry.record(mode='rebuild_required',status='rebuild_required',recovery_reason='Arrow unavailable or incomplete')
+                return REBUILD_REQUIRED_EXIT
+            spot_trim,swap_trim=trims
+            if spot_trim!=swap_trim:
+                raise ValueError(f'spot/swap Arrow history_trim_date mismatch: spot={spot_trim!r}, swap={swap_trim!r}')
+            old_t=original.get('history_trim_date')
+            if spot_trim is not None and spot_trim!=old_t and (old_t is None or server.cutoff(spot_trim)>server.cutoff(old_t)):
+                server.begin(destination)
+                telemetry.record(
+                    mode='rebuild_required',
+                    status='rebuild_required',
+                    recovery_reason=f'upstream history_trim_date changed: {old_t} -> {spot_trim}',
+                )
+                return REBUILD_REQUIRED_EXIT
+            telemetry.add(
+                revision_arrow_spot_s=stream_stats['revision_arrow_spot_s'],
+                revision_arrow_swap_s=stream_stats['revision_arrow_swap_s'],
+                revision_pivot_s=stream_stats['revision_pivot_s'],
+            )
+            return _trade(
+                account,
+                stamp,
+                stage=stage,
+                preloaded_old=old_inputs,
+                preloaded_current=current_inputs,
+                skip_trim_check=True,
+            )
+
+
+def _trade(account,stamp,stage='all',*,preloaded_old=None,preloaded_current=None,skip_trim_check=False):
     import pandas as pd
     import config
     from contextlib import nullcontext
@@ -407,19 +489,26 @@ def _trade(account,stamp,stage='all'):
     original=pd.read_pickle(destination/'warmup.pkl')
     end=pd.Timestamp(stamp,unit='s')-pd.Timedelta(hours=1)
     run=(pd.Timestamp(stamp,unit='s')+pd.Timedelta(hours=config.utc_offset)).to_pydatetime()
-    need_rebuild,old_t,new_t=check_upstream_history_trim_date(
-        config.bmac_data_path,end.minute,stamp,original.get('history_trim_date')
-    )
-    if need_rebuild:
-        server.begin(destination)
-        telemetry.record(
-            mode='rebuild_required',
-            status='rebuild_required',
-            recovery_reason=f'upstream history_trim_date changed: {old_t} -> {new_t}',
+    if not skip_trim_check:
+        need_rebuild,old_t,new_t=check_upstream_history_trim_date(
+            config.bmac_data_path,end.minute,stamp,original.get('history_trim_date')
         )
-        return REBUILD_REQUIRED_EXIT
+        if need_rebuild:
+            server.begin(destination)
+            telemetry.record(
+                mode='rebuild_required',
+                status='rebuild_required',
+                recovery_reason=f'upstream history_trim_date changed: {old_t} -> {new_t}',
+            )
+            return REBUILD_REQUIRED_EXIT
     try:
-        stage_replay,inputs=handoff.prepare(destination,values,run,end.minute,end)
+        if preloaded_old is not None or preloaded_current is not None:
+            stage_replay,inputs=handoff.prepare(
+                destination,values,run,end.minute,end,
+                preloaded_old=preloaded_old,preloaded_current=preloaded_current,
+            )
+        else:
+            stage_replay,inputs=handoff.prepare(destination,values,run,end.minute,end)
     except RebuildRequired as exc:
         # No orders have run; release the account lock before the parent queues initialization.
         server.begin(destination)
@@ -451,6 +540,7 @@ def main():
     p.add_argument('--destination')
     p.add_argument('--stage',choices=['all','calc','trade'],default='all')
     p.add_argument('--scale',type=float,default=1.0)
+    p.add_argument('--wait-ready',action='store_true')
     a=p.parse_args();account=Path(a.account).resolve()
     if a.mode in ('compute','trade'):
         spec=json.loads(os.environ.get('ROBUST40_SERVER_WORKER','{}'))
@@ -483,6 +573,8 @@ def main():
             with telemetry.round_log(account.stem,a.stamp,kind='compute'):
                 compute(account,Path(a.workspace).resolve(),a.stamp,Path(a.destination).resolve())
     else:
+        if a.wait_ready and a.stage!='trade':
+            return trade(account,a.stamp,stage=a.stage,scale=a.scale,wait_ready=True)
         with server.account_lock(server.location(ROOT,account,server.settings(account)[0])):
             return trade(account,a.stamp,stage=a.stage,scale=a.scale)
 

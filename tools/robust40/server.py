@@ -497,14 +497,63 @@ class Coordinator:
     def handle_result(self,account,run_time,market,command,env,returncode):
         """Only the known MODEL trade CLI may request recovery via its exit code."""
         import subprocess
-        from .replay import REBUILD_REQUIRED_EXIT
+        from .replay import REBUILD_REQUIRED_EXIT, WAIT_FOR_DATA_EXIT
         if returncode==0:return True
         model_cli=self.root/'tools/robust40/cli/server_robust40.py'
-        if (returncode==REBUILD_REQUIRED_EXIT and len(command)>2 and
-                Path(command[1]).resolve()==model_cli and command[2]=='trade'):
-            self.request_rebuild(account,run_time,market,'worker requested full initialization')
-            return False
+        if len(command)>2 and Path(command[1]).resolve()==model_cli and command[2]=='trade':
+            if returncode==REBUILD_REQUIRED_EXIT:
+                self.request_rebuild(account,run_time,market,'worker requested full initialization')
+                return False
+            if returncode==WAIT_FOR_DATA_EXIT:
+                from core.utils.log_kit import logger
+                logger.warning(f'{Path(account).stem}: 数据中心数据未更新，跳过当前，{run_time}')
+                return False
         raise subprocess.CalledProcessError(returncode,command)
+
+    def launch_prewarmed_trade(self,account,run_time,market):
+        """Launch trade worker at run_time - PREWARM_LEAD_SECONDS when snapshot is ready."""
+        import json
+        import os
+        import subprocess
+        import sys
+        if not enabled(account):return None
+        from core.utils.log_kit import logger
+        account=Path(account).resolve();values,options=settings(account)
+        minute=options['minute'];stamp=int(run_time.timestamp())
+        if values['account']['hour_offset']!=f'{minute}m' or run_time.minute!=minute:
+            raise ValueError('Account and runtime offset differ')
+        self._reap()
+        if account in self.pending or account in self.jobs:
+            return None
+        destination=location(self.root,account,values)
+        from .handoff import recover_interrupted
+        try:recover_interrupted(destination)
+        except OSError:return None
+        status,_=inspect(destination,account.stem,values,pd.Timestamp(stamp,unit='s')-pd.Timedelta(hours=1))
+        if status!='ready':return None
+        try:
+            check_dependencies(values)
+            capacity=resume_capacity(values)
+        except ValueError as exc:
+            logger.info(f'{account.stem}: blocked: {exc}')
+            return None
+        status,_=inspect(destination,account.stem,values,pd.Timestamp(stamp,unit='s')-pd.Timedelta(hours=1),capacity)
+        if status!='ready':return None
+        try:
+            meta=pd.read_pickle(destination/'warmup.pkl')
+        except OSError:return None
+        from .initialization_config import ARROW_DEMAND_ENABLED
+        if ARROW_DEMAND_ENABLED:
+            from .arrow_demand import release_demand
+            release_demand(market,self.root,account,minute,
+                           stamp=int(cutoff(meta['cutoff']).tz_localize('UTC').timestamp())+3600,
+                           values=values)
+        payload=dict(account=str(account),root=str(self.root),origin=meta['origin'],initializing=False,stamp=stamp)
+        env=dict(os.environ,ROBUST40_SERVER_WORKER=json.dumps(payload),PYTHONIOENCODING='utf-8')
+        cmd=[sys.executable,str(self.root/'tools/robust40/cli/server_robust40.py'),'trade',
+             '--account',str(account),'--stamp',str(stamp),'--wait-ready']
+        process=subprocess.Popen(cmd,cwd=self.root,env=env)
+        return process,cmd,env
 
     def command(self,account,run_time,market,*extra_args):
         import json

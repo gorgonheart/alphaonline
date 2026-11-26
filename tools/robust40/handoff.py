@@ -395,12 +395,12 @@ def read_arrow_tail(root, kind, run_time, end, start=None, indexed=False, column
     return out
 
 
-def read_pivot_inputs(root, minute, end, start=None):
+def read_pivot_inputs(root, minute, end, start=None, *, kinds=('spot', 'swap')):
     """Read each existing PKL once, but concatenate only the monitored interval."""
     end=cutoff(end)
     start=cutoff(start) if start is not None else end-pd.Timedelta(hours=REVISION_HISTORY_HOURS-1)
     parts={}
-    for kind in ('spot','swap'):
+    for kind in kinds:
         for path in (Path(root)/f'{minute}m').rglob(f'market_pivot_{kind}_*.pkl'):
             for field,frame in pd.read_pickle(path).items():
                 if field not in ('open','close','vwap1m','funding_rate'):continue
@@ -409,6 +409,112 @@ def read_pivot_inputs(root, minute, end, start=None):
                 value.index=idx[(idx>=start)&(idx<=end)]
                 parts.setdefault(f'pivot/{kind}/{field}',[]).append(value)
     return {key:pd.concat(frames,copy=False).sort_index() for key,frames in parts.items()}
+
+
+def _validate_arrow_and_trim(root, kind, run_time, minute, stamp, required_columns):
+    import pyarrow as pa
+    from core.utils.arrow_reader import arrow_snapshot_path, read_arrow_history_trim_date
+    path = arrow_snapshot_path(root, kind, run_time)
+    if run_time.minute != int(minute):
+        path = Path(root) / f'{int(minute)}m' / f'{kind}_dict_{int(stamp)}.arrow'
+    with pa.memory_map(str(path), 'r') as source:
+        reader = pa.ipc.open_file(source)
+        if required_columns and not set(required_columns).issubset(reader.schema.names):
+            raise ValueError(f'{kind} Arrow missing required columns')
+    return read_arrow_history_trim_date(path)
+
+
+def wait_and_read_inputs_streaming(
+    bmac_data_path,
+    run_time,
+    minute,
+    stamp,
+    end,
+    start,
+    required_columns,
+    *,
+    deadline,
+    poll_interval: float = 0.05,
+):
+    """Wait for spot/swap .ready flags without lock; stream spot reads as soon as spot is ready."""
+    from .offline import canonical
+
+    folder = Path(bmac_data_path) / f'{int(minute)}m'
+    spot_arrow_ready = folder / f'spot_dict_{int(stamp)}.ready'
+    spot_pivot_ready = folder / f'market_pivot_spot_{int(stamp)}.ready'
+    swap_arrow_ready = folder / f'swap_dict_{int(stamp)}.ready'
+    swap_pivot_ready = folder / f'market_pivot_swap_{int(stamp)}.ready'
+
+    wait_start = _time.perf_counter()
+    spot_started_at = None
+    swap_ready_at = None
+    spot_trim_fut = spot_arrow_fut = spot_pivot_fut = None
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        while True:
+            if spot_started_at is None and spot_arrow_ready.exists() and spot_pivot_ready.exists():
+                spot_started_at = _time.perf_counter()
+                spot_trim_fut = pool.submit(_timed_call, _validate_arrow_and_trim, bmac_data_path, 'spot', run_time, minute, stamp, required_columns)
+                spot_arrow_fut = pool.submit(_timed_call, read_arrow_tail, bmac_data_path, 'spot', run_time, end, start, indexed=True)
+                spot_pivot_fut = pool.submit(_timed_call, read_pivot_inputs, bmac_data_path, minute, end, start, kinds=('spot',))
+
+            if swap_arrow_ready.exists() and swap_pivot_ready.exists() and spot_arrow_ready.exists() and spot_pivot_ready.exists():
+                swap_ready_at = _time.perf_counter()
+                if spot_started_at is None:
+                    spot_started_at = swap_ready_at
+                    spot_trim_fut = pool.submit(_timed_call, _validate_arrow_and_trim, bmac_data_path, 'spot', run_time, minute, stamp, required_columns)
+                    spot_arrow_fut = pool.submit(_timed_call, read_arrow_tail, bmac_data_path, 'spot', run_time, end, start, indexed=True)
+                    spot_pivot_fut = pool.submit(_timed_call, read_pivot_inputs, bmac_data_path, minute, end, start, kinds=('spot',))
+                break
+
+            now = _time.time()
+            if now >= deadline:
+                for fut in (spot_trim_fut, spot_arrow_fut, spot_pivot_fut):
+                    if fut is not None:
+                        try:
+                            fut.result()
+                        except Exception:
+                            pass
+                return 'timeout', None, (None, None), {'wait_ready_s': round(_time.perf_counter() - wait_start, 6)}
+
+            _time.sleep(min(poll_interval, max(0.0, deadline - now)))
+
+        swap_trim_fut = pool.submit(_timed_call, _validate_arrow_and_trim, bmac_data_path, 'swap', run_time, minute, stamp, required_columns)
+        swap_arrow_fut = pool.submit(_timed_call, read_arrow_tail, bmac_data_path, 'swap', run_time, end, start, indexed=True)
+        swap_pivot_fut = pool.submit(_timed_call, read_pivot_inputs, bmac_data_path, minute, end, start, kinds=('swap',))
+
+        spot_trim, _, spot_trim_exc = spot_trim_fut.result()
+        swap_trim, _, swap_trim_exc = swap_trim_fut.result()
+        spot_arrow_val, spot_arrow_s, spot_arrow_exc = spot_arrow_fut.result()
+        swap_arrow_val, swap_arrow_s, swap_arrow_exc = swap_arrow_fut.result()
+        spot_pivot_val, spot_pivot_s, spot_pivot_exc = spot_pivot_fut.result()
+        swap_pivot_val, swap_pivot_s, swap_pivot_exc = swap_pivot_fut.result()
+
+    wait_ready_s = round(swap_ready_at - wait_start, 6)
+    spot_early_lead_s = round(max(0.0, swap_ready_at - spot_started_at), 6)
+    stats = {
+        'wait_ready_s': wait_ready_s,
+        'spot_early_lead_s': spot_early_lead_s,
+        'revision_arrow_spot_s': spot_arrow_s,
+        'revision_arrow_swap_s': swap_arrow_s,
+        'revision_pivot_s': round(spot_pivot_s + swap_pivot_s, 6),
+    }
+
+    for exc in (spot_trim_exc, swap_trim_exc, spot_arrow_exc, swap_arrow_exc):
+        if exc is not None:
+            return 'missing_arrow', None, (spot_trim, swap_trim), stats
+    if not spot_arrow_val or not swap_arrow_val:
+        return 'missing_arrow', None, (spot_trim, swap_trim), stats
+    for exc in (spot_pivot_exc, swap_pivot_exc):
+        if exc is not None:
+            raise exc
+
+    out = {}
+    out.update({f'raw/spot/{canonical(s)}': f for s, f in spot_arrow_val.items()})
+    out.update({f'raw/swap/{canonical(s)}': f for s, f in swap_arrow_val.items()})
+    out.update(spot_pivot_val)
+    out.update(swap_pivot_val)
+    return 'ok', out, (spot_trim, swap_trim), stats
 
 
 def trim_inputs(inputs, end):
@@ -562,21 +668,30 @@ def recover_interrupted(destination, locked=False):
             discard(failed,failed.parent)
 
 
-def prepare(destination, values, run_time, minute, end):
+def prepare(destination, values, run_time, minute, end, *, preloaded_old=None, preloaded_current=None):
     """Check bounded inputs before any child state or exchange action is changed."""
     with telemetry.phase('prepare_s'):
-        return _prepare(destination,values,run_time,minute,end)
+        return _prepare(
+            destination, values, run_time, minute, end,
+            preloaded_old=preloaded_old, preloaded_current=preloaded_current,
+        )
 
 
-def _prepare(destination, values, run_time, minute, end):
+def _prepare(destination, values, run_time, minute, end, *, preloaded_old=None, preloaded_current=None):
     destination=Path(destination)
     telemetry.record(offset=minute,cutoff=end)
-    with telemetry.phase('old_read_s'):
-        old=pd.read_pickle(destination/'model/revision_inputs.pkl')
+    if preloaded_old is not None:
+        old = preloaded_old
+    else:
+        with telemetry.phase('old_read_s'):
+            old=pd.read_pickle(destination/'model/revision_inputs.pkl')
     start=min(f.index.min() for f in old.values())
     telemetry.record(input_start=start,input_frames=len(old))
-    with telemetry.phase('input_read_s'):
-        current=read_inputs(run_time,minute,end,start=start)
+    if preloaded_current is not None:
+        current = preloaded_current
+    else:
+        with telemetry.phase('input_read_s'):
+            current=read_inputs(run_time,minute,end,start=start)
     def _held_loader():
         state_path = destination / 'model/state.pkl'
         if not state_path.exists():

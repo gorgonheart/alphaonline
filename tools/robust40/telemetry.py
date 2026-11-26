@@ -22,6 +22,14 @@ def record(**values):
     if state is not None:state.update(values)
 
 
+def reset_timer(**values):
+    state = _current.get()
+    if state is not None:
+        state['_start'] = time.perf_counter()
+        if values:
+            state.update(values)
+
+
 def add(**values):
     state=_current.get()
     if state is not None:

@@ -60,6 +60,7 @@ ARROW_DEMAND_ENABLED = False
 ARROW_CONSUMER_NAME = None  # Defaults to installation folder name; unique per shared producer.
 # Bounds waiting for missing input only; valid calculation has no time deadline.
 DATA_READY_WAIT_SECONDS = 240
+PREWARM_LEAD_SECONDS = 10
 # Include cutoff-24h and its strictly earlier restore point, as well as cutoff.
 CHECKPOINT_POINTS = 26
 REVISION_HISTORY_HOURS = 168

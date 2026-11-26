@@ -66,7 +66,8 @@ if os_type == 'Windows':  # win执行
 # 构建线程池，给统计脚本异步执行
 stat_executor = StatisticsTasks(statistics_config['max_workers'], logger.warning)
 python_exec = sys.executable  # 获取当前环境下的python解释器，也是给统计脚本用的
-from tools.robust40.server import Coordinator, clean_startup
+from tools.robust40.server import Coordinator, clean_startup, enabled
+from tools.robust40.initialization_config import PREWARM_LEAD_SECONDS
 server_initializer = Coordinator(PROJECT_ROOT)
 
 
@@ -203,6 +204,30 @@ def run_loop() -> datetime | None:
         logger.debug(f'{run_time} 无匹配账户，跳过行情等待')
         remedy_until_run_time(run_time)
         return None
+
+    _is_model_enabled = globals().get('enabled', lambda p: False)
+    _prewarm_lead = globals().get('PREWARM_LEAD_SECONDS', 10)
+    if (not debug_round and len(due_units) == 1 and not _is_group(due_units[0])
+            and _is_model_enabled(due_units[0]) and hasattr(server_initializer, 'launch_prewarmed_trade')):
+        unit = due_units[0]
+        wait_s = max(0.0, run_time.timestamp() - float(_prewarm_lead) - time.time())
+        if wait_s > 0:
+            logger.info(f'{unit.stem}: 预热等待至 run_time - {_prewarm_lead:g}s（{wait_s:.1f}s）...')
+            time.sleep(wait_s)
+        from config import bmac_data_path
+        market = _resolve_market(_read_exchange(unit)) if (_read_exchange is not None and _resolve_market is not None) else bmac_data_path
+        launched = server_initializer.launch_prewarmed_trade(unit, run_time, market)
+        if launched is not None:
+            proc, command, worker_env = launched
+            rc = proc.wait()
+            if server_initializer.handle_result(unit, run_time, market, command, worker_env, rc):
+                stat_executor.submit(unit.stem, run_statistics_async, run_time, random_time, unit)
+            gc.collect()
+            divider('本次循环结束，23秒后进入下一次循环', '=')
+            print('\n\n')
+            time.sleep(23)
+            remedy_until_run_time(run_time)
+            return run_time
 
     exchanges = sorted(set().union(*(unit_exchanges[u] for u in due_units)))
     logger.info(f'检查数据中心 {exchanges or ["default"]}，{run_time}，本轮单元：{", ".join(u.stem for u in due_units)}')
