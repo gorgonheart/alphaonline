@@ -661,5 +661,108 @@ def test_warm_numba_cli_exits_zero():
     assert 'warm-numba' in result.stdout
 
 
+def test_warm_numba_kernels_uses_int8_require_rebalance(monkeypatch):
+    from tools.robust40.cli import server_robust40
+    import positions.ModelRobust40Strategy as mrs
+
+    seen_dtypes = []
+    orig_sim = mrs.start_simulation
+
+    def _spy_sim(*args, **kwargs):
+        seen_dtypes.append(args[20].dtype)
+        return orig_sim(*args, **kwargs)
+
+    monkeypatch.setattr(mrs, 'start_simulation', _spy_sim)
+    server_robust40.warm_numba_kernels()
+    assert seen_dtypes and all(dt == np.int8 for dt in seen_dtypes)
+
+
+def test_run_by_account_flushes_async_writer_before_save_final_select_results_and_simulate_calc_equity(tmp_path, monkeypatch):
+    from core import real_trading as rt
+
+    wrote_flag = {'csv': False, 'ratio': False}
+    slow_started = threading.Event()
+    result_dir = tmp_path / 'factory'
+    result_dir.mkdir()
+
+    def _fake_calc_ratios(async_writer=None):
+        def _slow_csv():
+            slow_started.set()
+            time.sleep(0.05)
+            wrote_flag['csv'] = True
+        if async_writer is not None:
+            async_writer.submit(_slow_csv)
+        else:
+            _slow_csv()
+        return pd.DataFrame()
+
+    idx = pd.to_datetime(['2026-01-01 12:25:00'])
+    ratio = pd.DataFrame({'BTCUSDT': [0.1]}, index=idx)
+    me_conf = SimpleNamespace(
+        factory=SimpleNamespace(config_list=[], result_folder=result_dir),
+        strategy=SimpleNamespace(params={}, core_funcs={}),
+        backtest_strategies=lambda *a: None,
+        process_equities=lambda *a, **k: None,
+        calc_ratios=_fake_calc_ratios,
+        agg_pos_ratio=lambda r: (ratio, ratio),
+        apply_position_limits=lambda s, w: (s, w),
+    )
+    acct = SimpleNamespace(
+        name='acct',
+        hour_offset='25m',
+        hour_offset_minute=25,
+        leverage=1.0,
+        spot_equity=1000.0,
+        swap_equity=0.0,
+        bn=SimpleNamespace(
+            fetch_market_info=lambda *a: None,
+            cancel_all_swap_orders=lambda: None,
+            cancel_all_spot_orders=lambda: None,
+            collect_asset=lambda: None,
+            adjust_base_margin=lambda: None,
+        ),
+        calc_order_amount=lambda df: pd.DataFrame(),
+        proceed_spot_order=lambda *a, **k: ([], pd.DataFrame()),
+        proceed_swap_order=lambda *a, **k: ([], pd.DataFrame()),
+    )
+
+    monkeypatch.setattr(rt, 'refresh_diff_time', lambda: None)
+    monkeypatch.setattr(rt, 'snapshot_bmac_exginfo', lambda: None)
+    monkeypatch.setattr(rt, 'save_position_snapshot', lambda *a: None)
+    monkeypatch.setattr(rt, 'get_folder_path', lambda *p, **k: tmp_path.joinpath(*p))
+    monkeypatch.setattr(rt, 'runtime_folder', tmp_path / 'rt', raising=False)
+    (tmp_path / 'rt').mkdir(exist_ok=True)
+    monkeypatch.setattr(rt, 'lookback_save_interval_hours', 0, raising=False)
+    monkeypatch.setattr(rt, 'calc_target_position', lambda *a, **k: pd.DataFrame({'目标持仓量': [0.0]}))
+    monkeypatch.setattr(rt, 'save_position_results', lambda *a, **k: None)
+    monkeypatch.setattr(rt, 'save_symbol_order', lambda *a, **k: None)
+    monkeypatch.setattr(rt, 'save_order_history', lambda *a, **k: None)
+
+    # Mode 1: dry_run -> save_final_select_results must observe csv write finished
+    observed_csv = []
+    monkeypatch.setattr(rt, 'is_debug', False, raising=False)
+    monkeypatch.setattr(rt, 'is_simulate', 'dry_run', raising=False)
+    monkeypatch.setattr(rt, 'save_final_select_results', lambda *a, **k: observed_csv.append(wrote_flag['csv']))
+    rt.run_by_account(acct, me_conf, datetime(2026, 1, 1, 12, 25))
+    assert observed_csv == [True]
+
+    # Mode 2: debug + simulate -> calc_equity must observe queued ratio pickle write finished
+    observed_ratio = []
+    orig_to_pickle = pd.DataFrame.to_pickle
+    def _slow_to_pickle(self, path, *a, **k):
+        if Path(path).name in ('df_spot_ratio.pkl', 'df_swap_ratio.pkl'):
+            time.sleep(0.05)
+            wrote_flag['ratio'] = True
+        return orig_to_pickle(self, path, *a, **k)
+
+    monkeypatch.setattr(pd.DataFrame, 'to_pickle', _slow_to_pickle)
+    monkeypatch.setattr(rt, 'is_debug', True, raising=False)
+    monkeypatch.setattr(rt, 'is_simulate', 'simulate', raising=False)
+    monkeypatch.setattr(rt, 'calc_equity', lambda *a, **k: observed_ratio.append(wrote_flag['ratio']) or pd.DataFrame())
+    monkeypatch.setattr(rt, 'save_performance_df_csv', lambda *a, **k: None)
+    rt.run_by_account(acct, me_conf, datetime(2026, 1, 1, 12, 25))
+    assert observed_ratio == [True]
+
+
 
 

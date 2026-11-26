@@ -67,16 +67,17 @@ def prepare_account(account_config) -> bool:
     return True
 
 
-def run_calc_stage(account_config, me_conf, run_time):
+def run_calc_stage(account_config, me_conf, run_time) -> bool:
     """账户组计算轮：选币、仓管，保存交接数据；下单轮会覆盖共享缓存，所以归档在这里做"""
     if not prepare_account(account_config) or not calc_by_account(account_config, me_conf, run_time):
-        return
+        return False
     equity = DEBUG_INITIAL_USDT if is_debug else account_config.spot_equity + account_config.swap_equity
     save_handoff(account_config.name, run_time, equity)
     logger.ok(f'[{account_config.name}] 已保存交接数据，权益 {equity:,.2f} USDT')
 
     if not is_debug and is_archive_round(run_time):
         save_runtime_data_archive(account_config, me_conf, run_time)
+    return True
 
 
 def run_trade_stage(account_config, me_conf, run_time, scale: float):
@@ -122,7 +123,8 @@ def main() -> datetime | None:
     # ====================================================================================================
     if args.stage == 'calc':
         divider(f'🚀 [{account_config.name}] 开始', '+')
-        run_calc_stage(account_config, me_conf, run_time)
+        if not run_calc_stage(account_config, me_conf, run_time):
+            return None
     elif args.stage == 'trade':
         divider(f'🚀 [{account_config.name}] 开始', '+')
         run_trade_stage(account_config, me_conf, run_time, args.scale)

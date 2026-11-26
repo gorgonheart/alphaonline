@@ -181,7 +181,11 @@ class DeferredAtomicSave:
             name=f'deferred-save-{self.path.name}',
             daemon=True,
         )
-        self._thread.start()
+        try:
+            self._thread.start()
+        except BaseException:
+            self._tmp.unlink(missing_ok=True)
+            raise
 
     def _release_lock(self):
         if not self._lock_released and self._lock_cm is not None:

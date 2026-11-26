@@ -560,4 +560,84 @@ def test_trade_by_account_adjust_leverage_guards_missing_method_or_columns(tmp_p
     assert recorded == {'BTCUSDT': pytest.approx(100.0)}
 
 
+def test_dispatch_unit_member_sets_env_for_non_model_member(tmp_path, monkeypatch):
+    from datetime import datetime
+    from types import SimpleNamespace
+    import startup
+
+    member_path = tmp_path / 'accounts' / 'g1' / 'm_a.py'
+    member_path.parent.mkdir(parents=True)
+    member_path.write_text("account_config = {'exchange_name': 'binance', 'hour_offset': '25m'}\n", encoding='utf-8')
+
+    monkeypatch.setenv('X3S_TRADING_ACCOUNT', 'stale_other_account.py')
+    monkeypatch.delenv('PYTHONPATH', raising=False)
+    monkeypatch.setattr(startup, 'resolve_bmac_data_path', lambda ex: tmp_path / 'bmac')
+    seen = {}
+
+    class _FakeInit:
+        def command(self, account, run_time, market, *extra_args):
+            return ['python', 'core/account_exec.py', '123', *extra_args], None
+
+        def handle_result(self, account, run_time, market, command, worker_env, rc):
+            seen['handle_env'] = worker_env
+            return True
+
+    monkeypatch.setattr(startup, 'server_initializer', _FakeInit())
+    monkeypatch.setattr(
+        startup.subprocess, 'run',
+        lambda cmd, env=None, check=False: seen.update(cmd=cmd, env=env) or SimpleNamespace(returncode=0),
+    )
+
+    startup._dispatch_unit_member(member_path, datetime(2026, 1, 1, 12, 25), '--stage', 'calc')
+    assert seen['env'] is not None
+    assert seen['env']['X3S_TRADING_ACCOUNT'] == str(member_path)
+    assert seen['env']['PYTHONPATH'] == startup.PROJECT_ROOT
+    assert seen['handle_env'] == seen['env']
+
+
+def test_calc_stage_skip_returns_none_from_account_exec_main(monkeypatch):
+    from datetime import datetime
+    from types import SimpleNamespace
+    import core.account_exec as ae
+
+    monkeypatch.setattr(sys, 'argv', ['account_exec.py', str(int(datetime(2026, 1, 1, 12, 25).timestamp())), '--stage', 'calc'])
+    monkeypatch.setattr(ae, 'init_system', lambda: (SimpleNamespace(name='m_a'), SimpleNamespace()))
+    monkeypatch.setattr(ae, 'prepare_account', lambda acct: False)
+    assert ae.main() is None
+
+
+def test_coordinator_prepare_resolves_per_exchange_market(tmp_path, monkeypatch):
+    from datetime import datetime
+    import config as cfg
+    from tools.robust40 import server
+
+    acct = tmp_path / 'accounts' / 'okx_acct.py'
+    acct.parent.mkdir(parents=True)
+    acct.write_text(
+        "from positions.ModelRobust40Strategy import *\n"
+        "account_config = {'hour_offset': '25m', 'exchange_name': 'okx'}\n"
+        "strategy_name = 's'\n"
+        "strategy_config = {'params': {'runtime': {'server_init': True}}}\n"
+        "strategy_pool = []\n"
+        "precompute_factor_configs = {}\n",
+        encoding='utf-8',
+    )
+    okx_rt = tmp_path / 'okx_rt'
+    default_market = tmp_path / 'default_bmac'
+    from core.utils import datatools
+    monkeypatch.setattr(datatools, 'exchange_data_paths', {'okx': str(okx_rt)}, raising=False)
+    monkeypatch.setattr(datatools, 'bmac_data_path', tmp_path / 'data' / 'bmac_base', raising=False)
+    monkeypatch.setattr(cfg, 'exchange_data_paths', {'okx': str(okx_rt)}, raising=False)
+    monkeypatch.setattr(cfg, 'bmac_data_path', tmp_path / 'data' / 'bmac_base', raising=False)
+
+    c = server.Coordinator(tmp_path)
+    monkeypatch.setattr(server, 'enabled', lambda a: True)
+    monkeypatch.setattr(server, 'settings', lambda a: ({'account': {'hour_offset': '25m', 'exchange_name': 'okx'}, 'strategy_name': 's'}, {'minute': 25}))
+    monkeypatch.setattr(server, 'inspect', lambda *a, **k: ('rebuild', 'missing'))
+
+    c.prepare([acct], datetime(2026, 1, 1, 12, 25), default_market)
+    assert acct.resolve() in c.pending
+    assert c.pending[acct.resolve()]['market'] == okx_rt / 'bmac_base'
+
+
 

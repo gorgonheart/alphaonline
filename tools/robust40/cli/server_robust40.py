@@ -542,7 +542,7 @@ def warm_numba_kernels() -> None:
     swap_ratio = np.full((n_bars, n_syms), -0.1, dtype=np.float64)
     funding = np.zeros((n_bars, n_syms), dtype=np.float64)
     leverages = np.ones(n_bars, dtype=np.float64)
-    req = np.ones(n_bars, dtype=np.int64)
+    req = np.ones(n_bars, dtype=np.int8)
     cflow = np.zeros(n_bars, dtype=np.float64)
 
     LiveRebRobust40(sizes, sizes).calc_lots(10000.0, px_row, lots, spot_ratio[0], px_row, lots, swap_ratio[0])

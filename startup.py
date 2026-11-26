@@ -121,8 +121,11 @@ def _dispatch_unit_member(account_path: Path, run_time, *extra_args):
     command, worker_env = server_initializer.command(account_path, run_time, market, *extra_args)
     if command is None:
         return
-    result = subprocess.run(command, env=worker_env, check=False)
-    server_initializer.handle_result(account_path, run_time, market, command, worker_env, result.returncode)
+    env = dict(os.environ if worker_env is None else worker_env)
+    env['X3S_TRADING_ACCOUNT'] = str(account_path)
+    env['PYTHONPATH'] = PROJECT_ROOT
+    result = subprocess.run(command, env=env, check=False)
+    server_initializer.handle_result(account_path, run_time, market, command, env, result.returncode)
 
 
 def run_loop() -> datetime | None:
@@ -214,6 +217,8 @@ def run_loop() -> datetime | None:
         if wait_s > 0:
             logger.info(f'{unit.stem}: 预热等待至 run_time - {_prewarm_lead:g}s（{wait_s:.1f}s）...')
             time.sleep(wait_s)
+        os.environ["X3S_TRADING_ACCOUNT"] = str(unit)
+        os.environ['PYTHONPATH'] = PROJECT_ROOT
         from config import bmac_data_path
         market = _resolve_market(_read_exchange(unit)) if (_read_exchange is not None and _resolve_market is not None) else bmac_data_path
         launched = server_initializer.launch_prewarmed_trade(unit, run_time, market)

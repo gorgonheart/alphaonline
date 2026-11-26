@@ -439,6 +439,8 @@ class Coordinator:
 
     def prepare(self,accounts,run_time,market):
         """Metadata-only preflight also restores pending invalid accounts after restart."""
+        import config as _cfg
+        from core.account_manager import read_exchange_from_config
         self._reap()
         for account in accounts:
             if not enabled(account):continue
@@ -453,7 +455,12 @@ class Coordinator:
                     status,reason=inspect(destination,account.stem,values,
                         pd.Timestamp(candidate.timestamp(),unit='s')-pd.Timedelta(hours=1))
             except OSError:continue
-            if status=='rebuild':self.request_rebuild(account,candidate.to_pydatetime(),market,reason)
+            if status=='rebuild':
+                from core.utils import datatools as _dt
+                account_exchange=read_exchange_from_config(account)
+                ex_paths=(getattr(_dt,'exchange_data_paths',{}) or getattr(_cfg,'exchange_data_paths',{})) or {}
+                account_market=_dt.resolve_bmac_data_path(account_exchange) if account_exchange in ex_paths else market
+                self.request_rebuild(account,candidate.to_pydatetime(),account_market,reason)
 
     @_serialized
     def _launch(self,account,run_time,values,reason,mode,market):
