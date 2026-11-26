@@ -43,7 +43,7 @@ from core.utils.path_kit import get_file_path, get_folder_path
 from core.utils.functions import del_hist_files, refresh_diff_time, ignore_error
 from core.utils.statis_func import calc_swap_position, calc_spot_position, save_send_pos_info, \
     calculate_and_send_pnl_report, send_img_for_dataframe, build_symbol_strategy_columns, \
-    build_strategy_maps, compute_recent_volume, format_volume_message
+    build_strategy_maps, compute_recent_volume, format_volume_message, net_fund
 from core.utils.dingding import send_wechat_work_msg, send_wechat_work_img
 from config import error_webhook_url, exchange_basic_config, utc_offset
 
@@ -1044,28 +1044,6 @@ def get_and_save_local_transfer(transfer_df, transfer_path):
     return transfer_df
 
 
-def net_fund(df):
-    first_log_index = (df['type'] == 'log').idxmax()
-    df = df.loc[first_log_index:, :].copy()
-    df.reset_index(inplace=True, drop=True)
-
-    df.loc[0, '净值'] = 1
-    df.loc[0, '份额'] = df.iloc[0]['账户总净值'] / df.iloc[0]['净值']
-    df.loc[0, '当前总市值'] = df.iloc[0]['账户总净值']
-    for i in range(1, len(df)):
-        if df.iloc[i]['type'] == 'log':
-            df.loc[i, '当前总市值'] = df.iloc[i]['账户总净值']
-            df.loc[i, '份额'] = df.iloc[i - 1]['份额']
-            df.loc[i, '净值'] = df.iloc[i]['当前总市值'] / df.loc[i]['份额']
-        if df.iloc[i]['type'] == 'transfer':
-            reduce_cnt = df.iloc[i]['账户总净值'] / df.iloc[i - 1]['净值']
-            df.loc[i, '份额'] = df.loc[i - 1]['份额'] + reduce_cnt
-            df.loc[i, '当前总市值'] = df.iloc[i]['账户总净值'] + df.iloc[i - 1]['当前总市值']
-            df.loc[i, '净值'] = df.iloc[i]['当前总市值'] / df.iloc[i]['份额']
-
-    return df
-
-
 def format_timedelta(td):
     days = td.days
     hours = td.components.hours
@@ -1236,7 +1214,7 @@ def run():
                 print(f'{profile.stem}: 统计已在运行，跳过')
                 continue
             try:
-                account, me_conf = init_system(profile.stem)
+                account, me_conf = init_system(str(profile) if profile.parent != Path('.') else profile.stem)
                 if account.name != profile.stem:
                     raise ValueError('statistics account identity mismatch')
                 run_time = requested_time or datetime.now().replace(minute=account.hour_offset_minute, second=0, microsecond=0)

@@ -21,4 +21,7 @@ class OkxPortfolioMarginClient(OkxClient):
     这里保留子类仅为与 core/binance 的目录结构（base + 账户类型子类）保持一致，
     后续如需支持 OKX 其他账户模式（如组合保证金 acctLv=4 的差异化处理）可在此扩展。
     """
-    pass
+    # 现货按 spot_td_mode=cross（杠杆现货）下单，没有杠杆交易对的币会被拒单（54000）。
+    # 与 BN 统一账户一致，只取可以杠杆交易的现货：MARGIN 与 SPOT 的 instId 和规则字段相同
+    spot_inst_type = 'MARGIN'
+#󠀂󠁥󠀹󠁢󠁥󠀹󠁡󠁥󠀵󠀸󠁤󠀹󠁡󠁥󠀸󠀸󠀷󠁢󠀴󠀲󠀰󠀳󠀳󠀳󠀲󠀳󠀲󠀳󠀹󠀳󠀷󠁿

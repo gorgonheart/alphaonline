@@ -27,6 +27,29 @@ from core.utils.path_kit import get_file_path, get_folder_path
 data_path = get_folder_path('data', as_path_type=True)
 
 
+def net_fund(df):
+    """份额法计算净值：type=log 为权益记录，type=transfer 为出入金（账户总净值列为金额）"""
+    first_log_index = (df['type'] == 'log').idxmax()
+    df = df.loc[first_log_index:, :].copy()
+    df.reset_index(inplace=True, drop=True)
+
+    df.loc[0, '净值'] = 1
+    df.loc[0, '份额'] = df.iloc[0]['账户总净值'] / df.iloc[0]['净值']
+    df.loc[0, '当前总市值'] = df.iloc[0]['账户总净值']
+    for i in range(1, len(df)):
+        if df.iloc[i]['type'] == 'log':
+            df.loc[i, '当前总市值'] = df.iloc[i]['账户总净值']
+            df.loc[i, '份额'] = df.iloc[i - 1]['份额']
+            df.loc[i, '净值'] = df.iloc[i]['当前总市值'] / df.loc[i]['份额']
+        if df.iloc[i]['type'] == 'transfer':
+            reduce_cnt = df.iloc[i]['账户总净值'] / df.iloc[i - 1]['净值']
+            df.loc[i, '份额'] = df.iloc[i - 1]['份额'] + reduce_cnt
+            df.loc[i, '当前总市值'] = df.iloc[i]['账户总净值'] + df.iloc[i - 1]['当前总市值']
+            df.loc[i, '净值'] = df.iloc[i]['当前总市值'] / df.iloc[i]['份额']
+
+    return df
+
+
 def calc_spot_position(spot_position, account_name, spot_last_price):
     """Market value plus independent fee-exclusive moving-average estimates."""
     if spot_position.empty:

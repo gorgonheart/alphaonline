@@ -467,10 +467,11 @@ class StandardClient(BinanceClient):
                     res = pd.DataFrame(account_info)
                     res['time'] = pd.to_datetime(res['time'], unit='ms')
                     res.rename(columns={'qty': 'amount', 'time': 'timestamp'}, inplace=True)
-                    res.loc[res['toAccountType'] == 'SPOT', 'flag'] = 1 if transfer_type == 1 else -1
-                    res.loc[res['toAccountType'] == 'USDT_FUTURE', 'flag'] = 1 if transfer_type == 1 else -1
-                    res = res[res['status'] == 'SUCCESS']
-                    res = res[res['toAccountType'].isin(['SPOT', 'USDT_FUTURE'])]
+                    # 只统计子账户这一侧是现货 / U 本位合约的划转：转入看 toAccountType，转出看 fromAccountType
+                    # （转出时 toAccountType 是母账户那一侧，按它判断会把「子账户杠杆 → 母账户现货」误记为转出）
+                    sub_side = res['toAccountType'] if transfer_type == 1 else res['fromAccountType']
+                    res['flag'] = 1 if transfer_type == 1 else -1
+                    res = res[(res['status'] == 'SUCCESS') & sub_side.isin(['SPOT', 'USDT_FUTURE'])]
                     result2.append(res)
 
         # 将账号之间的划转与单账号内部换转数据合并

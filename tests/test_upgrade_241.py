@@ -135,3 +135,142 @@ assert config.lookback_save_interval_hours == 0
         encoding='utf8',
     )
     assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_bn_subaccount_transfer_direction_uses_sub_side():
+    from core.binance.standard_client import StandardClient
+    from core.binance.portfolio_margin_client import PortfolioMarginClient
+
+    assert hasattr(PortfolioMarginClient, 'get_statistics_overview')
+
+    rows_out = [
+        {
+            'asset': 'USDT',
+            'qty': '100',
+            'time': 1700000000000,
+            'status': 'SUCCESS',
+            'tranId': 1,
+            'fromAccountType': 'MARGIN',
+            'toAccountType': 'SPOT',
+        },
+        {
+            'asset': 'USDT',
+            'qty': '200',
+            'time': 1700000000000,
+            'status': 'SUCCESS',
+            'tranId': 2,
+            'fromAccountType': 'SPOT',
+            'toAccountType': 'SPOT',
+        },
+    ]
+
+    class _FakeExg:
+        def sapi_get_asset_transfer(self, params):
+            return {'total': 0, 'rows': []}
+
+        def sapi_get_sub_account_transfer_subuserhistory(self, params):
+            return rows_out if params['type'] == 2 else []
+
+    for cls, expected_val in [(StandardClient, -200.0), (PortfolioMarginClient, -100.0)]:
+        cli = object.__new__(cls)
+        cli.base_margin = {'USDT': 1}
+        cli.exchange = _FakeExg()
+        df = cli.fetch_transfer_history(datetime(2026, 1, 1, 12))
+        assert len(df) == 1
+        assert float(df['账户总净值'].iloc[0]) == pytest.approx(expected_val)
+
+
+def test_okx_tradfi_limit_51138_and_transfer_history():
+    import pandas as pd
+    from core.okx.base_client import OkxClient
+    from core.okx.portfolio_margin_client import OkxPortfolioMarginClient
+
+    assert OkxPortfolioMarginClient.spot_inst_type == 'MARGIN'
+
+    cli = OkxClient()
+    assert cli._is_blocked_tradfi({'instCategory': '3'}, 'spot') is True
+    assert cli._is_blocked_tradfi({'instCategory': '4'}, 'swap') is True
+
+    limit_sell = cli._parse_okx_price_limit(
+        'OKX下单失败 sCode=51138 The lowest price limit for the sell leg is 100.5.', 'sell'
+    )
+    assert limit_sell == pytest.approx(100.5)
+
+    cli.market_info = {'swap': {'price_precision': {'BTC-USDT-SWAP': 2}}}
+    cli._swap_ticker_price = pd.Series({'BTC-USDT-SWAP': 101.0})
+    sell_p = cli.retry_order_param({'instId': 'BTC-USDT-SWAP', 'side': 'sell', 'sz': '1'}, 'swap', 0.015, 1, 100.0)
+    buy_p = cli.retry_order_param({'instId': 'BTC-USDT-SWAP', 'side': 'buy', 'sz': '1'}, 'swap', 0.015, 1, 100.0)
+    assert sell_p['px'] == '100.10'
+    assert buy_p['px'] == '99.90'
+
+    ts_ms = int(datetime(2026, 1, 1, 10, 5).timestamp() * 1000)
+
+    class _FakeOkxExg:
+        def private_get_account_bills(self, params):
+            return {
+                'data': [
+                    {'billId': 'b1', 'ccy': 'USDT', 'subType': '11', 'balChg': '50', 'ts': str(ts_ms)},
+                ]
+            }
+
+        def private_get_account_bills_archive(self, params):
+            return {
+                'data': [
+                    {'billId': 'b1', 'ccy': 'USDT', 'subType': '11', 'balChg': '50', 'ts': str(ts_ms)},
+                    {'billId': 'b2', 'ccy': 'USDT', 'subType': '12', 'balChg': '-20', 'ts': str(ts_ms + 1000)},
+                ]
+            }
+
+    cli.exchange = _FakeOkxExg()
+    tdf = cli.fetch_transfer_history(datetime(2026, 1, 2, 0))
+    assert list(tdf.columns) == ['time', '账户总净值', 'type']
+    assert float(tdf['账户总净值'].sum()) == pytest.approx(30.0)
+
+
+def test_group_statistics_builds_6_subplots_with_missing_member_transfer(tmp_path, monkeypatch):
+    import pandas as pd
+    from core.utils import group_statistics
+
+    for name, eq1, eq2 in [('mem_a', 1000.0, 1100.0), ('mem_b', 1000.0, 1000.0)]:
+        d = tmp_path / 'data' / name / '账户信息'
+        d.mkdir(parents=True)
+        pd.DataFrame({
+            'time': ['2026-01-01 00:25:00', '2026-01-01 01:25:00'],
+            '账户总净值': [eq1, eq2],
+            '多头仓位': [500.0, 500.0],
+            '空头仓位': [-500.0, -500.0],
+            '多头选币': [5, 5],
+            '空头选币': [5, 5],
+            'observed_at': ['2026-01-01 00:25:01', '2026-01-01 01:25:01'],
+            'equity_source': ['live', 'live'],
+        }).to_csv(d / 'equity.csv', encoding='gbk', index=False)
+
+    pd.DataFrame({
+        'time': ['2026-01-01 00:40:00'],
+        '账户总净值': [100.0],
+        'type': ['transfer'],
+    }).to_csv(tmp_path / 'data' / 'mem_a' / '账户信息' / 'transfer.csv', encoding='gbk', index=False)
+
+    def _fake_folder(*parts, **kwargs):
+        p = tmp_path.joinpath(*parts)
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+
+    monkeypatch.setattr(group_statistics, 'get_folder_path', _fake_folder)
+
+    group = {
+        'name': 'grp_test',
+        'members': {'mem_a': 0.5, 'mem_b': 0.5},
+        'hour_offset': '25m',
+        'threshold_mode': 'relative',
+        'threshold': 0.15,
+        'webhook': '',
+    }
+    df, df_members, df_all, transfers = group_statistics.build_group_equity(group)
+    assert df['净值'].iloc[-1] == pytest.approx(1.0)
+    assert transfers['mem_b'].empty
+
+    pic_path = tmp_path / 'group_equity.png'
+    group_statistics.draw_group_equity(group, df, df_all, transfers, pic_path)
+    assert pic_path.exists() and pic_path.stat().st_size > 0
+

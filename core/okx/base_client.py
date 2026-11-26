@@ -42,6 +42,7 @@ import os
 import time
 import traceback
 import uuid
+from datetime import datetime
 
 import ccxt
 import numpy as np
@@ -78,8 +79,9 @@ class OkxClient:
     )
 
     market_info = {}  # 缓存市场信息，并且自动更新，全局共享（与 BinanceClient 保持类级共享一致）
+    spot_inst_type = 'SPOT'  # 获取现货币种规则的 instType，统一账户子类改为 MARGIN 只取可杠杆交易的现货
 
-    bstocks_coins: set = set()  # OKX 没有 bStocks（股票代币），恒为空集，仅为与 BinanceClient 统一客户端接口
+    bstocks_coins: set = set()  # OKX 股票类现货在 fetch_market_info 中按 instCategory 过滤，这里恒为空集，仅为与 BinanceClient 统一客户端接口
 
     # OKX broker 标记，下单时随 tag 上报
     BROKER_TAG = '91b45db660c6BCDE'
@@ -128,6 +130,11 @@ class OkxClient:
         self.base_coin_amount: dict = {base_coin: 0 for base_coin in self.base_margin.keys()}
 
         self.seed_coins: list = config.get('seed_coins', [])  # 套利的底仓币种
+        # 传统资产（TradFi）过滤，开关与 BinanceClient 一致：
+        # - 合约：contract_types 含 TRADIFI_PERPETUAL 时才交易非加密货币类合约（股票、大宗商品等）
+        # - 现货：filter_bstocks=True 时不交易股票类现货（对应 BN 的 bStocks）
+        self.contract_types: tuple = config.get('contract_types', ('PERPETUAL',))
+        self.filter_bstocks: bool = config.get('filter_bstocks', True)
 
         self._swap_ticker_price = {}
         self._spot_ticker_price = {}
@@ -180,6 +187,17 @@ class OkxClient:
                                     func_name=f'获取OKX {inst_type} 币种规则数据')
         return instruments.get('data', []) if instruments else []
 
+    def _is_blocked_tradfi(self, info: dict, symbol_type: str) -> bool:
+        """
+        是否为不交易的传统资产。instCategory：1 加密货币，3 股票，4 大宗商品，5 外汇，6 债券
+        - 合约：非加密货币类都属于 TradFi 合约，对应 BN 的 TRADIFI_PERPETUAL
+        - 现货：只过滤股票类（对应 BN 的 bStocks），PAXG、XAUT 等商品代币与 BN 一致保留
+        """
+        category = info.get('instCategory', '1')
+        if symbol_type == 'swap':
+            return category != '1' and 'TRADIFI_PERPETUAL' not in self.contract_types
+        return category == '3' and self.filter_bstocks
+
     # region 市场信息数据获取
     def fetch_market_info(self, symbol_type='swap', quote_symbol='USDT'):
         """
@@ -198,7 +216,7 @@ class OkxClient:
             inst_type = 'SWAP'
             suffix = f'-{quote_symbol}-SWAP'
         else:
-            inst_type = 'SPOT'
+            inst_type = self.spot_inst_type
             suffix = f'-{quote_symbol}'
 
         instrument_list = self._fetch_instruments(inst_type)
@@ -232,8 +250,8 @@ class OkxClient:
 
             full_symbol_list.append(inst_id)
 
-            # 稳定币不参与交易
-            if okx_symbol_base(inst_id) in stable_symbol:
+            # 稳定币、传统资产不参与交易
+            if okx_symbol_base(inst_id) in stable_symbol or self._is_blocked_tradfi(info, symbol_type):
                 pass
             else:
                 symbol_list.append(inst_id)
@@ -276,10 +294,13 @@ class OkxClient:
             min_qty[inst_id] = precision
 
         # ===计算最小下单金额（OKX 没有 minNotional 字段，需要用最小下单数量 × 最新价格折算）
+        # 价格打 97 折，相当于把门槛降低 3%：下单时会用当时的价格重算下单金额再和这里比较，
+        # 不打折的话，价格稍微下跌，正好最小张数的单就会被误过滤。只影响是否过滤，不影响下单数量；
+        # 交易所的硬性限制是最小张数，下单前单独检查
         ticker_list = self.fetch_ticker_price(symbol_type=symbol_type)
         price_dict = {t['symbol']: float(t['price']) for t in ticker_list}
         for inst_id in full_symbol_list:
-            price = price_dict.get(inst_id, 0.0)
+            price = price_dict.get(inst_id, 0.0) * 0.97
             if symbol_type == 'swap':
                 min_notional[inst_id] = min_sz.get(inst_id, 1.0) * ct_val.get(inst_id, 1.0) * ct_mult.get(inst_id, 1.0) * price
             else:
@@ -595,9 +616,11 @@ class OkxClient:
         if acct_lv in ('3', '4'):
             return
 
+        # 切换失败直接退出：非跨币种保证金模式下 cross 杠杆现货下单要求传 ccy（报 50014），不能继续交易。
+        # 常见失败原因 51070：未满足 OKX 账户模式升级要求，需用户在官网/App 手动升级
         retry_wrapper(
             self.exchange.private_post_account_set_account_level, params={'acctLv': '3'},
-            func_name='设置OKX账户为跨币种保证金模式', if_exit=False
+            func_name='设置OKX账户为跨币种保证金模式'
         )
         logger.ok('开启OKX跨币种保证金模式')
 
@@ -609,6 +632,7 @@ class OkxClient:
             if not inst_family:
                 logger.warning(f'[{inst_id}] instruments 数据缺少 instFamily，跳过仓位档位查询')
                 return []
+            time.sleep(0.3)  # 仓位档位接口限频 2 秒 10 次，未缓存的请求之间间隔 0.3 秒，避免 429
             response = retry_wrapper(
                 self.exchange.public_get_public_position_tiers,
                 params={'instType': 'SWAP', 'tdMode': 'cross', 'instId': inst_id, 'instFamily': inst_family},
@@ -867,6 +891,7 @@ class OkxClient:
             'transactTime': update_time,
             'orderId': order_data.get('ordId', ''),
             'clientOrderId': order_data.get('clOrdId', ''),
+            'tag': order_data.get('tag', ''),
             'symbol_type': symbol_type,
         }
 
@@ -920,7 +945,7 @@ class OkxClient:
     # ====================================================================================================
     def _parse_okx_price_limit(self, error_msg: str, side: str):
         """
-        从OKX价格限制报错中解析允许的边界，兼容51135/51136/51137和51006文案。
+        从OKX价格限制报错中解析允许的边界，兼容51135/51136/51137/51138和51006文案。
         买单取最高买价，卖单取最低卖价，重试时用它做基准。
         """
         import re
@@ -957,8 +982,9 @@ class OkxClient:
             return params
 
         if price_limit:
-            # 在限制价基础上留 1% 余地，避免再次超限
-            price = price_limit * 0.99 if side == 'buy' else price_limit * 1.01
+            # 限制价是允许的最激进价格：买单不高于最高买价，卖单不低于最低卖价。
+            # 只向内收 0.1%，避免再次超限；收太多会回到现价附近，IOC 容易成交不了
+            price = price_limit * 0.999 if side == 'buy' else price_limit * 1.001
         else:
             if side == 'buy':
                 price = symbol_ticker_price[inst_id] * (1 + slip_rate * attempt)
@@ -1027,12 +1053,15 @@ class OkxClient:
                 logger.error(e)
                 logger.debug(params)
                 msg = str(e).strip()
-                if '51137' in msg or '51135' in msg or '51136' in msg or '51006' in msg:
-                    # 价格超出限制，解析OKX返回的限价做基准后重试
-                    if price_limit is None:
-                        price_limit = self._parse_okx_price_limit(msg, params.get('side', 'buy'))
-                        if price_limit:
-                            logger.info(f'{func_name} 解析到OKX价格限制: {price_limit}')
+                # 价格超限：51137 买单高于最高买价，51138 卖单低于最低卖价，51006 / 51135 / 51136 为其他限价文案
+                if any(code in msg for code in ('51006', '51135', '51136', '51137', '51138')):
+                    # 价格超出限制，解析OKX返回的限价做基准后重试。
+                    # 每次超限都用最新的限价：限价区间随标记价格浮动，沿用旧值可能一直超限；
+                    # 解析失败时保留上一次的限价，不退回现价加滑点
+                    new_limit = self._parse_okx_price_limit(msg, params.get('side', 'buy'))
+                    if new_limit:
+                        price_limit = new_limit
+                        logger.info(f'{func_name} 解析到OKX价格限制: {price_limit}')
                     time.sleep(1)
                 elif '51008' in msg:
                     logger.warning(f'{func_name} 下单资金不足')
@@ -1066,6 +1095,9 @@ class OkxClient:
                     break
                 elif '51155' in msg:
                     logger.error(f'{func_name} 币种因合规限制无法交易，直接跳过')
+                    break
+                elif '54000' in msg:
+                    logger.error(f'{func_name} 该币种不支持杠杆交易，直接跳过')
                     break
                 elif '50011' in msg:
                     logger.warning(f'{func_name} 请求过于频繁，休息 1s 后再次尝试')
@@ -1578,6 +1610,9 @@ class OkxClient:
         logger.debug('OKX 不使用BNB抵扣手续费，跳过补充BNB操作')
         return 0
 
+    def set_fee_burn(self, is_burn: bool = False):
+        logger.debug('OKX 不使用BNB抵扣手续费，跳过手续费燃烧设置')
+
     def adjust_base_margin(self):
         if len(self.base_coins) > 1:
             logger.warning('OKX 客户端暂不支持基础保证金动态调整功能，跳过')
@@ -1601,8 +1636,34 @@ class OkxClient:
         return account_equity or 0
 
     def fetch_transfer_history(self, start_time=None):
-        """OKX 统一交易账户内无现货/合约划转，返回空数据"""
-        return pd.DataFrame()
+        """
+        获取交易账户的出入金记录，输出与 BinanceClient 相同结构：['time', '账户总净值', 'type']，按小时汇总
+        - 账户权益取交易账户 totalEq，所以只统计转入 / 转出交易账户的划转：bills 中 type=1（subType 11 转入、12 转出），
+          来源可以是资金账户或母子账户；统一交易账户内现货和合约共享保证金，没有内部划转
+        - balChg 带符号，正数转入、负数转出；只统计本位币（与 BN 一致）
+        - 与 BN 一样取最近 10 天；bills 只有 7 天，bills-archive 有 3 个月，两个都查再按 billId 去重
+        """
+        from config import utc_offset
+
+        start_time = (start_time or datetime.now()) - pd.Timedelta(days=10)
+        params = {'type': '1', 'begin': str(int(start_time.timestamp() * 1000)), 'limit': '100'}
+        bills = {}
+        for func in (self.exchange.private_get_account_bills, self.exchange.private_get_account_bills_archive):
+            res = retry_wrapper(func, params=params, func_name='获取OKX划转记录', if_exit=False)
+            for bill in (res or {}).get('data', []):
+                bills[bill['billId']] = bill
+        bills = [b for b in bills.values() if b['ccy'] in self.base_coins and b['subType'] in ('11', '12')]
+        if not bills:
+            return pd.DataFrame()
+
+        df = pd.DataFrame(bills)
+        df['timestamp'] = pd.to_datetime(pd.to_numeric(df['ts']), unit='ms') + pd.Timedelta(hours=utc_offset)
+        df['账户总净值'] = pd.to_numeric(df['balChg'])
+        df['type'] = 'transfer'
+        df['time'] = df['timestamp']
+        df = df.sort_values('timestamp')
+        result_df = df.resample(rule='1h', on='timestamp').agg({'time': 'last', '账户总净值': 'sum', 'type': 'last'})
+        return result_df[result_df['type'].notna()].reset_index(drop=True)
 
     def fetch_spot_trades(self, symbol, end_time) -> pd.DataFrame:
         """
