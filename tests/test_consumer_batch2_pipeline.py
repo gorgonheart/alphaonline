@@ -277,3 +277,247 @@ def test_stage5_wait_ready_end_to_end_timeout_sig_change_and_trim_mismatch(tmp_p
     assert rc2 == REBUILD_REQUIRED_EXIT
     assert 'preloaded_current' not in called['kw']
 
+
+def test_stage6_model_state_preload_hits_cache_and_invalidates_on_mtime_change(tmp_path, monkeypatch):
+    from tools import local_risk_model as lrm
+    from core.backtest import step6_market_handoff
+
+    state_path = tmp_path / 'model' / 'state.pkl'
+    state_path.parent.mkdir(parents=True)
+    expected = {'v': 1, 'arr': [1, 2, 3]}
+    pd.to_pickle(expected, state_path)
+
+    # 1. Preload + consume hits cache without second pd.read_pickle
+    lrm.start_model_state_preload(state_path)
+    lrm._PRELOAD_SLOT['thread'].join(timeout=2.0)
+    orig_read_pickle = pd.read_pickle
+    monkeypatch.setattr(pd, 'read_pickle', lambda *a, **k: (_ for _ in ()).throw(AssertionError('should hit preloaded state')))
+    got = lrm.consume_preloaded_model_state(state_path)
+    assert got == expected
+    assert lrm.consume_preloaded_model_state(state_path) is None
+    monkeypatch.setattr(pd, 'read_pickle', orig_read_pickle)
+
+    # 2. Mutating state file after preload invalidates cache
+    lrm.start_model_state_preload(state_path)
+    time.sleep(0.05)
+    pd.to_pickle({'v': 2, 'arr': [1, 2, 3, 4, 5]}, state_path)
+    assert lrm.consume_preloaded_model_state(state_path) is None
+
+    # 3. step6_market_handoff clears preloaded state on exception exit
+    with pytest.raises(RuntimeError, match='boom'):
+        with step6_market_handoff(model_state_preload_path=state_path):
+            lrm.start_model_state_preload(state_path)
+            raise RuntimeError('boom')
+    assert lrm.consume_preloaded_model_state(state_path) is None
+
+
+def test_stage6_equity_fast_counts_and_ratio_snapshot_match_oracle_exact(tmp_path):
+    from core import equity as eq_mod
+
+    idx = pd.date_range('2026-01-01', periods=5, freq='1h', tz='UTC')
+    df_spot = pd.DataFrame({
+        'BTCUSDT': [0.5, 0.0, np.nan, -0.2, 0.3],
+        'ETHUSDT': [0.0, np.nan, 0.1, 0.2, 0.0],
+    }, index=idx)
+    df_swap = pd.DataFrame({
+        'BTCUSDT': [-0.5, 0.0, 0.2, np.nan, -0.1],
+        'SOLUSDT': [0.1, -0.1, 0.0, 0.0, np.nan],
+    }, index=idx)
+
+    # Oracle counts via legacy pandas masking .count(axis=1)
+    expected_long = df_spot[df_spot > 0].count(axis=1) + df_swap[df_swap > 0].count(axis=1)
+    expected_short = df_spot[df_spot < 0].count(axis=1) + df_swap[df_swap < 0].count(axis=1)
+
+    # Run calc_equity on synthetic inputs
+    ratio_dir = tmp_path / 'ratios'
+    ratio_dir.mkdir()
+    df_spot.to_pickle(ratio_dir / 'df_spot_ratio.pkl')
+    df_swap.to_pickle(ratio_dir / 'df_swap_ratio.pkl')
+
+    snap_dir = tmp_path / 'snap'
+    snap_dir.mkdir()
+
+    class _FakeConf:
+        name = 's_eq'
+        initial_usdt = 10000.0
+        margin_rate = 0.05
+        spot_c_rate = 0.001
+        swap_c_rate = 0.0006
+        spot_min_order_limit = 10.0
+        swap_min_order_limit = 5.0
+        incremental_lookback_hours = 0
+        checkpoint_hours = 0
+        is_day_period = False
+        leverage = 1.0
+        from core.model.rebalance_mode import RebalanceMode
+        rebalance_mode = RebalanceMode.init({'mode': 'RebAlways', 'params': {}})
+
+        def get_snapshot_folder(self):
+            return snap_dir
+
+    px_idx = idx
+    spot_px = pd.DataFrame({'BTCUSDT': [100.0]*5, 'ETHUSDT': [50.0]*5}, index=px_idx)
+    swap_px = pd.DataFrame({'BTCUSDT': [100.0]*5, 'SOLUSDT': [20.0]*5}, index=px_idx)
+    market_inputs = {
+        'pivots': {
+            'spot': {'open': spot_px, 'close': spot_px, 'vwap1m': spot_px, 'funding_rate': spot_px * 0.0},
+            'swap': {'open': swap_px, 'close': swap_px, 'vwap1m': swap_px, 'funding_rate': swap_px * 0.0},
+        },
+        'units': {
+            'spot': pd.DataFrame({'symbol': ['BTCUSDT', 'ETHUSDT'], 'lot_size': [0.001, 0.001]}),
+            'swap': pd.DataFrame({'symbol': ['BTCUSDT', 'SOLUSDT'], 'lot_size': [0.001, 0.001]}),
+        },
+    }
+    res_df = eq_mod.calc_equity(
+        _FakeConf(), datetime(2026, 1, 1, 5, 0), account_name='acct', ratio_folder=ratio_dir, market_inputs=market_inputs, state_name='state0'
+    )
+    pd.testing.assert_series_equal(res_df['symbol_long_num'], expected_long.reset_index(drop=True), check_names=False)
+    pd.testing.assert_series_equal(res_df['symbol_short_num'], expected_short.reset_index(drop=True), check_names=False)
+
+    # Also check create_ratio_snapshot parity with explicit 3rd reindex
+    r_old = pd.DataFrame({'ETHUSDT': [0.1, 0.2]}, index=idx[:2])
+    r_old.to_pickle(snap_dir / 'ratio_spot.pkl')
+    r_new = pd.DataFrame({'BTCUSDT': [0.3, 0.4, 0.5]}, index=idx[2:])
+    out_snap = eq_mod.create_ratio_snapshot(_FakeConf(), r_new, 'spot')
+    final_cols = sorted(set(r_old.columns) | set(r_new.columns))
+    oracle_snap = pd.concat([r_old.reindex(columns=final_cols, fill_value=0), r_new.reindex(columns=final_cols, fill_value=0)], sort=False).reindex(columns=final_cols, fill_value=0)
+    pd.testing.assert_frame_equal(out_snap, oracle_snap, check_exact=True)
+
+
+def test_stage6_parallel_process_equities_and_async_disk_writer_parity_and_error_propagation(tmp_path):
+    from core.utils.async_disk import AsyncDiskWriter
+    from core.model.backtest_config import MultiEquityBacktestConfig, BacktestConfig
+
+    times = pd.date_range('2026-01-01 00:00:00+00:00', periods=10, freq='1h')
+
+    def _build_me(sub_root: Path):
+        sub_root.mkdir(parents=True, exist_ok=True)
+        confs = []
+        for i in range(6):
+            r_dir = sub_root / f'S{i+1}' / 'result'
+            s_dir = sub_root / f'S{i+1}' / 'snap'
+            r_dir.mkdir(parents=True)
+            s_dir.mkdir(parents=True)
+            eq_df = pd.DataFrame({
+                'candle_begin_time': times,
+                'equity': 10000.0 + np.arange(10) * (i + 1) * 10.0,
+            })
+            eq_df.to_csv(r_dir / '资金曲线.csv', encoding='utf-8-sig')
+            pd.DataFrame({'BTCUSDT': np.full(10, 0.1 * (i + 1))}, index=times).to_pickle(s_dir / 'ratio_spot.pkl')
+            pd.DataFrame({'BTCUSDT': np.full(10, -0.1 * (i + 1))}, index=times).to_pickle(s_dir / 'ratio_swap.pkl')
+            c = SimpleNamespace(
+                name=f'S{i+1}',
+                unified_time='2017-01-01',
+                get_final_equity_path=lambda p=r_dir / '资金曲线.csv': p,
+                get_snapshot_folder=lambda p=s_dir: p,
+                get_result_folder=lambda p=r_dir: p,
+            )
+            confs.append(c)
+
+        me = object.__new__(MultiEquityBacktestConfig)
+        me.strategy = SimpleNamespace(hold_period='1H', factor_list=[], factor_columns=[])
+        me.factory = SimpleNamespace(config_list=confs, result_folder=sub_root / 'iter_res')
+        me.factory.result_folder.mkdir(parents=True, exist_ok=True)
+        me.equity_dfs = []
+        me.ratio_dfs = []
+        me.start_time = None
+        me.end_time = None
+        return me
+
+    me_sync = _build_me(tmp_path / 'sync')
+    me_async = _build_me(tmp_path / 'async')
+
+    from core.model import backtest_config as bc_mod
+    orig_get_fp = bc_mod.get_file_path
+    def _mock_get_fp(*parts, **kw):
+        if Path(parts[0]).is_absolute():
+            out = Path(parts[0]).joinpath(*parts[1:])
+            out.parent.mkdir(parents=True, exist_ok=True)
+            return out
+        return orig_get_fp(*parts, **kw)
+
+    try:
+        bc_mod.get_file_path = _mock_get_fp
+        run_t = datetime(2026, 1, 1, 18, 0)
+        me_sync.process_equities(run_t, hour_offset='0m')
+        with AsyncDiskWriter() as writer:
+            me_async.process_equities(run_t, hour_offset='0m', async_writer=writer)
+    finally:
+        bc_mod.get_file_path = orig_get_fp
+
+    for a, b in zip(me_sync.equity_dfs, me_async.equity_dfs):
+        pd.testing.assert_frame_equal(a, b, check_exact=True)
+    for (sp_a, sw_a), (sp_b, sw_b) in zip(me_sync.ratio_dfs, me_async.ratio_dfs):
+        pd.testing.assert_frame_equal(sp_a, sp_b, check_exact=True)
+        pd.testing.assert_frame_equal(sw_a, sw_b, check_exact=True)
+    for i in range(6):
+        p_sync = pd.read_pickle(tmp_path / 'sync' / 'iter_res' / f'S{i+1}' / 'equity_df.pkl')
+        p_async = pd.read_pickle(tmp_path / 'async' / 'iter_res' / f'S{i+1}' / 'equity_df.pkl')
+        pd.testing.assert_frame_equal(p_sync, p_async, check_exact=True)
+
+    # Error propagation in AsyncDiskWriter.flush()
+    w = AsyncDiskWriter()
+    w.submit(lambda: (_ for _ in ()).throw(OSError('disk full')))
+    with pytest.raises(OSError, match='disk full'):
+        w.flush()
+    w.close()
+
+
+def test_stage6_run_backtest_multi_starts_preload_only_after_pool_submits(tmp_path, monkeypatch):
+    from core import backtest as bt
+    from tools import local_risk_model as lrm
+
+    state_path = tmp_path / 'model' / 'state.pkl'
+    state_path.parent.mkdir(parents=True)
+    pd.to_pickle({'ok': True}, state_path)
+
+    events = []
+
+    class _FakeFuture:
+        def result(self):
+            return pd.DataFrame({'candle_begin_time': [pd.Timestamp('2026-01-01', tz='UTC')]})
+
+    class _FakePool:
+        def __init__(self, *a, **k):
+            events.append('pool_enter')
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            events.append('pool_exit')
+
+        def submit(self, fn, *a, **k):
+            events.append('submit')
+            return _FakeFuture()
+
+    monkeypatch.setattr(bt, 'ProcessPoolExecutor', _FakePool)
+    monkeypatch.setattr(bt, 'as_completed', lambda fs: list(fs))
+    monkeypatch.setattr(bt, 'apply_bstocks_black_list', lambda *a: None)
+    monkeypatch.setattr(bt, 'mem_save_exe', lambda *a, **k: None)
+    monkeypatch.setattr(bt, 'get_snapshot_time', lambda *a: '2026-01-01')
+    monkeypatch.setattr(bt, 'set_snapshot_time', lambda *a: None)
+    monkeypatch.setattr(bt, '_bmac_market_file_sig', lambda *a: None)
+    monkeypatch.setattr(lrm, 'start_model_state_preload', lambda p: events.append(('preload', Path(p))))
+
+    import config
+    monkeypatch.setattr(config, 'shared_factor_pipeline', False, raising=False)
+    monkeypatch.setattr(config, 'backtest_job_num', 2, raising=False)
+
+    conf = SimpleNamespace(name='S1', strategy_list=[1], is_day_period=False, save=lambda: None, get_fullname=lambda: 'S1')
+    factory = SimpleNamespace(
+        result_folder=tmp_path / 'iter',
+        config_list=[conf],
+        generate_all_factor_config=lambda: conf,
+    )
+    with bt.step6_market_handoff(model_state_preload_path=state_path):
+        bt.run_backtest_multi(factory, datetime(2026, 1, 1, 12, 25))
+
+    # Preload must occur strictly AFTER all Step 6 worker submits (post-fork), BEFORE pool exit
+    submits = [i for i, e in enumerate(events) if e == 'submit']
+    preloads = [i for i, e in enumerate(events) if isinstance(e, tuple) and e[0] == 'preload']
+    assert submits and preloads
+    assert preloads[0] > max(submits)
+
+
+

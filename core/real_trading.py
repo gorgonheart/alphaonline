@@ -21,6 +21,7 @@ from core.equity import calc_equity
 from core.model.account_config import AccountConfig
 from core.model.backtest_config import MultiEquityBacktestConfig, BacktestConfig
 from core.position import calc_target_position
+from core.utils.async_disk import AsyncDiskWriter
 from core.utils.datatools import snapshot_bmac_exginfo
 from core.utils.functions import refresh_diff_time, save_symbol_order, save_final_select_results, save_position_results, \
     save_performance_df_csv, save_order_history
@@ -47,10 +48,11 @@ def is_archive_round(run_time) -> bool:
 
 
 def run_by_account(acct_conf: AccountConfig, me_conf: MultiEquityBacktestConfig, run_time):
-    if not calc_by_account(acct_conf, me_conf, run_time):
-        return
-    preloaded = getattr(me_conf, '_live_target_ratios', None)
-    trade_by_account(acct_conf, me_conf, run_time, preloaded_ratios=preloaded)
+    with AsyncDiskWriter() as writer:
+        if not calc_by_account(acct_conf, me_conf, run_time, async_writer=writer):
+            return
+        preloaded = getattr(me_conf, '_live_target_ratios', None)
+        trade_by_account(acct_conf, me_conf, run_time, preloaded_ratios=preloaded)
 
     # ===归集本轮实盘运行数据
     if is_debug:
@@ -61,7 +63,8 @@ def run_by_account(acct_conf: AccountConfig, me_conf: MultiEquityBacktestConfig,
         logger.info(f'[{acct_conf.name}] 本轮跳过实盘数据归档')
 
 
-def calc_by_account(acct_conf: AccountConfig, me_conf: MultiEquityBacktestConfig, run_time) -> bool:
+def calc_by_account(acct_conf: AccountConfig, me_conf: MultiEquityBacktestConfig, run_time,
+                    *, async_writer: AsyncDiskWriter | None = None) -> bool:
     """
     选币、仓管、聚合、仓位限制，最终权重保存到 runtime_folder
     :return: 是否完成计算（不是本账户的 offset 时返回 False）
@@ -115,44 +118,60 @@ def calc_by_account(acct_conf: AccountConfig, me_conf: MultiEquityBacktestConfig
     # ** 1. 初始化 & 2. 子策略回测 & 3. 整理子策略资金曲线 / 仓管准备 **
     # ====================================================================================================
     r_time = time.time()
-    _prepare_hook = (
-        me_conf.strategy.core_funcs.get('prepare_live')
-        if me_conf.strategy.params.get('enable_live_hooks', False)
-        else None
-    )
-    if _prepare_hook is not None:
-        from core.backtest import step6_market_handoff
-        with step6_market_handoff():
+    own_writer = AsyncDiskWriter() if async_writer is None else None
+    writer = async_writer if async_writer is not None else own_writer
+    try:
+        _prepare_hook = (
+            me_conf.strategy.core_funcs.get('prepare_live')
+            if me_conf.strategy.params.get('enable_live_hooks', False)
+            else None
+        )
+        if _prepare_hook is not None:
+            from core.backtest import step6_market_handoff
+            opts = me_conf.strategy.params.get('runtime', {})
+            preload_path = None
+            if opts.get('server_init') is True and not opts.get('initializing'):
+                sp = Path(opts['state_path'])
+                bp = Path(opts['bootstrap_path'])
+                preload_path = sp if sp.exists() else bp
+            with step6_market_handoff(model_state_preload_path=preload_path):
+                me_conf.backtest_strategies(run_time)
+                me_conf.process_equities(run_time, hour_offset=acct_conf.hour_offset, async_writer=writer)
+                _prepare_hook(me_conf, acct_conf, run_time)
+        else:
             me_conf.backtest_strategies(run_time)
-            me_conf.process_equities(run_time, hour_offset=acct_conf.hour_offset)
-            _prepare_hook(me_conf, acct_conf, run_time)
-    else:
-        me_conf.backtest_strategies(run_time)
-        me_conf.process_equities(run_time, hour_offset=acct_conf.hour_offset)
+            me_conf.process_equities(run_time, hour_offset=acct_conf.hour_offset, async_writer=writer)
 
-    # ====================================================================================================
-    # ** 4. 计算仓位比例 **
-    # ====================================================================================================
-    divider('计算仓位比例', sep='-')
-    s_time = time.time()
-    pos_ratio = me_conf.calc_ratios()
-    logger.ok(f'完成计算仓位比例，花费时间：{time.time() - s_time:.3f}秒')
+        # ====================================================================================================
+        # ** 4. 计算仓位比例 **
+        # ====================================================================================================
+        divider('计算仓位比例', sep='-')
+        s_time = time.time()
+        pos_ratio = me_conf.calc_ratios(async_writer=writer)
+        logger.ok(f'完成计算仓位比例，花费时间：{time.time() - s_time:.3f}秒')
 
-    # ====================================================================================================
-    # ** 5. 聚合选币结果 & 5.1. 应用仓位限制 **
-    # ====================================================================================================
-    df_spot_ratio, df_swap_ratio = me_conf.agg_pos_ratio(pos_ratio)
-    df_spot_ratio, df_swap_ratio = me_conf.apply_position_limits(df_spot_ratio, df_swap_ratio)
-    if me_conf.strategy.params.get('enable_live_hooks', False) and (hook := me_conf.strategy.core_funcs.get('transform_targets')) is not None:
-        df_spot_ratio, df_swap_ratio = hook(df_spot_ratio, df_swap_ratio, stg_conf=me_conf.strategy)
-    logger.ok(f'完成仓位限制，已花费时间{time.time() - s_time:.3f}秒')
+        # ====================================================================================================
+        # ** 5. 聚合选币结果 & 5.1. 应用仓位限制 **
+        # ====================================================================================================
+        df_spot_ratio, df_swap_ratio = me_conf.agg_pos_ratio(pos_ratio)
+        df_spot_ratio, df_swap_ratio = me_conf.apply_position_limits(df_spot_ratio, df_swap_ratio)
+        if me_conf.strategy.params.get('enable_live_hooks', False) and (hook := me_conf.strategy.core_funcs.get('transform_targets')) is not None:
+            df_spot_ratio, df_swap_ratio = hook(df_spot_ratio, df_swap_ratio, stg_conf=me_conf.strategy)
+        logger.ok(f'完成仓位限制，已花费时间{time.time() - s_time:.3f}秒')
 
-    me_conf._live_target_ratios = (df_spot_ratio, df_swap_ratio)
-    df_spot_ratio.to_pickle(runtime_folder / 'df_spot_ratio.pkl')
-    df_swap_ratio.to_pickle(runtime_folder / 'df_swap_ratio.pkl')
+        me_conf._live_target_ratios = (df_spot_ratio, df_swap_ratio)
+        writer.submit(df_spot_ratio.copy(deep=False).to_pickle, runtime_folder / 'df_spot_ratio.pkl')
+        writer.submit(df_swap_ratio.copy(deep=False).to_pickle, runtime_folder / 'df_swap_ratio.pkl')
 
-    df_swap_ratio.iloc[-1][df_swap_ratio.iloc[-1] > 0].to_csv(runtime_folder / f'swap_ratio_{run_time.strftime("%Y%m%d_%H%M")}.csv')
-    df_spot_ratio.iloc[-1][df_spot_ratio.iloc[-1] > 0].to_csv(runtime_folder / f'spot_ratio_{run_time.strftime("%Y%m%d_%H%M")}.csv')
+        swap_last = df_swap_ratio.iloc[-1][df_swap_ratio.iloc[-1] > 0].copy()
+        spot_last = df_spot_ratio.iloc[-1][df_spot_ratio.iloc[-1] > 0].copy()
+        writer.submit(swap_last.to_csv, runtime_folder / f'swap_ratio_{run_time.strftime("%Y%m%d_%H%M")}.csv')
+        writer.submit(spot_last.to_csv, runtime_folder / f'spot_ratio_{run_time.strftime("%Y%m%d_%H%M")}.csv')
+        if own_writer is not None:
+            own_writer.flush()
+    finally:
+        if own_writer is not None:
+            own_writer.close()
     logger.ok(f'[{acct_conf.name}] 完成权重计算，花费时间：{time.time() - r_time:.2f}s')
     return True
 

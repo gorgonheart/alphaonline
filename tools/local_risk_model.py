@@ -8,6 +8,7 @@ from pathlib import Path
 import tempfile
 import subprocess
 import sys
+import threading
 import numpy as np
 # Worker initializes its native runtime before pandas/numba. The live process never loads LightGBM.
 if __name__ == '__main__' and 'worker' in sys.argv[1:2]:
@@ -150,6 +151,78 @@ def atomic_save(path,bundle):
         with open(tmp,'rb+') as f:os.fsync(f.fileno())
         os.replace(tmp,path)
     finally:Path(tmp).unlink(missing_ok=True)
+
+
+_PRELOAD_LOCK = threading.Lock()
+_PRELOAD_SLOT: dict | None = None
+
+
+def start_model_state_preload(path: Path) -> None:
+    """Start a single background thread to unpickle model/state.pkl post-fork."""
+    global _PRELOAD_SLOT
+    target = Path(path).resolve()
+    if not target.is_file():
+        return
+    slot: dict = {'path': target, 'sig': None, 'bundle': None, 'thread': None}
+
+    def _run():
+        try:
+            st0 = target.stat()
+            sig0 = (st0.st_mtime_ns, st0.st_size)
+            bundle = pd.read_pickle(target)
+            st1 = target.stat()
+            sig1 = (st1.st_mtime_ns, st1.st_size)
+            if sig0 == sig1:
+                slot['sig'] = sig1
+                slot['bundle'] = bundle
+        except Exception:
+            slot['sig'] = None
+            slot['bundle'] = None
+
+    thread = threading.Thread(target=_run, daemon=True, name='model-state-preload')
+    slot['thread'] = thread
+    with _PRELOAD_LOCK:
+        _PRELOAD_SLOT = slot
+    thread.start()
+
+
+def consume_preloaded_model_state(path: Path) -> dict | None:
+    """Pop preloaded state if path and (mtime_ns, size) still match; caller should hold state lock."""
+    global _PRELOAD_SLOT
+    target = Path(path).resolve()
+    with _PRELOAD_LOCK:
+        slot = _PRELOAD_SLOT
+        if slot is None or slot['path'] != target:
+            return None
+        _PRELOAD_SLOT = None
+    thread = slot['thread']
+    if thread is not None:
+        thread.join()
+    bundle = slot['bundle']
+    saved_sig = slot['sig']
+    slot['bundle'] = None
+    if bundle is None or saved_sig is None:
+        return None
+    try:
+        st_now = target.stat()
+        if (st_now.st_mtime_ns, st_now.st_size) != saved_sig:
+            return None
+    except OSError:
+        return None
+    return bundle
+
+
+def clear_preloaded_model_state() -> None:
+    """Join any active preload thread and drop cached reference."""
+    global _PRELOAD_SLOT
+    with _PRELOAD_LOCK:
+        slot = _PRELOAD_SLOT
+        _PRELOAD_SLOT = None
+    if slot is not None:
+        thread = slot.get('thread')
+        if thread is not None:
+            thread.join(timeout=5.0)
+        slot['bundle'] = None
 
 def isolated_advance(state,frame,directory):
     if state['next_decision']>=len(frame):return state

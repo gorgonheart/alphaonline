@@ -762,22 +762,23 @@ class MultiEquityBacktestConfig:
 
         return resampled_df.reset_index(inplace=False, drop=False)
 
-    def process_equities(self, run_time: datetime, hour_offset: str = '0m', *, inputs=None):
+    def process_equities(self, run_time: datetime, hour_offset: str = '0m', *, inputs=None, async_writer=None):
         """
         聚合资金曲线结果到系统中
         :param run_time: 运行时间
         :param hour_offset: 实盘配置中的分钟偏移。会影响我们resample资金曲线
+        :param inputs: 可选内存输入
+        :param async_writer: 可选异步写盘器，后台落盘 equity_df.pkl
         :return:
         """
         equity_dfs = []
         ratio_dfs = []
         configs = self.factory.config_list
 
-        for conf in configs:
-            # ====处理资金曲线
+        def _process_one(conf):
             equity_path = conf.get_final_equity_path()
             equity_df = (pd.read_csv(equity_path, parse_dates=['candle_begin_time'], index_col=0)
-                         if inputs is None else inputs[conf.name]['equity'][['candle_begin_time','equity']].copy())
+                         if inputs is None else inputs[conf.name]['equity'][['candle_begin_time', 'equity']].copy())
 
             # 1. 进行周期转换
             equity_df = self.transfer_equity_period(equity_df, hour_offset=hour_offset, unified_time=conf.unified_time)
@@ -795,11 +796,25 @@ class MultiEquityBacktestConfig:
                 'close': equity_df['close'].values,
                 **factor_cols
             }).ffill().dropna(subset=self.strategy.factor_columns, how='any')
-            equity_dfs.append(equity_df)
 
+            if inputs is None:
+                spot_df = pd.read_pickle(conf.get_snapshot_folder() / 'ratio_spot.pkl')
+                swap_df = pd.read_pickle(conf.get_snapshot_folder() / 'ratio_swap.pkl')
+            else:
+                spot_df, swap_df = inputs[conf.name]['ratios']
+            return equity_df, spot_df, swap_df
+
+        if inputs is None and len(configs) > 1:
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=min(4, len(configs))) as pool:
+                processed = list(pool.map(_process_one, configs))
+        else:
+            processed = [_process_one(conf) for conf in configs]
+
+        end_time = (run_time - pd.Timedelta(hours=utc_offset)).replace(tzinfo=pytz.UTC)
+        for conf, (equity_df, spot_df, swap_df) in zip(configs, processed):
+            equity_dfs.append(equity_df)
             start_time = equity_df['candle_begin_time'].min()
-            end_time = run_time - pd.Timedelta(hours=utc_offset)
-            end_time = end_time.replace(tzinfo=pytz.UTC)
 
             # 策略的因子参数范围有长短，会造成资金曲线回测的长度有长短，我们选取短的资金曲线
             if self.start_time is None or start_time > self.start_time:
@@ -807,18 +822,15 @@ class MultiEquityBacktestConfig:
             if self.end_time is None or end_time > self.end_time:
                 self.end_time = end_time
 
-            # ====处理选币仓位结果
-            if inputs is None:
-                spot_df = pd.read_pickle(conf.get_snapshot_folder() / f'ratio_spot.pkl')
-                swap_df = pd.read_pickle(conf.get_snapshot_folder() / f'ratio_swap.pkl')
-            else:
-                spot_df, swap_df = inputs[conf.name]['ratios']
-
             ratio_dfs.append((spot_df, swap_df))
 
             # 保存到本地
             if inputs is None:
-                equity_df.to_pickle(get_file_path(self.factory.result_folder, conf.name, 'equity_df.pkl'))
+                out_path = get_file_path(self.factory.result_folder, conf.name, 'equity_df.pkl')
+                if async_writer is not None:
+                    async_writer.submit(equity_df.copy(deep=False).to_pickle, out_path)
+                else:
+                    equity_df.to_pickle(out_path)
 
         # 需要对其所有资金曲线数据的长度
         for idx, df in enumerate(equity_dfs):
@@ -927,7 +939,7 @@ class MultiEquityBacktestConfig:
 
         return rebalance_df.round(self.pos_ratio_precision)
 
-    def calc_ratios(self, *, timing_inputs=None):
+    def calc_ratios(self, *, timing_inputs=None, async_writer=None):
         logger.info(f'开始计算选币仓位...')
         # 计算选币仓位，这里是按照持仓周期resample之后的index
         ratios = self.strategy.calc_ratios(self.equity_dfs)
@@ -982,13 +994,21 @@ class MultiEquityBacktestConfig:
                 logger.debug(f'策略`{conf.name}`，再择时动态杠杆: {leverages.iloc[-1]["动态杠杆"]}')
             logger.debug(f'策略`{conf.name}`，仓位比例: {df_ratio.iloc[-1][idx]}')
 
-        df_ratio.to_csv(self.factory.result_folder / '仓位比例-原始.csv')
+        raw_csv_path = self.factory.result_folder / '仓位比例-原始.csv'
+        if async_writer is not None:
+            async_writer.submit(df_ratio.copy().to_csv, raw_csv_path)
+        else:
+            df_ratio.to_csv(raw_csv_path)
         # 根据单次换仓限制，平滑换仓比例
         if len(df_ratio.columns) == 1:
             df_ratio = self.smooth_single_ratio(df_ratio)
         else:
             df_ratio = self.smooth_ratios(df_ratio)
-        df_ratio.to_csv(self.factory.result_folder / '仓位比例.csv')
+        final_csv_path = self.factory.result_folder / '仓位比例.csv'
+        if async_writer is not None:
+            async_writer.submit(df_ratio.copy(deep=False).to_csv, final_csv_path)
+        else:
+            df_ratio.to_csv(final_csv_path)
         return df_ratio
 
     @staticmethod

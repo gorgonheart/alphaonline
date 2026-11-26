@@ -69,9 +69,6 @@ def create_ratio_snapshot(conf: BacktestConfig, ratio_df: pd.DataFrame, symbol_t
             ratio_df_1.reindex(columns=final_columns, fill_value=0),
         ], sort=False, copy=False)
 
-        # 当增量计算的时候，拼接会导致columns的位置错位，影响策略最终的仓位映射，必须reindex对齐
-        ratio_df = ratio_df.reindex(columns=final_columns, fill_value=0)
-
         # logger.debug(f'[{symbol_type}]原长度：{len(ratio_df_0)}, 增长：{len(ratio_df_1)},合并后长度：{len(ratio_df)}')
         # logger.debug(
         #     f'[{symbol_type}]时间0：{ratio_df_0.index.max()}，时间1：{ratio_df_1.index.max()}，最新时间：{ratio_df.index.max()}')
@@ -320,9 +317,18 @@ def calc_equity(conf: BacktestConfig, run_time, leverage: float | pd.Series = No
     account_df['long_short_ratio'] = account_df['long_pos_value'] / (account_df['short_pos_value'] + 1e-8)
     account_df['leverage_ratio'] = (account_df['long_pos_value'] + account_df['short_pos_value']) / account_df['equity']
     account_df.set_index('candle_begin_time', inplace=True)
+    spot_arr = df_spot_ratio.to_numpy(copy=False)
+    swap_arr = df_swap_ratio.to_numpy(copy=False)
+    if spot_arr.dtype == object:
+        spot_arr = spot_arr.astype(np.float64, copy=False)
+    if swap_arr.dtype == object:
+        swap_arr = swap_arr.astype(np.float64, copy=False)
+    with np.errstate(invalid='ignore'):
+        long_cnt = (spot_arr > 0).sum(axis=1, dtype=np.int64) + (swap_arr > 0).sum(axis=1, dtype=np.int64)
+        short_cnt = (spot_arr < 0).sum(axis=1, dtype=np.int64) + (swap_arr < 0).sum(axis=1, dtype=np.int64)
     counts = {
-        'symbol_long_num': df_spot_ratio[df_spot_ratio > 0].count(axis=1) + df_swap_ratio[df_swap_ratio > 0].count(axis=1),
-        'symbol_short_num': df_spot_ratio[df_spot_ratio < 0].count(axis=1) + df_swap_ratio[df_swap_ratio < 0].count(axis=1),
+        'symbol_long_num': pd.Series(long_cnt, index=df_spot_ratio.index),
+        'symbol_short_num': pd.Series(short_cnt, index=df_spot_ratio.index),
     }
     for name, values in counts.items():
         # Timed accounts only simulate the new suffix; retain prefix statistics.

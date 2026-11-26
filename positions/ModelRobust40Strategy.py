@@ -1464,7 +1464,13 @@ def prepare(me_conf, account, run_time, *, inputs=None):
     state = Path(options['state_path']);bootstrap = Path(options['bootstrap_path'])
     if state.resolve() == bootstrap.resolve():raise ValueError('State must not overwrite bootstrap')
     with lock(state):
-        saved = pd.read_pickle(state if state.exists() else bootstrap)
+        target = state if state.exists() else bootstrap
+        from tools.local_risk_model import consume_preloaded_model_state
+        saved = consume_preloaded_model_state(target)
+        if saved is not None:
+            logger.info('MODEL仓管：命中Step 6后台预加载状态')
+        else:
+            saved = pd.read_pickle(target)
         return _prepare(me_conf, account, run_time, saved=saved, started=started)
 
 

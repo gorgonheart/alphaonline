@@ -435,7 +435,7 @@ def test_run_group_with_model_member_exit75_skips_whole_group_and_dry_run_guards
         strategy=SimpleNamespace(params={}, core_funcs={}),
         backtest_strategies=lambda *a: None,
         process_equities=lambda *a, **k: None,
-        calc_ratios=lambda: pd.DataFrame(),
+        calc_ratios=lambda *a, **k: pd.DataFrame(),
         agg_pos_ratio=lambda r: (pd.DataFrame({'BTCUSDT': [0.0]}), pd.DataFrame({'BTCUSDT': [0.5]})),
         apply_position_limits=lambda s, w: (s, w),
     )

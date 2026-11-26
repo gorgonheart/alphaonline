@@ -123,23 +123,29 @@ _STEP6_FORK_MARKET = None
 _STEP6_WORKER_MARKET = None
 _ROUND_MARKET_HANDOFF_ACTIVE = False
 _ROUND_MARKET_PIVOTS = None
+_ROUND_MODEL_STATE_PRELOAD_PATH = None
 
 
 @contextmanager
-def step6_market_handoff():
+def step6_market_handoff(*, model_state_preload_path=None):
     """Scoped one-shot handoff so Step 6 preloaded pivots can be reused by Step 8 MODEL
     within the same live round, guaranteeing memory release on exit."""
-    global _ROUND_MARKET_HANDOFF_ACTIVE, _ROUND_MARKET_PIVOTS
+    global _ROUND_MARKET_HANDOFF_ACTIVE, _ROUND_MARKET_PIVOTS, _ROUND_MODEL_STATE_PRELOAD_PATH
     prev_active = _ROUND_MARKET_HANDOFF_ACTIVE
     prev_pivots = _ROUND_MARKET_PIVOTS
+    prev_preload_path = _ROUND_MODEL_STATE_PRELOAD_PATH
     _ROUND_MARKET_HANDOFF_ACTIVE = True
     _ROUND_MARKET_PIVOTS = None
+    _ROUND_MODEL_STATE_PRELOAD_PATH = model_state_preload_path
     try:
         yield
     finally:
         had_pivots = _ROUND_MARKET_PIVOTS is not None
         _ROUND_MARKET_HANDOFF_ACTIVE = prev_active
         _ROUND_MARKET_PIVOTS = prev_pivots
+        _ROUND_MODEL_STATE_PRELOAD_PATH = prev_preload_path
+        from tools.local_risk_model import clear_preloaded_model_state
+        clear_preloaded_model_state()
         if had_pivots:
             gc.collect()
             _trim_process_heap()
@@ -579,6 +585,9 @@ def run_backtest_multi(factory: BacktestConfigFactory, run_time):
             )
         with ProcessPoolExecutor(max_workers=pool_workers) as executor:
             futures = {executor.submit(_step6_worker, conf, run_time): conf for conf in _sorted6}
+            if _ROUND_MODEL_STATE_PRELOAD_PATH is not None:
+                from tools.local_risk_model import start_model_state_preload
+                start_model_state_preload(_ROUND_MODEL_STATE_PRELOAD_PATH)
             for f in as_completed(futures):
                 conf = futures[f]
                 equity_map[conf.name] = f.result()
