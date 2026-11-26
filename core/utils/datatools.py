@@ -19,7 +19,7 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-from config import utc_offset, bmac_data_path, bmac_exginfo_path, stable_symbol
+from config import utc_offset, bmac_data_path, bmac_exginfo_path, stable_symbol, exchange_data_paths
 from core.model.backtest_config import BacktestConfig
 from core.utils.arrow_reader import read_arrow_market_dict_for_run_time
 from core.utils.exchange_hub import get_dummy_client
@@ -27,31 +27,45 @@ from core.utils.log_kit import logger
 from core.utils.path_kit import get_file_path, get_folder_path
 
 
-def check_flags(run_time, flag_paths: List[Path]):
+def resolve_bmac_data_path(exchange: str | None = None) -> Path:
+    if exchange and exchange in exchange_data_paths:
+        return Path(exchange_data_paths[exchange]) / bmac_data_path.name
+    return bmac_data_path
+
+
+def check_flags(run_time, flag_paths: List[Path], poll_interval: float = 0.1):
     # 检查 flag 是否都已经 ready
     while True:
         if all(flag_path.exists() for flag_path in flag_paths):
-            time.sleep(1)
             return True
 
         # 当前时间是否超过run_time
         if datetime.now() > run_time + timedelta(minutes=4):
             # 如果当前时间超过run_time半小时，表示已经错过当前run_time的下单时间，可能数据中心更新数据失败，没有生成flag文件
             break
-        time.sleep(1)
+        time.sleep(poll_interval)
 
     return False
 
 
-def check_bmac_update_flag(run_time):
+def check_bmac_update_flag(run_time, exchanges=None):
+    """
+    检查数据中心是否完成本轮更新
+    :param run_time: 本轮运行时间
+    :param exchanges: 需要等待的交易所列表，不传时只检查当前 config 的数据中心
+    """
     minute = run_time.minute
     ts = int(run_time.timestamp())
 
-    spot_ready_file_path = bmac_data_path / f'{minute}m' / f"spot_dict_{ts}.ready"
-    swap_ready_file_path = bmac_data_path / f'{minute}m' / f"swap_dict_{ts}.ready"
-    logger.debug(f'🛂 spot_ready_file={spot_ready_file_path}')
-    logger.debug(f'🛂 swap_ready_file={swap_ready_file_path}')
-    return check_flags(run_time, [spot_ready_file_path, swap_ready_file_path])
+    data_paths = {resolve_bmac_data_path(exchange) for exchange in (exchanges or [])} or {bmac_data_path}
+    flag_paths = []
+    for data_path in data_paths:
+        spot_ready_file_path = data_path / f'{minute}m' / f"spot_dict_{ts}.ready"
+        swap_ready_file_path = data_path / f'{minute}m' / f"swap_dict_{ts}.ready"
+        logger.debug(f'🛂 spot_ready_file={spot_ready_file_path}')
+        logger.debug(f'🛂 swap_ready_file={swap_ready_file_path}')
+        flag_paths.extend([spot_ready_file_path, swap_ready_file_path])
+    return check_flags(run_time, flag_paths)
 
 
 def check_bmac_pivot_flag(run_time):
@@ -152,7 +166,7 @@ def align_spot_swap_mapping(df, column_name, n):
     # 累积求和生成组号
     df['group'] = df['is_new_group'].cumsum()
     # 将空字符串对应的组号设为NaN
-    df.loc[df['symbol_swap'].eq(''), 'group'] = np.nan
+    df.loc[df[column_name].eq(''), 'group'] = np.nan
     # 通过 groupby 添加 grp_seq
     df['grp_seq'] = df.groupby('group').cumcount()
     # 过滤条件并修改前 n 行
@@ -168,12 +182,11 @@ def align_spot_swap_mapping_fast(df, column_name, n):
     """align_spot_swap_mapping 的向量化等价实现（去掉 groupby.cumcount）。
 
     语义与原版逐行一致（见 tests/test_align_fast_equivalence.py，原版为 oracle）：
-    在 column_name 的「空→非空」边界切组，对每组的前 n 个「有效行」
-    （symbol_swap != ''）把 column_name 置空；symbol_swap=='' 的行不参与计数也不被置空。
+    在 column_name 的「空→非空」边界切组，对每组的前 n 个非空行把 column_name 置空；
+    column_name == '' 的行不参与计数也不被置空。
     仅 Arrow 快路径调用；pkl fallback 仍用原版 align_spot_swap_mapping。
     """
     col = df[column_name].to_numpy()
-    swap = df['symbol_swap'].to_numpy()
 
     col_ne = col != ''
     prev_eq = np.empty(col.size, dtype=bool)
@@ -181,7 +194,7 @@ def align_spot_swap_mapping_fast(df, column_name, n):
     prev_eq[1:] = col[:-1] == ''
     group = np.cumsum(col_ne & prev_eq)  # 与原版 is_new_group.cumsum() 一致
 
-    valid = swap != ''
+    valid = col_ne
     grp_seq = np.full(col.size, np.nan)
     if valid.any():
         g_valid = group[valid]

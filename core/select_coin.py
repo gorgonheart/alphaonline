@@ -939,7 +939,7 @@ def _selection_input_filters(strategy):
     """Original eligibility predicate, shared by whole and block preparation."""
     select_scope = strategy.select_scope
     order_first = strategy.order_first
-    filters = [pl.col('是否交易') == 1]
+    filters = []
 
     if select_scope == 'spot':
         filters.append(pl.col('is_spot') == 1)

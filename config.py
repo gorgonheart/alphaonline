@@ -21,6 +21,7 @@ from core.utils.path_kit import get_folder_path, get_file_path
 # ** 数据配置 **
 # ====================================================================================================
 realtime_data_path = str(Path(__file__).resolve().parent.parent / 'alpha2' / 'data')  # 机器差异在config.json
+exchange_data_paths = {}  # 多交易所时按交易所配置数据中心路径，未配置时使用 realtime_data_path
 # 全局报错机器人通知
 # - 创建企业微信机器人 参考帖子: https://bbs.quantclass.cn/thread/10975
 # - 配置案例  https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxxxxxxxxxxxxxxxxxx
@@ -54,6 +55,7 @@ black_list = []  # 拉黑名单，永远不会交易。不喜欢的币、异常�
 white_list = []  # 如果不为空，即只交易这些币，只在这些币当中进行选币。例：LUNA-USDT, 这里与实盘不太一样，需要有'-'
 # rebalance_mode =  # 换仓模式控制
 lookback_days = 0  # 回看实盘数据天数，放这里主要与网页版配合
+lookback_save_interval_hours = 0  # 归档保存频率(小时)，默认0关闭归档
 precompute_factor_configs = {}  # 预计算因子配置，在账户配置文件中设置
 required_history_start = None  # 每次加载重置；仅显式配置的账户读取固定起点历史
 input_mode = 'auto'  # auto / full_pkl / arrow_strict; old accounts keep auto fallback
@@ -98,6 +100,13 @@ if trading_account:
     account_config_path = Path(trading_account)
     if not account_config_path.exists():
         account_config_path = get_file_path('accounts', trading_account, as_path_type=True)
+    # 只给了账户名时，再到账户组目录中查找（账户名全局唯一，下划线开头的案例目录不参与）
+    if not account_config_path.exists() and len(Path(trading_account).parts) == 1:
+        accounts_root = get_folder_path('accounts', as_path_type=True)
+        matches = [f for f in accounts_root.rglob(trading_account)
+                   if not f.relative_to(accounts_root).parts[0].startswith('_')]
+        if len(matches) == 1:
+            account_config_path = matches[0]
 
     allowed_attrs = (
         'account_config', 'strategy_name', 'strategy_config', 'strategy_pool', 'leverage', 'black_list', 'white_list',
@@ -134,13 +143,20 @@ if json_file_config.exists():
 
         # 目前只支持配置这些
         allowed_attrs = (
-            'realtime_data_path', 'error_webhook_url', 'is_simulate', 'factor_col_limit', 'lookback_days',
-            'incremental_lookback_hours', 'proxy', 'shared_factor_pipeline'
+            'realtime_data_path', 'exchange_data_paths', 'error_webhook_url', 'is_simulate', 'factor_col_limit',
+            'lookback_days', 'lookback_save_interval_hours', 'incremental_lookback_hours', 'proxy',
+            'shared_factor_pipeline'
         )
 
         for _attr in allowed_attrs:
             if _attr in config_data:
                 globals()[_attr] = config_data[_attr]  # 自动转换为全局变量
+
+
+# 当前账户的交易所和数据中心路径：账户配置优先，其次是全局默认
+exchange_name = str(account_config.get('exchange_name', exchange_name)).lower()
+realtime_data_path = exchange_data_paths.get(exchange_name, realtime_data_path)
+lookback_save_interval_hours = lookback_save_interval_hours or 0
 
 
 # ====================================================================================================

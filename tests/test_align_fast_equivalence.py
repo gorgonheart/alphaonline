@@ -62,9 +62,24 @@ def test_n_larger_than_group():
 
 
 def test_swap_path_mismatch_column():
-    # swap path quirk: align symbol_spot, but NaN-group mask hardcoded on symbol_swap.
-    # symbol_swap varies independently from the aligned column.
-    _assert_same(['', 'A', 'A', '', 'A'], ['A', 'A', 'A', 'A', 'A'], 'symbol_spot', 2)
+    # v2.4.1: align_spot_swap_mapping masks empty values on `column_name` itself,
+    # independent of `symbol_swap == ''`.
+    df = _make_df(['', 'A', 'A', '', 'A'], ['A', 'A', 'A', 'A', 'A'])
+    expected = align_spot_swap_mapping(df.copy(), 'symbol_spot', 2)
+    actual = align_spot_swap_mapping_fast(df.copy(), 'symbol_spot', 2)
+    assert expected['symbol_spot'].tolist() == ['', '', 'A', 'A', 'A']
+    assert actual['symbol_spot'].tolist() == ['', '', 'A', 'A', 'A']
+
+
+def test_swap_table_single_coin_relisting_preserves_align():
+    # Simulated swap table where symbol_swap is constant 'BTCUSDT' and symbol_spot relists.
+    swap_col = ['BTCUSDT'] * 9
+    spot_col = ['BTCUSDT', 'BTCUSDT', 'BTCUSDT', '', '', 'BTCUSDT', 'BTCUSDT', 'BTCUSDT', 'BTCUSDT']
+    df = _make_df(swap_col, spot_col)
+    expected = align_spot_swap_mapping(df.copy(), 'symbol_spot', 2)
+    actual = align_spot_swap_mapping_fast(df.copy(), 'symbol_spot', 2)
+    assert expected['symbol_spot'].tolist() == ['', '', 'BTCUSDT', '', '', '', '', 'BTCUSDT', 'BTCUSDT']
+    assert actual['symbol_spot'].tolist() == expected['symbol_spot'].tolist()
 
 
 def test_align_symbol_swap_column():
