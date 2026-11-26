@@ -386,6 +386,17 @@ def trade(account,stamp,stage='all',scale=1.0,wait_ready=False):
         return _trade(account,stamp,stage=stage)
 
 
+def _release_trade_input_buffers() -> None:
+    import gc
+    pa = sys.modules.get('pyarrow')
+    if pa is not None and hasattr(pa, 'default_memory_pool'):
+        try:
+            pa.default_memory_pool().release_unused()
+        except Exception:
+            pass
+    gc.collect(0)
+
+
 def _trade_wait_ready(account,stamp,stage='all'):
     import time
     import pandas as pd
@@ -460,17 +471,18 @@ def _trade_wait_ready(account,stamp,stage='all'):
                 )
                 return REBUILD_REQUIRED_EXIT
             telemetry.add(prepare_s=stream_stats.get('input_read_s',0.0))
+            preloaded_box={'old':old_inputs,'current':current_inputs}
+            del old_inputs,current_inputs
             return _trade(
                 account,
                 stamp,
                 stage=stage,
-                preloaded_old=old_inputs,
-                preloaded_current=current_inputs,
+                _preloaded_box=preloaded_box,
                 skip_trim_check=True,
             )
 
 
-def _trade(account,stamp,stage='all',*,preloaded_old=None,preloaded_current=None,skip_trim_check=False):
+def _trade(account,stamp,stage='all',*,preloaded_old=None,preloaded_current=None,_preloaded_box=None,skip_trim_check=False):
     import pandas as pd
     import config
     from contextlib import nullcontext
@@ -478,14 +490,20 @@ def _trade(account,stamp,stage='all',*,preloaded_old=None,preloaded_current=None
     from tools.robust40 import server
     from tools.robust40 import telemetry
     from tools.robust40.replay import RebuildRequired, REBUILD_REQUIRED_EXIT
+    if _preloaded_box is not None:
+        preloaded_old=_preloaded_box.pop('old',None)
+        preloaded_current=_preloaded_box.pop('current',None)
+        _preloaded_box.clear()
     values,_=server.settings(account)
     destination=server.location(ROOT,account,values)
     server.check_dependencies(values)
     status,reason=server.inspect(destination,account.stem,values,pd.Timestamp(stamp,unit='s')-pd.Timedelta(hours=1),server.resume_capacity(values))
     if status=='rebuild':
+        del preloaded_old,preloaded_current
         telemetry.record(mode='rebuild_required',status='rebuild_required',recovery_reason=reason)
         return REBUILD_REQUIRED_EXIT
     if status!='ready':
+        del preloaded_old,preloaded_current
         telemetry.record(mode='not_ready')
         raise ValueError(reason)
     # Import errors happen before any calculation and must not invalidate state.
@@ -498,6 +516,7 @@ def _trade(account,stamp,stage='all',*,preloaded_old=None,preloaded_current=None
             config.bmac_data_path,end.minute,stamp,original.get('history_trim_date')
         )
         if need_rebuild:
+            del preloaded_old,preloaded_current
             server.begin(destination)
             telemetry.record(
                 mode='rebuild_required',
@@ -514,15 +533,19 @@ def _trade(account,stamp,stage='all',*,preloaded_old=None,preloaded_current=None
         else:
             stage_replay,inputs=handoff.prepare(destination,values,run,end.minute,end)
     except RebuildRequired as exc:
+        del preloaded_old,preloaded_current
         # No orders have run; release the account lock before the parent queues initialization.
         server.begin(destination)
         telemetry.record(mode='rebuild_required',status='rebuild_required',recovery_reason=str(exc)[:500])
         return REBUILD_REQUIRED_EXIT
+    del preloaded_old,preloaded_current
     config.strategy_config['params']['runtime']['replaying']=stage_replay is not None
     with handoff.transaction(destination,stage_replay) if stage_replay is not None else nullcontext():
         server.begin(destination)
         with telemetry.phase('input_write_s'):
             pd.to_pickle(inputs,destination/'model/revision_inputs.pending.pkl')
+        del inputs
+        _release_trade_input_buffers()
         # Original BNB and execution flow; never submit historical replay orders.
         sys.argv=[sys.argv[0],str(stamp)] if stage=='all' else [sys.argv[0],str(stamp),'--stage',stage]
         with telemetry.phase('account_flow_s'):

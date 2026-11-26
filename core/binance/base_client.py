@@ -94,6 +94,37 @@ class BinanceClient:
         self._spot_ticker_price = {}
 
         self._leverage_bracket_cache = None
+        self._disk_cache_enabled = True
+
+    @staticmethod
+    def _read_json_disk_cache(cache_path):
+        if cache_path is None:
+            return None
+        import json
+        from pathlib import Path
+        p = Path(cache_path)
+        if not p.is_file():
+            return None
+        try:
+            data = json.loads(p.read_text(encoding='utf-8'))
+            return data if isinstance(data, dict) else None
+        except Exception:
+            return None
+
+    @staticmethod
+    def _write_json_disk_cache(cache_path, payload: dict) -> None:
+        if cache_path is None:
+            return
+        import json
+        from pathlib import Path
+        p = Path(cache_path)
+        tmp = p.with_name(f'{p.name}.{os.getpid()}.tmp')
+        try:
+            p.parent.mkdir(parents=True, exist_ok=True)
+            tmp.write_text(json.dumps(payload, ensure_ascii=False), encoding='utf-8')
+            os.replace(tmp, p)
+        except Exception:
+            tmp.unlink(missing_ok=True)
 
     @property
     def base_coins(self):
@@ -136,25 +167,33 @@ class BinanceClient:
     def _parse_bstocks_coins(coin_config_list) -> set:
         """
         从 sapi_get_capital_config_getall 返回的钱包币种配置中解析出 bStocks（股票代币）的基础币代码集合。
-        bStocks 代币的唯一可靠标识：name 字段 strip 后以 '(bStocks)' 结尾
+        bStocks 代币的唯一可靠标识：name 字段 strip 后以 '(bStocks)' 结尾。
+        容忍个别脏记录缺失/空置 name 或 coin，但非空列表无任何有效记录时仍报错。
         """
         if not isinstance(coin_config_list, list):
             raise ValueError('bStocks 钱包名单不是列表')
+        if not coin_config_list:
+            return set()
         result = set()
+        valid_rows = 0
         for item in coin_config_list:
-            if (not isinstance(item, dict) or not isinstance(item.get('coin'), str)
-                    or not item['coin'].strip() or not isinstance(item.get('name'), str)):
+            if not isinstance(item, dict):
                 raise ValueError('bStocks 钱包名单字段无效')
-            name = item['name'].strip().replace('（', '(').replace('）', ')')
-            if name.endswith('(bStocks)'):
-                coin = item.get('coin')
-                if coin:
-                    result.add(coin)
+            coin = item.get('coin')
+            name = item.get('name')
+            if not isinstance(coin, str) or not coin.strip() or not isinstance(name, str):
+                continue
+            valid_rows += 1
+            norm_name = name.strip().replace('（', '(').replace('）', ')')
+            if norm_name.endswith('(bStocks)'):
+                result.add(coin.strip())
+        if valid_rows == 0:
+            raise ValueError('bStocks 钱包名单字段无效')
         return result
 
     def fetch_bstocks_coins(self, expire_seconds=3600 * 12) -> set:
         """
-        合并钱包配置与代币转换资产名单，全局类级缓存。
+        合并钱包配置与代币转换资产名单，全局类级缓存 + 跨进程本地文件缓存。
         无 apikey 的 dummy client 不发请求，直接复用现有缓存；缓存未过期也不发请求。
         部分失败保留旧成员；冷启动部分空结果不算成功。两来源完整成功才移除旧成员。
         账户配置 filter_bstocks=False 时不拉取名单并返回空集，bStocks 过滤整体关闭
@@ -166,8 +205,24 @@ class BinanceClient:
         if not self.api_key:
             return BinanceClient.bstocks_coins
 
-        if int(time.time()) - BinanceClient._bstocks_last_update < expire_seconds:
+        now_ts = int(time.time())
+        if now_ts - BinanceClient._bstocks_last_update < expire_seconds:
             return BinanceClient.bstocks_coins
+
+        cache_file = getattr(self, '_bstocks_cache_file', None)
+        if cache_file is None and getattr(self, '_disk_cache_enabled', False):
+            from core.utils.path_kit import get_file_path
+            cache_file = get_file_path('data', 'bstocks_cache.json', as_path_type=True)
+        cached_doc = self._read_json_disk_cache(cache_file)
+        if cached_doc is not None and isinstance(cached_doc.get('coins'), list):
+            cached_coins = {c for c in cached_doc['coins'] if isinstance(c, str) and c}
+            cached_ts = int(cached_doc.get('updated_at', 0) or 0)
+            if BinanceClient._bstocks_last_update == 0 and cached_coins:
+                BinanceClient.bstocks_coins = BinanceClient.bstocks_coins | cached_coins
+            if cached_ts > 0 and now_ts - cached_ts < expire_seconds:
+                BinanceClient.bstocks_coins = cached_coins
+                BinanceClient._bstocks_last_update = cached_ts
+                return BinanceClient.bstocks_coins
 
         coins = set()
         successful_sources = 0
@@ -197,6 +252,11 @@ class BinanceClient:
             BinanceClient.bstocks_coins = coins
         else:
             BinanceClient.bstocks_coins = BinanceClient.bstocks_coins | coins
+        if successful_sources == 2 or coins:
+            self._write_json_disk_cache(
+                cache_file,
+                {'updated_at': BinanceClient._bstocks_last_update, 'coins': sorted(BinanceClient.bstocks_coins)},
+            )
         if successful_sources == 0:
             send_wechat_work_msg(f'bStocks 名单刷新失败，沿用旧缓存: {"; ".join(errors)}', error_webhook_url)
 
@@ -575,11 +635,29 @@ class BinanceClient:
         # 查询保证金模式
         pass
 
-    def get_swap_leverage_bracket(self, force_refresh: bool = False):
-        if getattr(self, '_leverage_bracket_cache', None) is None or force_refresh:
-            logger.debug('🔢 获取合约 leverage brackets...')
-            get_leverage_bracket = getattr(self.exchange, self.constants.get('get_leverage_bracket'))
-            self._leverage_bracket_cache = retry_wrapper(get_leverage_bracket, func_name='获取合约支持最大页面杠杆')
+    def get_swap_leverage_bracket(self, force_refresh: bool = False, expire_seconds: int = 3600 * 6):
+        if getattr(self, '_leverage_bracket_cache', None) is not None and not force_refresh:
+            return self._leverage_bracket_cache
+        api_name = self.constants.get('get_leverage_bracket') or 'default'
+        cache_file = getattr(self, '_bracket_cache_file', None)
+        if cache_file is None and getattr(self, '_disk_cache_enabled', False):
+            from core.utils.path_kit import get_file_path
+            cache_file = get_file_path('data', f'leverage_brackets_{api_name}.json', as_path_type=True)
+        if not force_refresh:
+            cached_doc = self._read_json_disk_cache(cache_file)
+            if cached_doc is not None and isinstance(cached_doc.get('brackets'), list):
+                cached_ts = int(cached_doc.get('updated_at', 0) or 0)
+                if cached_ts > 0 and int(time.time()) - cached_ts < expire_seconds:
+                    self._leverage_bracket_cache = cached_doc['brackets']
+                    return self._leverage_bracket_cache
+        logger.debug('🔢 获取合约 leverage brackets...')
+        get_leverage_bracket = getattr(self.exchange, self.constants.get('get_leverage_bracket'))
+        self._leverage_bracket_cache = retry_wrapper(get_leverage_bracket, func_name='获取合约支持最大页面杠杆')
+        if isinstance(self._leverage_bracket_cache, list) and self._leverage_bracket_cache:
+            self._write_json_disk_cache(
+                cache_file,
+                {'updated_at': int(time.time()), 'brackets': self._leverage_bracket_cache},
+            )
         return self._leverage_bracket_cache
 
     @staticmethod
@@ -676,8 +754,36 @@ class BinanceClient:
 
         brackets = self.get_swap_leverage_bracket()
         symbol_brackets = {row['symbol']: row['brackets'] for row in brackets}
+        symbol_max_lev = {
+            row['symbol']: max(int(b['initialLeverage']) for b in row['brackets'])
+            for row in brackets if row.get('brackets')
+        }
 
-        account_info = self.get_swap_account(require_update=True)
+        planned = []
+        for symbol, notional in target_notional.items():
+            if notional is None or float(notional) <= 0:
+                continue
+            if symbol not in symbol_brackets:
+                logger.warning(f'[{symbol}] 未在 leverage_bracket 中找到档位信息，跳过目标 notional 精调')
+                continue
+            f_notional = float(notional)
+            needed_lev, overflowed = self._pick_leverage_for_notional(
+                symbol_brackets[symbol], f_notional, buffer_ratio, floor
+            )
+            new_lev = max(floor, min(max_leverage, needed_lev))
+            planned.append((symbol, f_notional, needed_lev, new_lev, overflowed))
+
+        if not planned:
+            return
+
+        needs_account_query = any(
+            overflowed or new_lev < max_leverage or needed_lev < symbol_max_lev.get(sym, max_leverage)
+            for sym, _, needed_lev, new_lev, overflowed in planned
+        )
+        if not needs_account_query and getattr(self, 'swap_account', None) is None:
+            return
+
+        account_info = self.get_swap_account(require_update=needs_account_query or getattr(self, 'swap_account', None) is None)
         if account_info is None:
             logger.warning('精调页面杠杆时获取账户信息为空，跳过')
             return
@@ -685,31 +791,20 @@ class BinanceClient:
 
         reset_leverage_func = getattr(self.exchange, self.constants.get('reset_page_leverage_api'))
 
-        for symbol, notional in target_notional.items():
-            if notional is None or float(notional) <= 0:
-                continue
-            if symbol not in symbol_brackets:
-                logger.warning(f'[{symbol}] 未在 leverage_bracket 中找到档位信息，跳过目标 notional 精调')
-                continue
-
-            needed_lev, overflowed = self._pick_leverage_for_notional(
-                symbol_brackets[symbol], float(notional), buffer_ratio, floor
-            )
-            new_lev = max(floor, min(max_leverage, needed_lev))
-
+        for symbol, f_notional, _, new_lev, overflowed in planned:
             if cur_lev.get(symbol, max_leverage) > new_lev:
                 retry_wrapper(
                     reset_leverage_func,
                     params={'symbol': symbol, 'leverage': new_lev, 'timestamp': ''},
                     func_name='设置杠杆'
                 )
-                logger.info(f'[{symbol}] 目标 notional={float(notional):.2f}，页面杠杆 {cur_lev.get(symbol)}x → {new_lev}x')
+                logger.info(f'[{symbol}] 目标 notional={f_notional:.2f}，页面杠杆 {cur_lev.get(symbol)}x → {new_lev}x')
                 if overflowed:
-                    msg = f'[{symbol}] 目标持仓名义价值 {float(notional):.2f} 超过该币所有档位上限，已降至 {new_lev}x，可能仍会被拒单'
+                    msg = f'[{symbol}] 目标持仓名义价值 {f_notional:.2f} 超过该币所有档位上限，已降至 {new_lev}x，可能仍会被拒单'
                     logger.warning(msg)
                     send_wechat_work_msg(msg, self.wechat_webhook_url)
                 elif new_lev < max_leverage:
-                    logger.warning(f'[{symbol}] 因目标持仓 {float(notional):.2f} 接近 notionalCap，杠杆下调至 {new_lev}x')
+                    logger.warning(f'[{symbol}] 因目标持仓 {f_notional:.2f} 接近 notionalCap，杠杆下调至 {new_lev}x')
 
     def get_unimmr(self):
         raise NotImplementedError
