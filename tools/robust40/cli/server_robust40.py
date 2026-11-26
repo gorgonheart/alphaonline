@@ -528,20 +528,59 @@ def _trade(account,stamp,stage='all',*,preloaded_old=None,preloaded_current=None
         if result is None:telemetry.record(account_skipped=True)
 
 
+def warm_numba_kernels() -> None:
+    """Compile and cache live/sim Numba kernels without touching account state."""
+    import numpy as np
+    from positions.ModelRobust40Strategy import LiveRebRobust40, RebRobust40, start_simulation
+
+    n_bars, n_syms = 2, 2
+    sizes = np.ones(n_syms, dtype=np.float64)
+    lots = np.zeros(n_syms, dtype=np.int64)
+    px_row = np.full(n_syms, 100.0, dtype=np.float64)
+    prices = np.full((n_bars, n_syms), 100.0, dtype=np.float64)
+    spot_ratio = np.full((n_bars, n_syms), 0.1, dtype=np.float64)
+    swap_ratio = np.full((n_bars, n_syms), -0.1, dtype=np.float64)
+    funding = np.zeros((n_bars, n_syms), dtype=np.float64)
+    leverages = np.ones(n_bars, dtype=np.float64)
+    req = np.ones(n_bars, dtype=np.int64)
+    cflow = np.zeros(n_bars, dtype=np.float64)
+
+    LiveRebRobust40(sizes, sizes).calc_lots(10000.0, px_row, lots, spot_ratio[0], px_row, lots, swap_ratio[0])
+    RebRobust40(sizes, sizes).calc_lots(10000.0, px_row, lots, spot_ratio[0], px_row, lots, swap_ratio[0])
+    start_simulation(
+        10000.0, leverages, sizes, sizes, 0.0005, 0.0005, 5.0, 5.0, 0.05,
+        spot_ratio, swap_ratio, prices, prices, prices, prices, prices, prices, funding,
+        0.4, 2.45, req, cflow, -1, resume_state=None,
+    )
+    resume_one = (10000.0, lots, lots.copy(), px_row, False)
+    start_simulation(
+        10000.0, leverages, sizes, sizes, 0.0005, 0.0005, 5.0, 5.0, 0.05,
+        spot_ratio, swap_ratio, prices, prices, prices, prices, prices, prices, funding,
+        0.4, 2.45, req, cflow, -1, resume_state=(resume_one, resume_one),
+    )
+    print('warm-numba: Numba JIT cache ready')
+
+
 def main():
     # initialize has no ROBUST40_SERVER_WORKER profile yet. Configure its output
     # before framework loggers wrap stdout (Windows redirected streams use GBK).
     configure_output()
     p=argparse.ArgumentParser(description=__doc__)
-    p.add_argument('mode',choices=['prepare','initialize','rebuild','compute','trade'])
-    p.add_argument('--account',required=True)
-    p.add_argument('--stamp',required=True,type=int)
+    p.add_argument('mode',choices=['prepare','initialize','rebuild','compute','trade','warm-numba'])
+    p.add_argument('--account')
+    p.add_argument('--stamp',type=int)
     p.add_argument('--workspace')
     p.add_argument('--destination')
     p.add_argument('--stage',choices=['all','calc','trade'],default='all')
     p.add_argument('--scale',type=float,default=1.0)
     p.add_argument('--wait-ready',action='store_true')
-    a=p.parse_args();account=Path(a.account).resolve()
+    a=p.parse_args()
+    if a.mode=='warm-numba':
+        warm_numba_kernels()
+        return 0
+    if not a.account or a.stamp is None:
+        p.error('--account and --stamp are required')
+    account=Path(a.account).resolve()
     if a.mode in ('compute','trade'):
         spec=json.loads(os.environ.get('ROBUST40_SERVER_WORKER','{}'))
         if not spec or Path(spec['account']).resolve()!=account or spec['initializing']!=(a.mode=='compute'):

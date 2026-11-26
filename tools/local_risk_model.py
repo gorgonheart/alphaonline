@@ -153,6 +153,72 @@ def atomic_save(path,bundle):
     finally:Path(tmp).unlink(missing_ok=True)
 
 
+class DeferredAtomicSave:
+    """Overlap slow pickle+fsync on a background thread while keeping the lock until commit/abort."""
+
+    def __init__(self, path, bundle, lock_cm=None):
+        self.path = Path(path)
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._lock_cm = lock_cm
+        self._lock_released = False
+        self._committed = False
+        self._aborted = False
+        self._error = None
+        fd, tmp = tempfile.mkstemp(dir=self.path.parent, prefix=self.path.name + '.', suffix='.tmp')
+        os.close(fd)
+        self._tmp = Path(tmp)
+
+        def _write():
+            try:
+                pd.to_pickle(bundle, self._tmp)
+                with open(self._tmp, 'rb+') as f:
+                    os.fsync(f.fileno())
+            except BaseException as exc:
+                self._error = exc
+
+        self._thread = threading.Thread(
+            target=_write,
+            name=f'deferred-save-{self.path.name}',
+            daemon=True,
+        )
+        self._thread.start()
+
+    def _release_lock(self):
+        if not self._lock_released and self._lock_cm is not None:
+            self._lock_released = True
+            self._lock_cm.__exit__(None, None, None)
+
+    def commit(self) -> None:
+        if self._committed:
+            return
+        if self._aborted:
+            raise RuntimeError('DeferredAtomicSave already aborted')
+        try:
+            self._thread.join()
+            if self._error is not None:
+                raise self._error
+            os.replace(self._tmp, self.path)
+            self._committed = True
+        finally:
+            self._tmp.unlink(missing_ok=True)
+            self._release_lock()
+
+    def abort(self) -> None:
+        self._aborted = True
+        try:
+            self._thread.join()
+        except Exception:
+            pass
+        try:
+            self._tmp.unlink(missing_ok=True)
+        except OSError:
+            pass
+        try:
+            self._release_lock()
+        except Exception:
+            pass
+
+
 _PRELOAD_LOCK = threading.Lock()
 _PRELOAD_SLOT: dict | None = None
 

@@ -283,6 +283,10 @@ def finish_live(strategy):
     """Called after target parity passes, before orders; order failure keeps computation."""
     opts=strategy.params['runtime']
     if not opts.get('server_init'):return
+    pending_save=getattr(strategy,'_robust40_pending_save',None)
+    if pending_save is not None:
+        delattr(strategy,'_robust40_pending_save')
+        pending_save.commit()
     path=Path(opts['state_path']).parent.parent
     meta=pd.read_pickle(path/'warmup.pkl')
     pending=path/'model/revision_inputs.pending.pkl'

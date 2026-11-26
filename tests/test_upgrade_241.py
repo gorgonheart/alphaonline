@@ -506,4 +506,58 @@ def test_coordinator_command_and_server_robust40_stage_trade_bypass(tmp_path, mo
     assert '--stage' in called['argv'] and 'trade' in called['argv'] and '1.25' in called['argv']
 
 
+def test_trade_by_account_adjust_leverage_guards_missing_method_or_columns(tmp_path, monkeypatch):
+    from datetime import datetime
+    from types import SimpleNamespace
+    import pandas as pd
+    import core.real_trading as rt
+
+    monkeypatch.setattr(rt, 'is_debug', False, raising=False)
+    monkeypatch.setattr(rt, 'is_simulate', 'none', raising=False)
+    monkeypatch.setattr(rt, 'save_position_results', lambda *a, **k: None)
+    monkeypatch.setattr(rt, 'save_final_select_results', lambda *a, **k: None)
+    monkeypatch.setattr(rt, 'save_symbol_order', lambda *a, **k: None)
+    monkeypatch.setattr(rt, 'save_order_history', lambda *a, **k: None)
+    monkeypatch.setattr(
+        rt, 'calc_target_position',
+        lambda *a, **k: pd.DataFrame({'目标持仓量': [1.0], 'symbol_type': ['swap'], 'symbol': ['BTCUSDT'], 'price': [100.0]}),
+    )
+
+    # Case 1: Exchange client without adjust_leverage_by_target_notional (e.g. current BinanceClient)
+    bn_no_method = SimpleNamespace(
+        cancel_all_swap_orders=lambda: None,
+        cancel_all_spot_orders=lambda: None,
+        collect_asset=lambda: None,
+        adjust_base_margin=lambda: None,
+    )
+    acct1 = SimpleNamespace(
+        name='bn_acct',
+        bn=bn_no_method,
+        calc_order_amount=lambda df: pd.DataFrame(),
+        proceed_spot_order=lambda *a, **k: ([], pd.DataFrame()),
+        proceed_swap_order=lambda *a, **k: ([], pd.DataFrame()),
+    )
+    ratios = (pd.DataFrame({'BTCUSDT': [0.0]}), pd.DataFrame({'BTCUSDT': [0.5]}))
+    rt.trade_by_account(acct1, SimpleNamespace(), datetime(2026, 1, 1, 12, 25), preloaded_ratios=ratios)
+
+    # Case 2: Client with adjust_leverage_by_target_notional receives target notional dict when columns exist
+    recorded = {}
+    bn_with_method = SimpleNamespace(
+        cancel_all_swap_orders=lambda: None,
+        cancel_all_spot_orders=lambda: None,
+        adjust_leverage_by_target_notional=lambda d: recorded.update(d),
+        collect_asset=lambda: None,
+        adjust_base_margin=lambda: None,
+    )
+    acct2 = SimpleNamespace(
+        name='okx_acct',
+        bn=bn_with_method,
+        calc_order_amount=lambda df: pd.DataFrame(),
+        proceed_spot_order=lambda *a, **k: ([], pd.DataFrame()),
+        proceed_swap_order=lambda *a, **k: ([], pd.DataFrame()),
+    )
+    rt.trade_by_account(acct2, SimpleNamespace(), datetime(2026, 1, 1, 12, 25), preloaded_ratios=ratios)
+    assert recorded == {'BTCUSDT': pytest.approx(100.0)}
+
+
 

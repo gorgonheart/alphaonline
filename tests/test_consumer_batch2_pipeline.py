@@ -520,4 +520,146 @@ def test_stage6_run_backtest_multi_starts_preload_only_after_pool_submits(tmp_pa
     assert preloads[0] > max(submits)
 
 
+def test_stage7_deferred_atomic_save_overlaps_compute_and_commits_before_warmup_complete(tmp_path, monkeypatch):
+    from tools import local_risk_model as lrm
+    from tools.robust40 import server
+
+    snap_dir = tmp_path / 'data' / 'snapshot' / 'acct_s'
+    (snap_dir / 'model').mkdir(parents=True)
+    (snap_dir / 'sections').mkdir(parents=True)
+    state_path = snap_dir / 'model' / 'state.pkl'
+    pd.to_pickle({'v': 'old'}, state_path)
+    pd.to_pickle({'old': 1}, snap_dir / 'model' / 'revision_inputs.pkl')
+    pd.to_pickle({'old': 2}, snap_dir / 'model' / 'revision_inputs.pending.pkl')
+    pd.to_pickle({'cutoff': pd.Timestamp('2026-01-01 00:25:00')}, snap_dir / 'sections' / 's1.pkl')
+    pd.to_pickle({
+        'account': 'acct', 'settings': {}, 'cutoff': pd.Timestamp('2026-01-01 00:25:00'),
+        'origin': '2026-01-01 00:25:00', 'checkpoint_version': 1, 'complete': False,
+        'sections': ['sections/s1.pkl'], 'history_trim_date': None,
+    }, snap_dir / 'warmup.pkl')
+
+    pickle_started = threading.Event()
+    allow_pickle_finish = threading.Event()
+    orig_to_pickle = pd.to_pickle
+
+    def _blocking_to_pickle(obj, path, *a, **k):
+        if Path(path).parent == state_path.parent and '.tmp' in Path(path).name:
+            pickle_started.set()
+            assert allow_pickle_finish.wait(timeout=3.0)
+        return orig_to_pickle(obj, path, *a, **k)
+
+    monkeypatch.setattr(pd, 'to_pickle', _blocking_to_pickle)
+
+    lock_cm = lrm.lock(state_path)
+    lock_cm.__enter__()
+    pending = lrm.DeferredAtomicSave(state_path, {'v': 'new'}, lock_cm=lock_cm)
+
+    # Background thread is writing .tmp while main thread "computes" concurrently
+    assert pickle_started.wait(timeout=2.0)
+    assert pd.read_pickle(state_path) == {'v': 'old'}
+    with pytest.raises(FileExistsError):
+        with lrm.lock(state_path):
+            pass
+
+    allow_pickle_finish.set()
+
+    dummy_strategy = SimpleNamespace(
+        params={'runtime': {'server_init': True, 'state_path': str(state_path), 'replaying': False}},
+        _robust40_result={'parent': pd.DataFrame({'x': [1.0]}, index=[pd.Timestamp('2026-01-01 01:25:00')])},
+        _robust40_pending_save=pending,
+    )
+    server.finish_live(dummy_strategy)
+
+    assert pd.read_pickle(state_path) == {'v': 'new'}
+    assert pd.read_pickle(snap_dir / 'warmup.pkl')['complete'] is True
+    assert list(state_path.parent.glob('*.tmp')) == []
+    # Lock released after commit
+    with lrm.lock(state_path):
+        pass
+
+
+def test_stage7_deferred_save_abort_and_write_error_preserve_old_state_and_release_lock(tmp_path, monkeypatch):
+    from tools import local_risk_model as lrm
+    from tools.robust40 import server
+    from core import real_trading as rt
+
+    snap_dir = tmp_path / 'data' / 'snapshot' / 'acct_s'
+    (snap_dir / 'model').mkdir(parents=True)
+    state_path = snap_dir / 'model' / 'state.pkl'
+    pd.to_pickle({'v': 'old'}, state_path)
+    pd.to_pickle({'old': 1}, snap_dir / 'model' / 'revision_inputs.pkl')
+    pd.to_pickle({'new_pending': 2}, snap_dir / 'model' / 'revision_inputs.pending.pkl')
+    pd.to_pickle({
+        'account': 'acct', 'settings': {}, 'cutoff': pd.Timestamp('2026-01-01 00:25:00'),
+        'origin': '2026-01-01 00:25:00', 'checkpoint_version': 1, 'complete': False,
+        'sections': [], 'history_trim_date': None,
+    }, snap_dir / 'warmup.pkl')
+
+    # Scenario A: downstream calc_ratios/validate_targets raises -> calc_by_account finally calls abort()
+    lock_a = lrm.lock(state_path)
+    lock_a.__enter__()
+    pending_a = lrm.DeferredAtomicSave(state_path, {'v': 'should_abort'}, lock_cm=lock_a)
+
+    acct = SimpleNamespace(name='acct', hour_offset='25m', hour_offset_minute=25, bn=SimpleNamespace(fetch_market_info=lambda *a: None))
+    strategy = SimpleNamespace(params={'runtime': {}}, core_funcs={}, _robust40_pending_save=pending_a)
+    me_conf = SimpleNamespace(
+        factory=SimpleNamespace(config_list=[]),
+        strategy=strategy,
+        backtest_strategies=lambda *a: None,
+        process_equities=lambda *a, **k: None,
+        calc_ratios=lambda *a, **k: (_ for _ in ()).throw(ValueError('validate_targets failed')),
+    )
+    monkeypatch.setattr(rt, 'refresh_diff_time', lambda: None)
+    monkeypatch.setattr(rt, 'snapshot_bmac_exginfo', lambda: None)
+    monkeypatch.setattr(rt, 'save_position_snapshot', lambda *a: None)
+    monkeypatch.setattr(rt, 'get_folder_path', lambda *p, **k: tmp_path.joinpath(*p))
+    monkeypatch.setattr(rt, 'lookback_save_interval_hours', 0, raising=False)
+
+    with pytest.raises(ValueError, match='validate_targets failed'):
+        rt.calc_by_account(acct, me_conf, datetime(2026, 1, 1, 12, 25))
+
+    assert pd.read_pickle(state_path) == {'v': 'old'}
+    assert list(state_path.parent.glob('*.tmp')) == []
+    with lrm.lock(state_path):
+        pass
+
+    # Scenario B: background pd.to_pickle raises OSError -> finish_live fails before touching revision_inputs or warmup.pkl
+    orig_to_pickle = pd.to_pickle
+    monkeypatch.setattr(pd, 'to_pickle', lambda obj, path, *a, **k: (_ for _ in ()).throw(OSError('io error')) if '.tmp' in str(path) else orig_to_pickle(obj, path, *a, **k))
+
+    lock_b = lrm.lock(state_path)
+    lock_b.__enter__()
+    pending_b = lrm.DeferredAtomicSave(state_path, {'v': 'broken'}, lock_cm=lock_b)
+    dummy_strategy = SimpleNamespace(
+        params={'runtime': {'server_init': True, 'state_path': str(state_path), 'replaying': False}},
+        _robust40_result={'parent': pd.DataFrame({'x': [1.0]}, index=[pd.Timestamp('2026-01-01 01:25:00')])},
+        _robust40_pending_save=pending_b,
+    )
+    with pytest.raises(OSError, match='io error'):
+        server.finish_live(dummy_strategy)
+
+    assert pd.read_pickle(state_path) == {'v': 'old'}
+    assert (snap_dir / 'model' / 'revision_inputs.pending.pkl').exists()
+    assert pd.read_pickle(snap_dir / 'model' / 'revision_inputs.pkl') == {'old': 1}
+    assert pd.read_pickle(snap_dir / 'warmup.pkl')['complete'] is False
+    assert list(state_path.parent.glob('*.tmp')) == []
+    with lrm.lock(state_path):
+        pass
+
+
+def test_warm_numba_cli_exits_zero():
+    import subprocess
+    result = subprocess.run(
+        [sys.executable, str(ROOT / 'tools/robust40/cli/server_robust40.py'), 'warm-numba'],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        encoding='utf-8',
+        errors='replace',
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert 'warm-numba' in result.stdout
+
+
+
 

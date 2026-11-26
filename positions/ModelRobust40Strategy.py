@@ -1234,7 +1234,8 @@ def update_state(state_path, bootstrap_path, identity, minute, incoming, raw_swa
 
 
 def _update_state(bundle, state_path, identity, minute, incoming, raw_swap, expected,
-                  validate=None, report=lambda message: None, checkpoint_hours=0):
+                  validate=None, report=lambda message: None, checkpoint_hours=0,
+                  defer_save=False, lock_cm=None):
     """Caller holds the state lock from load through atomic save; never reload here."""
     if bundle['version'] != 1 or bundle['minute'] != minute:
         raise ValueError('Wrong bootstrap version or minute')
@@ -1255,6 +1256,9 @@ def _update_state(bundle, state_path, identity, minute, incoming, raw_swap, expe
     result = advance(context, hybrid, raw_swap, previous, checkpoint_hours=checkpoint_hours)
     report('专家账户及MODEL续算完成，开始保存状态')
     updated = dict(bundle, context=context, result=result, account_identity=identity)
+    if defer_save:
+        from tools.local_risk_model import DeferredAtomicSave
+        return updated, DeferredAtomicSave(state_path, updated, lock_cm=lock_cm)
     atomic_save(state_path, updated)
     return updated
 
@@ -1463,7 +1467,11 @@ def prepare(me_conf, account, run_time, *, inputs=None):
         return _prepare(me_conf, account, run_time, saved=None, started=started, inputs=inputs)
     state = Path(options['state_path']);bootstrap = Path(options['bootstrap_path'])
     if state.resolve() == bootstrap.resolve():raise ValueError('State must not overwrite bootstrap')
-    with lock(state):
+    defer_save = bool(options.get('server_init') is True and not options.get('initializing'))
+    lock_cm = lock(state)
+    lock_cm.__enter__()
+    transferred = False
+    try:
         target = state if state.exists() else bootstrap
         from tools.local_risk_model import consume_preloaded_model_state
         saved = consume_preloaded_model_state(target)
@@ -1471,10 +1479,17 @@ def prepare(me_conf, account, run_time, *, inputs=None):
             logger.info('MODEL仓管：命中Step 6后台预加载状态')
         else:
             saved = pd.read_pickle(target)
-        return _prepare(me_conf, account, run_time, saved=saved, started=started)
+        res = _prepare(me_conf, account, run_time, saved=saved, started=started, inputs=inputs,
+                       lock_cm=lock_cm if defer_save else None)
+        if defer_save and getattr(me_conf.strategy, '_robust40_pending_save', None) is not None:
+            transferred = True
+        return res
+    finally:
+        if not transferred:
+            lock_cm.__exit__(None, None, None)
 
 
-def _prepare(me_conf, account, run_time, *, saved, started, inputs=None):
+def _prepare(me_conf, account, run_time, *, saved, started, inputs=None, lock_cm=None):
     from time import perf_counter
     from core.utils.log_kit import logger
     last = started
@@ -1568,8 +1583,15 @@ def _prepare(me_conf, account, run_time, *, saved, started, inputs=None):
         bundle = initialize_state(state,account.name,minute,context,raw,expected,strategy.params['parent'],strategy_pool,simulator_config,
                                   checkpoint_hours=options.get('checkpoint_hours', 0))
     else:
-        bundle = _update_state(saved, state, account.name, minute, context, raw_loader, expected, check, report=progress,
-                               checkpoint_hours=options.get('checkpoint_hours', 0))
+        defer_save = lock_cm is not None
+        updated = _update_state(saved, state, account.name, minute, context, raw_loader, expected, check, report=progress,
+                                checkpoint_hours=options.get('checkpoint_hours', 0),
+                                defer_save=defer_save, lock_cm=lock_cm)
+        if defer_save:
+            bundle, pending_save = updated
+            strategy._robust40_pending_save = pending_save
+        else:
+            bundle = updated
     strategy._robust40_result = bundle['result']
     if options.get('replaying'):
         strategy._robust40_bundle = bundle

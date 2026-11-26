@@ -170,6 +170,11 @@ def calc_by_account(acct_conf: AccountConfig, me_conf: MultiEquityBacktestConfig
         if own_writer is not None:
             own_writer.flush()
     finally:
+        strategy_obj = getattr(me_conf, 'strategy', None)
+        pending_save = getattr(strategy_obj, '_robust40_pending_save', None)
+        if pending_save is not None:
+            delattr(strategy_obj, '_robust40_pending_save')
+            pending_save.abort()
         if own_writer is not None:
             own_writer.close()
     logger.ok(f'[{acct_conf.name}] 完成权重计算，花费时间：{time.time() - r_time:.2f}s')
@@ -223,7 +228,9 @@ def trade_by_account(acct_conf: AccountConfig, me_conf: MultiEquityBacktestConfi
     # ====================================================================================================
     # 6.1 按目标仓位精调页面杠杆（避免 binance 「目标 notional 超过当前杠杆档容量」拒单）
     # ====================================================================================================
-    if not is_debug and is_simulate != 'dry_run':
+    if (not is_debug and is_simulate != 'dry_run'
+            and hasattr(acct_conf.bn, 'adjust_leverage_by_target_notional')
+            and {'symbol_type', 'price', 'symbol'}.issubset(position_results.columns)):
         divider('按目标仓位精调页面杠杆', sep='-')
         s_time = time.time()
         swap_targets = position_results[
