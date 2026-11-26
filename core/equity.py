@@ -11,6 +11,7 @@ Author: 邢不行
 """
 import time
 from datetime import datetime
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
@@ -79,7 +80,7 @@ def create_ratio_snapshot(conf: BacktestConfig, ratio_df: pd.DataFrame, symbol_t
 
 
 def calc_equity(conf: BacktestConfig, run_time, leverage: float | pd.Series = None, state_name: str = None, account_name: str = '',
-                *, ratio_inputs=None, market_inputs=None, ratio_outputs=None):
+                ratio_folder: Path = runtime_folder, *, ratio_inputs=None, market_inputs=None, ratio_outputs=None):
     """
     计算回测结果的函数
     :param conf: Account 配置
@@ -87,6 +88,7 @@ def calc_equity(conf: BacktestConfig, run_time, leverage: float | pd.Series = No
     :param leverage: 杠杆
     :param state_name: 模拟交易的状态
     :param account_name: 用户名
+    :param ratio_folder: 最终权重目录，账户组成员从交接目录读取
     """
     # ====================================================================================================
     # 1. 读入下单资金占比数据
@@ -98,8 +100,8 @@ def calc_equity(conf: BacktestConfig, run_time, leverage: float | pd.Series = No
         df_spot_ratio.index = pd.to_datetime(df_spot_ratio.index, utc=True)
         df_swap_ratio.index = pd.to_datetime(df_swap_ratio.index, utc=True)
     elif account_name:
-        df_spot_ratio = pd.read_pickle(runtime_folder / 'df_spot_ratio.pkl')
-        df_swap_ratio = pd.read_pickle(runtime_folder / 'df_swap_ratio.pkl')
+        df_spot_ratio = pd.read_pickle(ratio_folder / 'df_spot_ratio.pkl')
+        df_swap_ratio = pd.read_pickle(ratio_folder / 'df_swap_ratio.pkl')
     else:
         df_spot_ratio = pd.read_pickle(conf.get_result_folder() / 'df_spot_ratio.pkl')
         df_swap_ratio = pd.read_pickle(conf.get_result_folder() / 'df_swap_ratio.pkl')

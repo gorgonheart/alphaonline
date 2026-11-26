@@ -80,6 +80,6 @@ def test_shared_ready_settles_one_second(tmp_path, gate, prefixes):
     path='core/utils/datatools.py'
     function(path, 'check_flags', ns)
     check = function(path, gate, ns)
-    assert check(run) and sleeps == [1,1]
+    assert check(run) and sleeps == [0.1]  # Batch2 Stage5: poll_interval=0.1, no post-ready sleep(1)
     sleeps.clear()
     assert not check(run-timedelta(minutes=5)) and sleeps == []

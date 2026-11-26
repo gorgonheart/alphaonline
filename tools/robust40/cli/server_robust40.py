@@ -373,13 +373,18 @@ def compute(account,workspace,stamp,destination):
     print(f'Initialized {account.stem}: {bundle["context"]["index"][0]} -> {end}; origin={origin}',flush=True)
 
 
-def trade(account,stamp):
+def trade(account,stamp,stage='all',scale=1.0):
+    if stage=='trade':
+        from core.account_exec import main
+        sys.argv=[sys.argv[0],str(stamp),'--stage','trade','--scale',repr(scale)]
+        main()
+        return 0
     from tools.robust40 import telemetry
     with telemetry.round_log(account.stem,stamp):
-        return _trade(account,stamp)
+        return _trade(account,stamp,stage=stage)
 
 
-def _trade(account,stamp):
+def _trade(account,stamp,stage='all'):
     import pandas as pd
     import config
     from contextlib import nullcontext
@@ -414,22 +419,22 @@ def _trade(account,stamp):
         )
         return REBUILD_REQUIRED_EXIT
     try:
-        stage,inputs=handoff.prepare(destination,values,run,end.minute,end)
+        stage_replay,inputs=handoff.prepare(destination,values,run,end.minute,end)
     except RebuildRequired as exc:
         # No orders have run; release the account lock before the parent queues initialization.
         server.begin(destination)
         telemetry.record(mode='rebuild_required',status='rebuild_required',recovery_reason=str(exc)[:500])
         return REBUILD_REQUIRED_EXIT
-    config.strategy_config['params']['runtime']['replaying']=stage is not None
-    with handoff.transaction(destination,stage) if stage is not None else nullcontext():
+    config.strategy_config['params']['runtime']['replaying']=stage_replay is not None
+    with handoff.transaction(destination,stage_replay) if stage_replay is not None else nullcontext():
         server.begin(destination)
         with telemetry.phase('input_write_s'):
             pd.to_pickle(inputs,destination/'model/revision_inputs.pending.pkl')
         # Original BNB and execution flow; never submit historical replay orders.
-        sys.argv=[sys.argv[0],str(stamp)]
+        sys.argv=[sys.argv[0],str(stamp)] if stage=='all' else [sys.argv[0],str(stamp),'--stage',stage]
         with telemetry.phase('account_flow_s'):
             result=main()
-        if result is None and stage is None:
+        if result is None and stage_replay is None:
             server.save_meta(destination,original)
         if result is None:telemetry.record(account_skipped=True)
 
@@ -444,6 +449,8 @@ def main():
     p.add_argument('--stamp',required=True,type=int)
     p.add_argument('--workspace')
     p.add_argument('--destination')
+    p.add_argument('--stage',choices=['all','calc','trade'],default='all')
+    p.add_argument('--scale',type=float,default=1.0)
     a=p.parse_args();account=Path(a.account).resolve()
     if a.mode in ('compute','trade'):
         spec=json.loads(os.environ.get('ROBUST40_SERVER_WORKER','{}'))
@@ -477,7 +484,7 @@ def main():
                 compute(account,Path(a.workspace).resolve(),a.stamp,Path(a.destination).resolve())
     else:
         with server.account_lock(server.location(ROOT,account,server.settings(account)[0])):
-            return trade(account,a.stamp)
+            return trade(account,a.stamp,stage=a.stage,scale=a.scale)
 
 
 if __name__=='__main__':sys.exit(main())

@@ -40,7 +40,7 @@ def get_lot_sizes(min_qty_dict, symbols):
 
 def get_pos_series(df_pos: pd.DataFrame):
     if df_pos.empty:
-        return pd.Series()
+        return pd.Series(dtype=float)
 
     if 'symbol' in df_pos.columns:
         df_pos = df_pos.set_index('symbol')
@@ -48,7 +48,16 @@ def get_pos_series(df_pos: pd.DataFrame):
     return df_pos['当前持仓量'].copy()
 
 
-def calc_target_position(account_config: AccountConfig, is_debug=False):
+def calc_target_position(account_config: AccountConfig, df_spot_ratio: pd.DataFrame | None = None,
+                         df_swap_ratio: pd.DataFrame | None = None, is_debug=False, scale: float = 1.0):
+    """
+    计算目标仓位
+    :param account_config: 账户配置
+    :param df_spot_ratio: 现货最终权重，为空时兼容回退读取 runtime_folder
+    :param df_swap_ratio: 合约最终权重，为空时兼容回退读取 runtime_folder
+    :param is_debug: 调试模式不刷新账户
+    :param scale: 账户层动态杠杆 k（账户组按组合权益换算，单账户为 1）
+    """
     if is_debug is False:
         # 获取当前账户仓位
         account_config.update_account_info()
@@ -57,8 +66,10 @@ def calc_target_position(account_config: AccountConfig, is_debug=False):
     current_swap_pos: pd.Series = get_pos_series(account_config.swap_position)
 
     # 取最新的权重为目标权重
-    df_spot_ratio: pd.DataFrame = pd.read_pickle(runtime_folder / 'df_spot_ratio.pkl')
-    df_swap_ratio: pd.DataFrame = pd.read_pickle(runtime_folder / 'df_swap_ratio.pkl')
+    if df_spot_ratio is None:
+        df_spot_ratio = pd.read_pickle(runtime_folder / 'df_spot_ratio.pkl')
+    if df_swap_ratio is None:
+        df_swap_ratio = pd.read_pickle(runtime_folder / 'df_swap_ratio.pkl')
     target_spot_ratio = df_spot_ratio.iloc[-1]
     target_swap_ratio = df_swap_ratio.iloc[-1]
 
@@ -90,8 +101,10 @@ def calc_target_position(account_config: AccountConfig, is_debug=False):
             leverage = leverage * 0.95
         else:  # 购买 bnb 抵扣手续费总资金比例的低于 0.1%，降低 3% 资金
             leverage = leverage * 0.97
-    equity_leveraged = all_equity * leverage
+    equity_leveraged = all_equity * leverage * scale
     logger.info(f'杠杆倍数: {leverage:.2f}')
+    if scale != 1:
+        logger.info(f'账户层动态杠杆 k: {scale:.4f}')
     logger.info(f'杠杆后权益: {equity_leveraged:.2f} USDT')
 
     # 获取有效币种最新价格
@@ -111,6 +124,11 @@ def calc_target_position(account_config: AccountConfig, is_debug=False):
     # 扩展目标持仓权重 Series index 为全部有效币种，无权重的用 0 填充
     target_spot_ratio = target_spot_ratio.reindex(spot_symbols).fillna(0)
     target_swap_ratio = target_swap_ratio.reindex(swap_symbols).fillna(0)
+
+    # 现货不能加杠杆：k > 1 时现货权重乘 1/k，现货部分最多用到自身权益，合约部分正常放大
+    if scale > 1 and target_spot_ratio.any():
+        target_spot_ratio = target_spot_ratio / scale
+        logger.warning(f'[{account_config.name}] 动态杠杆 k={scale:.4f} > 1，现货不放大，组合多头将低于目标，需要划转补足')
 
     # 计算现货和合约目标手数
     target_lots_spot, target_lots_swap = pos_calc.calc_lots(equity_leveraged, spot_price.to_numpy(),

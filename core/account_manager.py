@@ -11,13 +11,17 @@ Author: 邢不行
 """
 import importlib
 import os
+import re
+import subprocess
+import sys
+from pathlib import Path
 
 import config
 from core.mef_manager import init_mef_system
 from core.model.account_config import AccountConfig
 from core.model.backtest_config import MultiEquityBacktestConfig
 from core.utils.log_kit import logger
-from core.utils.path_kit import get_folder_path
+from core.utils.path_kit import get_folder_path, get_file_path, PROJECT_ROOT
 
 account_config_dict = {}
 
@@ -83,7 +87,57 @@ def get_usable_account_config_dict() -> tuple[AccountConfig, MultiEquityBacktest
 
 
 def load_multi_accounts():
-    # 读取 accounts 文件夹下的所有账户配置文件
+    """
+    读取 accounts 文件夹下的所有账户配置文件，包含账户组内的成员
+    下划线开头的文件、下划线开头的账户组目录都会忽略；账户名（文件名）全局不允许重复
+    """
+    root = get_folder_path('accounts', as_path_type=True)
+    account_files = [
+        f for f in sorted(root.rglob('*.py')) if
+        f.is_file() and not f.stem.startswith('_') and not f.relative_to(root).parts[0].startswith('_')]
+
+    names = [f.stem for f in account_files]
+    duplicates = sorted({name for name in names if names.count(name) > 1})
+    if duplicates:
+        raise ValueError(f'账户文件名重复：{duplicates}，账户名（含账户组成员）必须全局唯一')
+    return account_files
+
+
+def load_account_units():
+    """
+    读取本轮的调度单元：accounts 下一级的账户文件（单账户）和子目录（账户组），下划线开头的忽略
+    """
+    root = get_folder_path('accounts', as_path_type=True)
+    load_multi_accounts()
     return [
-        f for f in sorted(get_folder_path('accounts', as_path_type=True).rglob('*.py')) if
-        f.is_file() and not f.stem.startswith('_')]
+        path for path in sorted(root.iterdir()) if
+        not path.name.startswith('_') and (path.is_dir() or path.suffix == '.py')]
+
+
+def read_config_value(config_file_path: Path, key: str, default: str) -> str:
+    """不执行账户文件，按 `'key': 'value'` 的格式读取字符串配置，忽略注释行"""
+    pattern = rf"""^[^#\n]*['"]{key}['"]\s*:\s*['"]([^'"]+)['"]"""
+    match = re.search(pattern, config_file_path.read_text(encoding='utf-8', errors='ignore'), re.MULTILINE)
+    return match.group(1) if match else default
+
+
+def read_hour_offset_from_config(config_file_path: Path) -> str:
+    return read_config_value(config_file_path, 'hour_offset', '0m')
+
+
+def read_exchange_from_config(config_file_path: Path) -> str:
+    return read_config_value(config_file_path, 'exchange_name', config.exchange_name).lower()
+
+
+def run_account_exec(account_path: Path, run_time, *args):
+    """
+    在独立子进程中执行一个账户（core/account_exec.py），账户之间的 config、缓存互不影响
+    :param account_path: 账户配置文件
+    :param run_time: 本轮运行时间
+    :param args: 额外参数，如 --stage calc
+    """
+    env = {**os.environ, 'X3S_TRADING_ACCOUNT': str(account_path), 'PYTHONPATH': PROJECT_ROOT}
+    subprocess.run(
+        [sys.executable, get_file_path('core', 'account_exec.py'), f'{int(run_time.timestamp())}', *args],
+        check=True, env=env
+    )

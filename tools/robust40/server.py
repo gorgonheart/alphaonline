@@ -506,7 +506,7 @@ class Coordinator:
             return False
         raise subprocess.CalledProcessError(returncode,command)
 
-    def command(self,account,run_time,market):
+    def command(self,account,run_time,market,*extra_args):
         import json
         import os
         import subprocess
@@ -514,7 +514,7 @@ class Coordinator:
         import time
         import pyarrow as pa
         from .initialization_config import DATA_READY_WAIT_SECONDS
-        if not enabled(account):return [sys.executable,str(self.root/'core/account_exec.py'),str(int(run_time.timestamp()))],None
+        if not enabled(account):return [sys.executable,str(self.root/'core/account_exec.py'),str(int(run_time.timestamp())),*extra_args],None
         from core.utils.log_kit import logger
         account=Path(account).resolve();values,options=settings(account)
         minute=options['minute'];stamp=int(run_time.timestamp())
@@ -524,6 +524,13 @@ class Coordinator:
         if account in self.pending or account in self.jobs:
             logger.info(f'{account.stem}: 后台重建已登记，数据就绪后计算，交易仍等待合法offset')
             return None,None
+        is_trade_stage=any(tok=='--stage' and i+1<len(extra_args) and extra_args[i+1]=='trade' for i,tok in enumerate(extra_args))
+        destination=location(self.root,account,values)
+        if is_trade_stage:
+            meta=pd.read_pickle(destination/'warmup.pkl')
+            payload=dict(account=str(account),root=str(self.root),origin=meta['origin'],initializing=False,stamp=stamp)
+            env=dict(os.environ,ROBUST40_SERVER_WORKER=json.dumps(payload),PYTHONIOENCODING='utf-8')
+            return [sys.executable,str(self.root/'tools/robust40/cli/server_robust40.py'),'trade','--account',str(account),'--stamp',str(stamp),*extra_args],env
         deadline=stamp+DATA_READY_WAIT_SECONDS
         folder=Path(market)/f'{minute}m'
         # The shared startup gate checks dicts only; pivots are published shortly
@@ -542,7 +549,6 @@ class Coordinator:
                 logger.info(f'{account.stem}: 等待同轮完整数据，剩余{remaining:.0f}秒；缺失：{missing}')
                 waiting=True
             time.sleep(min(1.,remaining))
-        destination=location(self.root,account,values)
         from .handoff import recover_interrupted
         try:recover_interrupted(destination)
         except OSError:
@@ -577,7 +583,7 @@ class Coordinator:
                                    values=values)
                 payload=dict(account=str(account),root=str(self.root),origin=meta['origin'],initializing=False,stamp=stamp)
                 env=dict(os.environ,ROBUST40_SERVER_WORKER=json.dumps(payload),PYTHONIOENCODING='utf-8')
-                return [sys.executable,str(self.root/'tools/robust40/cli/server_robust40.py'),'trade','--account',str(account),'--stamp',str(stamp)],env
+                return [sys.executable,str(self.root/'tools/robust40/cli/server_robust40.py'),'trade','--account',str(account),'--stamp',str(stamp),*extra_args],env
             except (OSError,ValueError,pa.ArrowException):reason='Arrow unavailable or incomplete'
         self.request_rebuild(account,run_time,market,reason)
         return None,None

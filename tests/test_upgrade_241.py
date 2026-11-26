@@ -274,3 +274,236 @@ def test_group_statistics_builds_6_subplots_with_missing_member_transfer(tmp_pat
     group_statistics.draw_group_equity(group, df, df_all, transfers, pic_path)
     assert pic_path.exists() and pic_path.stat().st_size > 0
 
+
+def test_account_group_scales_and_transfer_thresholds():
+    from core.account_group import calc_scales, build_transfer_msg
+
+    scales = calc_scales({'a': 40.0, 'b': 960.0}, {'a': 0.05, 'b': 0.95}, max_scale=2.0)
+    assert scales['a'] == pytest.approx(1.25)
+    assert scales['b'] == pytest.approx(950.0 / 960.0)
+
+    capped = calc_scales({'a': 10.0, 'b': 990.0}, {'a': 0.5, 'b': 0.5}, max_scale=2.0)
+    assert capped['a'] == pytest.approx(2.0)
+
+    grp_abs = {
+        'name': 'g_abs',
+        'members': {'a': 0.05, 'b': 0.95},
+        'threshold_mode': 'absolute',
+        'threshold': 0.05,
+        'max_scale': 2.0,
+    }
+    assert build_transfer_msg(grp_abs, {'a': 40.0, 'b': 960.0}, scales) is None
+
+    grp_rel = {
+        'name': 'g_rel',
+        'members': {'a': 0.05, 'b': 0.95},
+        'threshold_mode': 'relative',
+        'threshold': 0.15,
+        'max_scale': 2.0,
+    }
+    msg = build_transfer_msg(grp_rel, {'a': 40.0, 'b': 960.0}, scales)
+    assert msg is not None and '【账户组划转提醒】g_rel' in msg
+
+
+def test_calc_target_position_scale_caps_spot_and_keeps_backward_compat(tmp_path, monkeypatch):
+    import pandas as pd
+    from core import position as pos_mod
+    from core.model.rebalance_mode import RebalanceMode
+    from positions.ModelRobust40Strategy import register_execution
+
+    register_execution()
+
+    df_spot = pd.DataFrame({'BTCUSDT': [0.5]}, index=[pd.Timestamp('2026-01-01 00:00:00')])
+    df_swap = pd.DataFrame({'BTCUSDT': [0.5]}, index=[pd.Timestamp('2026-01-01 00:00:00')])
+    df_spot.to_pickle(tmp_path / 'df_spot_ratio.pkl')
+    df_swap.to_pickle(tmp_path / 'df_swap_ratio.pkl')
+    monkeypatch.setattr(pos_mod, 'runtime_folder', tmp_path, raising=False)
+
+    class _FakeBn:
+        market_info = {
+            'spot': {'symbol_list': ['BTCUSDT'], 'min_qty': {'BTCUSDT': 3}},
+            'swap': {'symbol_list': ['BTCUSDT'], 'min_qty': {'BTCUSDT': 3}},
+        }
+
+        def get_spot_ticker_price_series(self):
+            return pd.Series({'BTCUSDT': 100.0})
+
+        def get_swap_ticker_price_series(self):
+            return pd.Series({'BTCUSDT': 100.0})
+
+    acct = SimpleNamespace(
+        name='test_scale',
+        bn=_FakeBn(),
+        spot_position=pd.DataFrame(),
+        swap_position=pd.DataFrame(),
+        spot_equity=5000.0,
+        swap_equity=5000.0,
+        leverage=1.0,
+        buy_bnb_value=0.0,
+        rebalance_mode=RebalanceMode.init({'mode': 'RebRobust40', 'params': {'min_order_usdt_ratio': 0.4, 'execution_cap': 2.45}}),
+    )
+
+    # Backward-compatible call (reading from runtime_folder, scale=1.0)
+    res_base = pos_mod.calc_target_position(acct, is_debug=True)
+    spot_base = float(res_base.loc[res_base['symbol_type'] == 'spot', '目标持仓量'].iloc[0])
+    swap_base = float(res_base.loc[res_base['symbol_type'] == 'swap', '目标持仓量'].iloc[0])
+
+    # Explicit DataFrame call with scale=1.5 > 1: spot capped (not scaled up), swap scaled by 1.5x
+    res_scaled = pos_mod.calc_target_position(acct, df_spot, df_swap, is_debug=True, scale=1.5)
+    spot_scaled = float(res_scaled.loc[res_scaled['symbol_type'] == 'spot', '目标持仓量'].iloc[0])
+    swap_scaled = float(res_scaled.loc[res_scaled['symbol_type'] == 'swap', '目标持仓量'].iloc[0])
+
+    assert spot_scaled == pytest.approx(spot_base)
+    assert swap_scaled == pytest.approx(swap_base * 1.5, rel=0.02)
+
+
+def test_run_group_with_model_member_exit75_skips_whole_group_and_dry_run_guards(tmp_path, monkeypatch):
+    from unittest.mock import Mock
+    import pandas as pd
+    from core import account_group as ag
+    from core import account_exec as ae
+    from core import real_trading as rt
+
+    sent_msgs = []
+    monkeypatch.setattr(ag, 'send_wechat_work_msg', lambda msg, url: sent_msgs.append((msg, url)))
+    monkeypatch.setattr(ag, 'get_handoff_folder', lambda name: tmp_path / name / 'handoff')
+
+    m1_dir = tmp_path / 'm1_model' / 'handoff'
+    m1_dir.mkdir(parents=True)
+    # m2_legacy writes handoff, m1_model exits 75 -> Coordinator.handle_result returns False, no handoff written
+    group = {
+        'name': 'grp_model',
+        'members': {'m1_model': 0.5, 'm2_legacy': 0.5},
+        'paths': {'m1_model': tmp_path / 'm1_model.py', 'm2_legacy': tmp_path / 'm2_legacy.py'},
+        'threshold': 0.05,
+        'threshold_mode': 'absolute',
+        'max_scale': 2.0,
+        'webhook': 'https://wh-main',
+        'transfer_webhook': 'https://wh-transfer',
+        'hour_offset': '25m',
+    }
+    dispatched = []
+    run_time = datetime(2026, 1, 1, 12, 25)
+
+    def _dispatcher(path, rt_arg, *extra_args):
+        dispatched.append((path.stem, extra_args))
+        if path.stem == 'm2_legacy' and extra_args == ('--stage', 'calc'):
+            h_dir = tmp_path / 'm2_legacy' / 'handoff'
+            h_dir.mkdir(parents=True, exist_ok=True)
+            (h_dir / 'handoff.json').write_text(
+                json.dumps({'run_time': int(run_time.timestamp()), 'equity': 1000.0}),
+                encoding='utf-8',
+            )
+        # m1_model simulates exit 75 handled gracefully (no handoff written, no exception)
+
+    ag.run_group(group, run_time, dispatcher=_dispatcher)
+    assert all('--stage' in args and 'trade' not in args for _, args in dispatched)
+    assert any('【账户组跳过】' in m and url == 'https://wh-transfer' for m, url in sent_msgs)
+
+    # dry_run guards on prepare_account, trade_by_account, and lookback_save_interval_hours == 0
+    monkeypatch.setattr(ae, 'is_debug', False, raising=False)
+    monkeypatch.setattr(ae, 'is_simulate', 'dry_run', raising=False)
+    fake_bn = Mock()
+    acct = SimpleNamespace(
+        name='dry_acct',
+        hour_offset='25m',
+        hour_offset_minute=25,
+        bn=fake_bn,
+        spot_equity=1000.0,
+        swap_equity=1000.0,
+        leverage=1.0,
+        update_account_info=Mock(return_value=True),
+        calc_order_amount=Mock(return_value=pd.DataFrame()),
+        proceed_spot_order=Mock(),
+        proceed_swap_order=Mock(),
+    )
+    assert ae.prepare_account(acct) is True
+    fake_bn.reset_max_leverage.assert_not_called()
+    acct.update_account_info.assert_called_once_with(is_operate=False)
+
+    monkeypatch.setattr(rt, 'is_debug', False, raising=False)
+    monkeypatch.setattr(rt, 'is_simulate', 'dry_run', raising=False)
+    monkeypatch.setattr(rt, 'lookback_save_interval_hours', 0, raising=False)
+    monkeypatch.setattr(rt, 'calc_target_position', lambda *a, **k: pd.DataFrame({'目标持仓量': [0.0], 'symbol_type': ['swap'], 'symbol': ['BTCUSDT'], 'price': [100.0]}))
+    monkeypatch.setattr(rt, 'save_position_results', lambda *a, **k: None)
+    monkeypatch.setattr(rt, 'save_final_select_results', lambda *a, **k: None)
+    monkeypatch.setattr(rt, 'save_symbol_order', lambda *a, **k: None)
+    monkeypatch.setattr(rt, 'save_order_history', Mock())
+    sub_conf = SimpleNamespace(lookback_days=7)
+    me_conf = SimpleNamespace(
+        factory=SimpleNamespace(config_list=[sub_conf]),
+        strategy=SimpleNamespace(params={}, core_funcs={}),
+        backtest_strategies=lambda *a: None,
+        process_equities=lambda *a, **k: None,
+        calc_ratios=lambda: pd.DataFrame(),
+        agg_pos_ratio=lambda r: (pd.DataFrame({'BTCUSDT': [0.0]}), pd.DataFrame({'BTCUSDT': [0.5]})),
+        apply_position_limits=lambda s, w: (s, w),
+    )
+    monkeypatch.setattr(rt, 'refresh_diff_time', lambda: None)
+    monkeypatch.setattr(rt, 'snapshot_bmac_exginfo', lambda: None)
+    monkeypatch.setattr(rt, 'save_position_snapshot', lambda *a: None)
+    monkeypatch.setattr(rt, 'runtime_folder', tmp_path)
+
+    assert rt.calc_by_account(acct, me_conf, run_time) is True
+    assert sub_conf.lookback_days == 7  # lookback_save_interval_hours=0 must NOT overwrite lookback_days
+
+    rt.trade_by_account(acct, me_conf, run_time, ratio_folder=tmp_path, scale=1.0)
+    fake_bn.cancel_all_swap_orders.assert_not_called()
+    fake_bn.cancel_all_spot_orders.assert_not_called()
+    fake_bn.adjust_leverage_by_target_notional.assert_not_called()
+    acct.proceed_spot_order.assert_not_called()
+    acct.proceed_swap_order.assert_not_called()
+    fake_bn.collect_asset.assert_not_called()
+    fake_bn.adjust_base_margin.assert_not_called()
+    rt.save_order_history.assert_not_called()
+
+
+def test_coordinator_command_and_server_robust40_stage_trade_bypass(tmp_path, monkeypatch):
+    import pandas as pd
+    from tools.robust40 import server
+    from tools.robust40.cli import server_robust40
+
+    acct = tmp_path / 'model_m1.py'
+    acct.write_text(
+        "from positions.ModelRobust40Strategy import *\n"
+        "account_config = {'hour_offset': '25m'}\n"
+        "strategy_name = 's'\n"
+        "strategy_config = {'params': {'runtime': {'server_init': True}}}\n"
+        "strategy_pool = []\n"
+        "precompute_factor_configs = {}\n",
+        encoding='utf-8',
+    )
+    values = {
+        'account': {'hour_offset': '25m'},
+        'strategy_name': 's',
+        'strategy_pool': [],
+        'precompute_factor_configs': {},
+    }
+    dest = server.location(tmp_path, acct, values)
+    dest.mkdir(parents=True)
+    pd.to_pickle({'origin': '2026-01-01 00:25:00', 'cutoff': '2026-01-01 11:25:00', 'complete': True}, dest / 'warmup.pkl')
+
+    c = server.Coordinator(tmp_path)
+    monkeypatch.setattr(server, 'enabled', lambda a: True)
+    monkeypatch.setattr(server, 'settings', lambda a: (values, {'minute': 25}))
+
+    # --stage trade must NOT require .ready / Arrow files
+    run_time = datetime(2026, 1, 1, 12, 25)
+    cmd, env = c.command(acct, run_time, tmp_path / 'absent_market', '--stage', 'trade', '--scale', '1.25')
+    assert cmd is not None and '--stage' in cmd and 'trade' in cmd and '--scale' in cmd and '1.25' in cmd
+    assert env is not None and 'ROBUST40_SERVER_WORKER' in env
+
+    # Verify server_robust40.trade(..., stage='trade', scale=1.25) skips handoff.prepare and calls account_exec.main
+    called = {}
+    import core.account_exec as account_exec
+    monkeypatch.setattr(account_exec, 'main', lambda: called.setdefault('argv', list(sys.argv)) or run_time)
+    monkeypatch.setattr(
+        'tools.robust40.handoff.prepare',
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError('handoff.prepare must be skipped in --stage trade')),
+    )
+    rc = server_robust40.trade(acct, int(run_time.timestamp()), stage='trade', scale=1.25)
+    assert rc in (0, None)
+    assert '--stage' in called['argv'] and 'trade' in called['argv'] and '1.25' in called['argv']
+
+
+

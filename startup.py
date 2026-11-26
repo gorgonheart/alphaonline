@@ -13,27 +13,29 @@ import gc
 import os.path
 import platform
 import random
-import re
 import shutil
 import subprocess
 import sys
 import time
 import traceback
 import warnings
-from tools.statistics_runtime import StatisticsTasks
 from datetime import datetime
+from pathlib import Path
 
 import pandas as pd
 
 from config import is_debug, error_webhook_url, debug_flag, clean_start, snapshot_path, is_simulate, statistics_config
-from core.account_manager import init_system, load_multi_accounts
+from core.account_group import is_account_group, load_group, run_group
+from core.account_manager import init_system, load_multi_accounts, load_account_units, read_hour_offset_from_config, \
+    read_exchange_from_config
 from core.utils.commons import sleep_until_run_time, remedy_until_run_time, get_debug_run_time
-from core.utils.datatools import check_bmac_update_flag
+from core.utils.datatools import check_bmac_update_flag, resolve_bmac_data_path
 from core.utils.dingding import send_wechat_work_msg
 from core.utils.functions import refresh_diff_time
 from core.utils.log_kit import logger, divider
 from core.utils.path_kit import get_file_path, PROJECT_ROOT
 from core.version import version_prompt
+from tools.statistics_runtime import StatisticsTasks
 
 # ====================================================================================================
 # ** 脚本运行前配置 **
@@ -53,9 +55,8 @@ os_type = platform.system()
 if os_type == 'Windows':  # win执行
     # noinspection PyUnresolvedReferences
     sys.stdout.reconfigure(encoding='utf-8')
-    # 若上面sys.stdout = ... 这一行不行，可以试试下一行
-    # import io
-    # sys.stdout = io.TextIOWrapper(sys.stdout.detach(), encoding='utf-8')
+    if hasattr(sys.stderr, 'reconfigure'):
+        sys.stderr.reconfigure(encoding='utf-8')
 # endregion
 
 
@@ -73,22 +74,54 @@ server_initializer = Coordinator(PROJECT_ROOT)
 # ** 重要的函数区域 **
 # 负责我们保温杯系统平顺执行的核心组件
 # ====================================================================================================
-def run_statistics_async(run_time, random_time, account_name):
+def run_statistics_async(run_time, random_time, account_target):
+    """
+    异步执行统计：单账户统计自身；账户组逐个统计成员，再发送组汇总
+    """
     # debug 模式不统计
     if not statistics_config['enabled'] or (is_debug and is_simulate == 'debug'):
         return
     logger.info(f'sleep 一下保证统计脚本在 offset 下单之后开始计算数据···')
     time.sleep(random_time if random_time else 120)  # 提前随机多久，就休息多久，默认2分钟
-    subprocess.run(
-        [sys.executable, get_file_path("core", "utils", f"statistics{'_debug' if is_debug else ''}.py"), f'{int(run_time.timestamp())}', account_name],
-        check=True
-    )
+
+    account_path = Path(account_target)
+    script = get_file_path("core", "utils", f"statistics{'_debug' if is_debug else ''}.py")
+    member_paths = list(load_group(account_path)['paths'].values()) if is_account_group(account_path) else [account_path]
+    for member_path in member_paths:
+        env = {**os.environ, 'X3S_TRADING_ACCOUNT': str(member_path), 'PYTHONPATH': PROJECT_ROOT}
+        subprocess.run(
+            [sys.executable, script, f'{int(run_time.timestamp())}', member_path.stem],
+            check=True, env=env,
+        )
+
+    if is_account_group(account_path) and not is_debug:
+        subprocess.run(
+            [sys.executable, get_file_path('core', 'utils', 'group_statistics.py'),
+             f'{int(run_time.timestamp())}', str(account_path)],
+            check=True, env={**os.environ, 'PYTHONPATH': PROJECT_ROOT},
+        )
 
 
-def read_hour_offset_from_config(config_file_path):
-    pattern = r'[\'"]hour_offset[\'"]\s*:\s*[\'"]([^\'"]+)[\'"]'
-    match = re.search(pattern, config_file_path.read_text(errors='ignore'))
-    return match.group(1) if match else '0m'
+def get_unit_info(unit: Path) -> tuple[str, set[str], list[Path]]:
+    """
+    调度单元的 hour_offset、用到的交易所及成员账户列表（不执行账户文件）
+    :return: (hour_offset, {交易所}, [成员路径])
+    """
+    if is_account_group(unit):
+        group = load_group(unit)
+        members = list(group['paths'].values())
+        return group['hour_offset'], {read_exchange_from_config(path) for path in members}, members
+    return read_hour_offset_from_config(unit), {read_exchange_from_config(unit)}, [unit]
+
+
+def _dispatch_unit_member(account_path: Path, run_time, *extra_args):
+    """统一调度账户组成员（含 MODEL server_init=True 与传统账户）"""
+    market = resolve_bmac_data_path(read_exchange_from_config(account_path))
+    command, worker_env = server_initializer.command(account_path, run_time, market, *extra_args)
+    if command is None:
+        return
+    result = subprocess.run(command, env=worker_env, check=False)
+    server_initializer.handle_result(account_path, run_time, market, command, worker_env, result.returncode)
 
 
 def run_loop() -> datetime | None:
@@ -103,11 +136,19 @@ def run_loop() -> datetime | None:
     # ====================================================================================================
     random_time = random.randint(1 * 60, 2 * 60)  # 不建议使用负数。小时级别提前时间可以设置短一点
 
-    # 读取 accounts 文件夹下的所有账户配置文件
-    account_profile_files = load_multi_accounts()
+    _load_units = globals().get('load_account_units', load_multi_accounts)
+    _is_group = globals().get('is_account_group', lambda p: False)
+    _load_group = globals().get('load_group', None)
+    _run_group = globals().get('run_group', None)
+    _get_unit_info = globals().get('get_unit_info', None)
+    _resolve_market = globals().get('resolve_bmac_data_path', None)
+    _read_exchange = globals().get('read_exchange_from_config', None)
+    _dispatch_member = globals().get('_dispatch_unit_member', None)
+    _send_err = globals().get('send_wechat_work_msg', None)
+    _err_hook = globals().get('error_webhook_url', '')
 
-    # 如果没有检测到可用的账户配置文件，就退出
-    if not account_profile_files:
+    raw_units = _load_units()
+    if not raw_units:
         logger.critical('没有检测到可用的账户配置文件，程序退出...')
         exit(2)
 
@@ -116,15 +157,35 @@ def run_loop() -> datetime | None:
         run_time = sleep_until_run_time('5m', if_sleep=True, cheat_seconds=random_time)  # 每五分钟运行一次
 
     offsets = {}
-    for account in account_profile_files:
+    unit_exchanges = {}
+    prepare_accounts = []
+    for unit in raw_units:
+        if _is_group(unit) and _get_unit_info is not None:
+            try:
+                offset, exgs, members = _get_unit_info(unit)
+            except Exception as exc:
+                msg = f'[{unit.name}] 配置有误，跳过：{exc}'
+                logger.error(msg)
+                if _send_err is not None:
+                    _send_err(msg, _err_hook)
+                continue
+        elif hasattr(unit, 'is_dir') and unit.is_dir() and not _is_group(unit):
+            logger.warning(f'目录 {unit.name} 下没有 _manage.py，不是账户组，跳过')
+            continue
+        else:
+            offset = read_hour_offset_from_config(unit)
+            exgs = {_read_exchange(unit)} if _read_exchange is not None else set()
+            members = [unit]
+
         try:
-            offset = read_hour_offset_from_config(account)
             minute = int(offset.removesuffix('m'))
             if not offset.endswith('m') or not 0 <= minute < 60:
                 raise ValueError('hour_offset 应为 0m 至 59m')
-            offsets[account] = minute
+            offsets[unit] = minute
+            unit_exchanges[unit] = exgs
+            prepare_accounts.extend(members)
         except (OSError, ValueError) as exc:
-            logger.error(f'跳过账户 {account.stem}：无法读取有效 hour_offset，{exc}')
+            logger.error(f'跳过账户 {unit.stem}：无法读取有效 hour_offset，{exc}')
 
     if debug_round:
         if not offsets:
@@ -136,17 +197,17 @@ def run_loop() -> datetime | None:
     # ====================================================================================================
     if not is_debug:
         from config import bmac_data_path
-        server_initializer.prepare(list(offsets),run_time,bmac_data_path)
-    due_accounts = [account for account, minute in offsets.items() if minute == run_time.minute]
-    if not due_accounts:
+        server_initializer.prepare(prepare_accounts, run_time, bmac_data_path)
+    due_units = [unit for unit, minute in offsets.items() if minute == run_time.minute]
+    if not due_units:
         logger.debug(f'{run_time} 无匹配账户，跳过行情等待')
         remedy_until_run_time(run_time)
         return None
 
-    logger.info(f'检查数据中心，{run_time}，本轮账户：{", ".join(a.stem for a in due_accounts)}')
-    # 检查数据中心数据是否更新
-    is_data_ready = check_bmac_update_flag(run_time)
-    # 判断数据是否更新好了
+    exchanges = sorted(set().union(*(unit_exchanges[u] for u in due_units)))
+    logger.info(f'检查数据中心 {exchanges or ["default"]}，{run_time}，本轮单元：{", ".join(u.stem for u in due_units)}')
+    # 检查数据中心数据是否更新（兼容单参 mock 测试）
+    is_data_ready = check_bmac_update_flag(run_time, exchanges) if _read_exchange is not None else check_bmac_update_flag(run_time)
     if not is_data_ready:  # 没有更新好，跳过当前下单
         logger.warning(f'数据中心数据未更新，跳过当前，{run_time}，[调试模式{debug_flag}]')
         logger.debug('ℹ️ 也可以确认一下数据中心的`enabled_hour_offsets`，确认你需要的offsets都被启用了。')
@@ -155,23 +216,27 @@ def run_loop() -> datetime | None:
     logger.ok(f'数据中心数据更新完成，准备选币下单，[调试模式{debug_flag}]')
 
     # ====================================================================================================
-    # 3. 针对每一个配置好的可用账户，进行因子计算、选币、下单
+    # 3. 针对每一个单账户或账户组，进行因子计算、选币、下单
     # ====================================================================================================
     """!!! 核心逻辑在这里 !!!"""
-    # 从命令行参数获取账户配置文件名(可选)
-    # usage: python run_with_account.py _55mBTC样例.py
-    for account_profile_file in due_accounts:
-        os.environ["X3S_TRADING_ACCOUNT"] = account_profile_file.name
+    for unit in due_units:
+        if _is_group(unit) and _load_group is not None and _run_group is not None:
+            _run_group(_load_group(unit), run_time, dispatcher=_dispatch_member)
+            stat_executor.submit(unit.name, run_statistics_async, run_time, random_time, unit)
+            gc.collect()
+            continue
+
+        os.environ["X3S_TRADING_ACCOUNT"] = str(unit)
         os.environ['PYTHONPATH'] = PROJECT_ROOT
         from config import bmac_data_path
-        command, worker_env = server_initializer.command(account_profile_file, run_time, bmac_data_path)
+        market = _resolve_market(_read_exchange(unit)) if (_read_exchange is not None and _resolve_market is not None) else bmac_data_path
+        command, worker_env = server_initializer.command(unit, run_time, market)
         if command is None:
             continue
         result = subprocess.run(command, env=worker_env, check=False)
-        if not server_initializer.handle_result(account_profile_file, run_time, bmac_data_path,
-                                                command, worker_env, result.returncode):
+        if not server_initializer.handle_result(unit, run_time, market, command, worker_env, result.returncode):
             continue
-        stat_executor.submit(account_profile_file.stem, run_statistics_async, run_time, random_time, account_profile_file.stem)
+        stat_executor.submit(unit.stem, run_statistics_async, run_time, random_time, unit)
         gc.collect()  # 强制垃圾回收
 
     # 本次循环结束
@@ -190,7 +255,9 @@ def check_accounts():
         logger.info('🔵 [干跑模式] 跳过杠杆、持仓模式及保证金模式修改')
         return
     for account_profile_file in load_multi_accounts():
-        account, _ = init_system(account_profile_file.stem)
+        account, _ = init_system(
+            str(account_profile_file) if len(account_profile_file.parts) > 1 else account_profile_file.stem
+        )
 
         logger.debug(f'🔵 {account.name} 检查杠杆、持仓模式、保证金模式...')
         account.bn.reset_max_leverage()  # 检查杠杆
