@@ -407,24 +407,28 @@ def _trade_wait_ready(account,stamp,stage='all'):
             warmup_sig=(st.st_mtime_ns,st.st_size)
             original=pd.read_pickle(warmup_path)
             old_inputs=pd.read_pickle(rev_path)
-    except OSError:
+            if not isinstance(original,dict) or not isinstance(old_inputs,dict) or not old_inputs:
+                raise ValueError('Invalid prewarm snapshot metadata or revision_inputs')
+            start=min(f.index.min() for f in old_inputs.values())
+    except Exception:
         with server.account_lock(destination):
             with telemetry.round_log(account.stem,stamp):
                 return _trade(account,stamp,stage=stage)
 
     end=pd.Timestamp(stamp,unit='s')-pd.Timedelta(hours=1)
     run=(pd.Timestamp(stamp,unit='s')+pd.Timedelta(hours=config.utc_offset)).to_pydatetime()
-    start=min(f.index.min() for f in old_inputs.values())
     required={f'{name}_{p}' for name,ps in values['precompute_factor_configs'].items() for p in ps}
     deadline=stamp+DATA_READY_WAIT_SECONDS
+    prewarm_s=round(time.perf_counter()-prewarm_start,6)
 
     stream_status,current_inputs,trims,stream_stats=handoff.wait_and_read_inputs_streaming(
         config.bmac_data_path,run,end.minute,stamp,end,start,required,deadline=deadline
     )
-    prewarm_s=round(time.perf_counter()-prewarm_start,6)
+    stream_stats=dict(stream_stats)
+    ready_perf=stream_stats.pop('_ready_perf',None)
 
     with telemetry.round_log(account.stem,stamp):
-        telemetry.reset_timer(prewarm_s=prewarm_s,**stream_stats)
+        telemetry.reset_timer(start_perf=ready_perf,prewarm_s=prewarm_s,**stream_stats)
         if stream_status=='timeout':
             telemetry.record(mode='waiting_data_timeout',status='waiting_data_timeout')
             return WAIT_FOR_DATA_EXIT
@@ -435,6 +439,10 @@ def _trade_wait_ready(account,stamp,stage='all'):
             except OSError:
                 sig_now=None
             if sig_now!=warmup_sig:
+                state_now=telemetry._current.get()
+                if state_now is not None:
+                    for k in ('input_read_s','revision_arrow_spot_s','revision_arrow_swap_s','revision_pivot_s'):
+                        state_now.pop(k,None)
                 return _trade(account,stamp,stage=stage)
             if stream_status=='missing_arrow':
                 telemetry.record(mode='rebuild_required',status='rebuild_required',recovery_reason='Arrow unavailable or incomplete')
@@ -451,11 +459,7 @@ def _trade_wait_ready(account,stamp,stage='all'):
                     recovery_reason=f'upstream history_trim_date changed: {old_t} -> {spot_trim}',
                 )
                 return REBUILD_REQUIRED_EXIT
-            telemetry.add(
-                revision_arrow_spot_s=stream_stats['revision_arrow_spot_s'],
-                revision_arrow_swap_s=stream_stats['revision_arrow_swap_s'],
-                revision_pivot_s=stream_stats['revision_pivot_s'],
-            )
+            telemetry.add(prepare_s=stream_stats.get('input_read_s',0.0))
             return _trade(
                 account,
                 stamp,

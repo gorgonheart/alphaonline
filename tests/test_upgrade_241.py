@@ -640,4 +640,58 @@ def test_coordinator_prepare_resolves_per_exchange_market(tmp_path, monkeypatch)
     assert c.pending[acct.resolve()]['market'] == okx_rt / 'bmac_base'
 
 
+def test_binance_client_adjust_leverage_by_target_notional_and_bracket_cap():
+    from core.binance.base_client import BinanceClient
+    from core.binance.standard_client import StandardClient
+    from core.binance.portfolio_margin_client import PortfolioMarginClient
+
+    assert StandardClient.constants.get('get_leverage_bracket') == 'fapiPrivateGetLeverageBracket'
+    assert PortfolioMarginClient.constants.get('get_leverage_bracket') == 'papiGetUmLeverageBracket'
+
+    calls = []
+
+    class _FakeExg:
+        def papiGetUmLeverageBracket(self, params=None):
+            return [
+                {
+                    'symbol': 'BTCUSDT',
+                    'brackets': [
+                        {'initialLeverage': 5, 'notionalCap': 10000},
+                        {'initialLeverage': 2, 'notionalCap': 50000},
+                        {'initialLeverage': 1, 'notionalCap': 200000},
+                    ],
+                },
+                {
+                    'symbol': 'ETHUSDT',
+                    'brackets': [
+                        {'initialLeverage': 3, 'notionalCap': 50000},
+                    ],
+                },
+            ]
+
+        def papi_post_um_leverage(self, params=None):
+            calls.append(dict(params))
+            return {'leverage': params['leverage']}
+
+    cli = object.__new__(PortfolioMarginClient)
+    cli._leverage_bracket_cache = None
+    cli.exchange = _FakeExg()
+    cli.wechat_webhook_url = ''
+    cli.get_swap_account = lambda require_update=False: {
+        'positions': [
+            {'symbol': 'BTCUSDT', 'leverage': '3', 'notional': '9500', 'maxNotional': '10000'},
+            {'symbol': 'ETHUSDT', 'leverage': '3', 'notional': '1000', 'maxNotional': '50000'},
+        ]
+    }
+
+    assert hasattr(BinanceClient, 'adjust_leverage_by_target_notional')
+    cli.adjust_leverage_by_target_notional({'BTCUSDT': 12000.0, 'ETHUSDT': 5000.0}, max_leverage=3)
+    assert [(c['symbol'], c['leverage']) for c in calls] == [('BTCUSDT', 2)]
+
+    calls.clear()
+    cli.reset_max_leverage(max_leverage=3)
+    assert [(c['symbol'], c['leverage']) for c in calls] == [('BTCUSDT', 2)]
+
+
+
 

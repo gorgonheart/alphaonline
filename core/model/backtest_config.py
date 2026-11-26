@@ -806,6 +806,9 @@ class MultiEquityBacktestConfig:
 
         if inputs is None and len(configs) > 1:
             from concurrent.futures import ThreadPoolExecutor
+            from core.utils.factor_hub import FactorHub
+            for factor in self.strategy.factor_list:
+                FactorHub.get_by_name(factor.name)
             with ThreadPoolExecutor(max_workers=min(4, len(configs))) as pool:
                 processed = list(pool.map(_process_one, configs))
         else:

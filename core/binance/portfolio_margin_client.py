@@ -39,6 +39,7 @@ class PortfolioMarginClient(BinanceClient):
         get_swap_open_orders_api='papi_get_um_openorders',
         cancel_swap_open_orders_api='papi_delete_um_allopenorders',
         get_spot_my_trades_api='sapi_get_margin_mytrades',
+        get_leverage_bracket='papiGetUmLeverageBracket',
     )
 
     def __init__(self, **config):

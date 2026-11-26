@@ -31,6 +31,7 @@ class StandardClient(BinanceClient):
         get_swap_open_orders_api='fapiprivate_get_openorders',
         cancel_swap_open_orders_api='fapiprivate_delete_allopenorders',
         get_spot_my_trades_api='private_get_mytrades',
+        get_leverage_bracket='fapiPrivateGetLeverageBracket',
     )
 
     def __init__(self, **config):

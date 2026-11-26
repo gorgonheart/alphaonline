@@ -764,5 +764,171 @@ def test_run_by_account_flushes_async_writer_before_save_final_select_results_an
     assert observed_ratio == [True]
 
 
+def test_stage5_wait_ready_telemetry_anchors_at_ready_without_double_counting(tmp_path, monkeypatch):
+    import config
+    from tools.robust40 import handoff, server, telemetry
+    from tools.robust40.cli import server_robust40
+
+    acct = tmp_path / 'acct_tel.py'
+    acct.write_text("account_config={'hour_offset':'25m'}\nstrategy_name='s'\n", encoding='utf-8')
+    values = {'account': {'hour_offset': '25m'}, 'strategy_name': 's', 'strategy_pool': [], 'precompute_factor_configs': {}}
+    dest = server.location(tmp_path, acct, values)
+    (dest / 'model').mkdir(parents=True)
+    run_time = datetime(2026, 1, 1, 12, 25)
+    stamp = int(run_time.timestamp())
+    end = pd.Timestamp(stamp, unit='s') - pd.Timedelta(hours=1)
+    times = pd.date_range(end - pd.Timedelta(hours=4), end, freq='1h')
+
+    warmup_meta = {
+        'account': 'acct_tel', 'settings': values, 'cutoff': end, 'origin': '2026-01-01 00:25:00',
+        'checkpoint_version': 1, 'complete': True, 'sections': [], 'history_trim_date': None,
+    }
+    pd.to_pickle(warmup_meta, dest / 'warmup.pkl')
+    pd.to_pickle({'raw/spot/BTCUSDT': pd.DataFrame({'close': [1.0]}, index=[times[0]])}, dest / 'model/revision_inputs.pkl')
+
+    bmac = tmp_path / 'preprocess_1h_resample'
+    folder = bmac / '25m'
+    _write_synth_arrow(folder / f'spot_dict_{stamp}.arrow', ['BTCUSDT'], times)
+    _write_synth_arrow(folder / f'swap_dict_{stamp}.arrow', ['BTCUSDT'], times)
+    _write_synth_pivots(folder, 'spot', ['BTCUSDT'], times)
+    _write_synth_pivots(folder, 'swap', ['BTCUSDT'], times)
+    (folder / f'spot_dict_{stamp}.ready').write_text('')
+    (folder / f'market_pivot_spot_{stamp}.ready').write_text('')
+
+    spot_started = threading.Event()
+    orig_read_arrow_tail = handoff.read_arrow_tail
+
+    def _slow_swap_read(root, kind, *args, **kwargs):
+        if kind == 'spot':
+            spot_started.set()
+        if kind == 'swap':
+            time.sleep(0.12)
+        return orig_read_arrow_tail(root, kind, *args, **kwargs)
+
+    monkeypatch.setattr(handoff, 'read_arrow_tail', _slow_swap_read)
+    monkeypatch.setattr(server_robust40, 'ROOT', tmp_path)
+    monkeypatch.setattr('tools.robust40.initialization_config.DATA_READY_WAIT_SECONDS', time.time() - stamp + 5.0)
+    monkeypatch.setattr(config, 'bmac_data_path', bmac)
+    monkeypatch.setattr(config, 'strategy_config', {'params': {'runtime': {}}}, raising=False)
+    monkeypatch.setattr(server, 'settings', lambda a: (values, {'minute': 25}))
+    monkeypatch.setattr(server, 'inspect', lambda *a, **k: ('ready', 'ok'))
+    monkeypatch.setattr(server, 'check_dependencies', lambda *a, **k: None)
+    monkeypatch.setattr(server, 'resume_capacity', lambda *a, **k: 100)
+    monkeypatch.setattr(handoff, 'first_revision', lambda *a, **k: None)
+    import core.account_exec as ae
+    monkeypatch.setattr(ae, 'main', lambda: run_time)
+
+    emitted = []
+    monkeypatch.setattr(telemetry, '_write', emitted.append)
+
+    def _release_swap_later():
+        assert spot_started.wait(timeout=3.0)
+        time.sleep(0.16)
+        (folder / f'swap_dict_{stamp}.ready').write_text('')
+        (folder / f'market_pivot_swap_{stamp}.ready').write_text('')
+
+    t = threading.Thread(target=_release_swap_later)
+    t.start()
+    rc = server_robust40.trade(acct, stamp, wait_ready=True)
+    t.join()
+    assert rc in (0, None)
+
+    end_payload = json.loads(emitted[-1].split('MODEL_REPLAY ', 1)[1])
+    # Must NOT double-count swap arrow read (~0.12s, definitely < 0.22s; doubled would be >= 0.24s)
+    assert 0.10 <= end_payload['revision_arrow_swap_s'] < 0.22
+    # total_s must anchor at swap_ready_at (so it includes the 0.12s post-ready swap read, while excluding the 0.16s wait)
+    assert end_payload['wait_ready_s'] >= 0.14
+    assert 0.11 <= end_payload['input_read_s'] < 0.23
+    assert end_payload['total_s'] >= end_payload['input_read_s']
+    assert end_payload['total_s'] < end_payload['wait_ready_s'] + end_payload['input_read_s'] - 0.05
+    assert end_payload['prepare_s'] >= end_payload['input_read_s']
+    assert end_payload['prewarm_s'] < 0.50
+
+
+def test_stage5_wait_ready_corrupt_or_empty_pickle_falls_back_to_trade_exit75(tmp_path, monkeypatch):
+    import config
+    from tools.robust40 import server
+    from tools.robust40.cli import server_robust40
+    from tools.robust40.replay import REBUILD_REQUIRED_EXIT
+
+    acct = tmp_path / 'acct_bad.py'
+    acct.write_text("account_config={'hour_offset':'25m'}\nstrategy_name='s'\n", encoding='utf-8')
+    values = {'account': {'hour_offset': '25m'}, 'strategy_name': 's', 'strategy_pool': [], 'precompute_factor_configs': {}}
+    dest = server.location(tmp_path, acct, values)
+    (dest / 'model').mkdir(parents=True)
+    stamp = int(datetime(2026, 1, 1, 12, 25).timestamp())
+
+    monkeypatch.setattr(server_robust40, 'ROOT', tmp_path)
+    monkeypatch.setattr(config, 'bmac_data_path', tmp_path / 'bmac')
+    monkeypatch.setattr(server, 'settings', lambda a: (values, {'minute': 25}))
+    monkeypatch.setattr(server, 'check_dependencies', lambda *a, **k: None)
+    monkeypatch.setattr(server, 'resume_capacity', lambda *a, **k: 100)
+    monkeypatch.setattr(server, 'inspect', lambda *a, **k: ('rebuild', 'corrupt revision_inputs'))
+
+    # Case 1: corrupt bytes in revision_inputs.pkl
+    pd.to_pickle({'complete': True}, dest / 'warmup.pkl')
+    (dest / 'model/revision_inputs.pkl').write_bytes(b'corrupt-pickle-bytes')
+    assert server_robust40.trade(acct, stamp, wait_ready=True) == REBUILD_REQUIRED_EXIT
+
+    # Case 2: empty dict in revision_inputs.pkl (min() ValueError)
+    pd.to_pickle({}, dest / 'model/revision_inputs.pkl')
+    assert server_robust40.trade(acct, stamp, wait_ready=True) == REBUILD_REQUIRED_EXIT
+
+
+def test_stage6_factor_hub_skips_repeated_setlocale_under_parallel_equities(tmp_path, monkeypatch):
+    import locale
+    from core.utils.factor_hub import FactorHub
+    from core.model import backtest_config as bc_mod
+    from core.model.backtest_config import MultiEquityBacktestConfig
+
+    FactorHub.get_by_name('Bias')
+    setlocale_calls = []
+    orig_setlocale = locale.setlocale
+    monkeypatch.setattr(locale, 'setlocale', lambda *a, **k: setlocale_calls.append(a) or orig_setlocale(*a, **k))
+
+    times = pd.date_range('2026-01-01 00:00:00+00:00', periods=12, freq='1h')
+    confs = []
+    for i in range(4):
+        r_dir = tmp_path / f'S{i+1}' / 'result'
+        s_dir = tmp_path / f'S{i+1}' / 'snap'
+        r_dir.mkdir(parents=True)
+        s_dir.mkdir(parents=True)
+        pd.DataFrame({'candle_begin_time': times, 'equity': 10000.0 + np.arange(12) * 5.0}).to_csv(
+            r_dir / '资金曲线.csv', encoding='utf-8-sig'
+        )
+        pd.DataFrame({'BTCUSDT': np.full(12, 0.1)}, index=times).to_pickle(s_dir / 'ratio_spot.pkl')
+        pd.DataFrame({'BTCUSDT': np.full(12, -0.1)}, index=times).to_pickle(s_dir / 'ratio_swap.pkl')
+        confs.append(SimpleNamespace(
+            name=f'S{i+1}',
+            unified_time='2017-01-01',
+            get_final_equity_path=lambda p=r_dir / '资金曲线.csv': p,
+            get_snapshot_folder=lambda p=s_dir: p,
+            get_result_folder=lambda p=r_dir: p,
+        ))
+
+    me = object.__new__(MultiEquityBacktestConfig)
+    me.strategy = SimpleNamespace(
+        hold_period='1H',
+        factor_list=[SimpleNamespace(name='Bias', param=3)],
+        factor_columns=['Bias_3'],
+    )
+    me.factory = SimpleNamespace(config_list=confs, result_folder=tmp_path / 'iter')
+    me.factory.result_folder.mkdir(parents=True, exist_ok=True)
+    me.equity_dfs = []
+    me.ratio_dfs = []
+    me.start_time = None
+    me.end_time = None
+
+    orig_get_fp = bc_mod.get_file_path
+    monkeypatch.setattr(
+        bc_mod, 'get_file_path',
+        lambda *parts, **kw: (Path(parts[0]).joinpath(*parts[1:]).parent.mkdir(parents=True, exist_ok=True) or Path(parts[0]).joinpath(*parts[1:]))
+        if Path(parts[0]).is_absolute() else orig_get_fp(*parts, **kw),
+    )
+    me.process_equities(datetime(2026, 1, 1, 20, 0), hour_offset='0m')
+    assert setlocale_calls == []
+
+
+
 
 

@@ -493,6 +493,7 @@ def wait_and_read_inputs_streaming(
     wait_ready_s = round(swap_ready_at - wait_start, 6)
     spot_early_lead_s = round(max(0.0, swap_ready_at - spot_started_at), 6)
     stats = {
+        '_ready_perf': swap_ready_at,
         'wait_ready_s': wait_ready_s,
         'spot_early_lead_s': spot_early_lead_s,
         'revision_arrow_spot_s': spot_arrow_s,
@@ -502,8 +503,10 @@ def wait_and_read_inputs_streaming(
 
     for exc in (spot_trim_exc, swap_trim_exc, spot_arrow_exc, swap_arrow_exc):
         if exc is not None:
+            stats['input_read_s'] = round(_time.perf_counter() - swap_ready_at, 6)
             return 'missing_arrow', None, (spot_trim, swap_trim), stats
     if not spot_arrow_val or not swap_arrow_val:
+        stats['input_read_s'] = round(_time.perf_counter() - swap_ready_at, 6)
         return 'missing_arrow', None, (spot_trim, swap_trim), stats
     for exc in (spot_pivot_exc, swap_pivot_exc):
         if exc is not None:
@@ -514,6 +517,7 @@ def wait_and_read_inputs_streaming(
     out.update({f'raw/swap/{canonical(s)}': f for s, f in swap_arrow_val.items()})
     out.update(spot_pivot_val)
     out.update(swap_pivot_val)
+    stats['input_read_s'] = round(_time.perf_counter() - swap_ready_at, 6)
     return 'ok', out, (spot_trim, swap_trim), stats
 
 

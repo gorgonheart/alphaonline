@@ -93,6 +93,8 @@ class BinanceClient:
         self._swap_ticker_price = {}
         self._spot_ticker_price = {}
 
+        self._leverage_bracket_cache = None
+
     @property
     def base_coins(self):
         return list(self.base_margin.keys())
@@ -573,39 +575,141 @@ class BinanceClient:
         # 查询保证金模式
         pass
 
-    def reset_max_leverage(self, max_leverage=3, coin_list=()):
+    def get_swap_leverage_bracket(self, force_refresh: bool = False):
+        if getattr(self, '_leverage_bracket_cache', None) is None or force_refresh:
+            logger.debug('🔢 获取合约 leverage brackets...')
+            get_leverage_bracket = getattr(self.exchange, self.constants.get('get_leverage_bracket'))
+            self._leverage_bracket_cache = retry_wrapper(get_leverage_bracket, func_name='获取合约支持最大页面杠杆')
+        return self._leverage_bracket_cache
+
+    @staticmethod
+    def _pick_leverage_for_notional(brackets, target_notional: float,
+                                    buffer_ratio: float = 0.9, floor: int = 1):
+        """
+        根据目标名义价值挑选最小满足 notionalCap × buffer_ratio >= target_notional 的档位
+        :return: (picked_leverage, overflowed) — overflowed=True 表示所有档位都容不下
+        """
+        sorted_brackets = sorted(brackets, key=lambda item: float(item.get('notionalCap', 0)))
+        for b in sorted_brackets:
+            if float(b['notionalCap']) * buffer_ratio >= target_notional:
+                return max(floor, int(b['initialLeverage'])), False
+        # 全部档位都不够 → 取 notionalCap 最大的那一档
+        biggest = sorted_brackets[-1]
+        return max(floor, int(biggest['initialLeverage'])), True
+
+    def reset_max_leverage(self, max_leverage: int = 3, coin_list: tuple = (),
+                           buffer_ratio: float = 0.9, floor: int = 1):
         """
         重置一下页面最大杠杆
         :param max_leverage:    设置页面最大杠杆
         :param coin_list:       对指定币种进行调整页面杠杆
-        """
-        """
-        重置一下页面最大杠杆
-        :param exchange:        交易所对象，用于获取数据
-        :param max_leverage:    设置页面最大杠杆
-        :param coin_list:       对指定币种进行调整页面杠杆
+        :param buffer_ratio:    当前持仓 notional / maxNotional 触顶判定比例
+        :param floor:           杠杆下限，不会调到比这个更低
         """
         # 获取账户持仓风险（这里有杠杆数据）
         account_info = self.get_swap_account()
         if account_info is None:
             logger.info('获取账户持仓风险数据为空')
             exit(1)
+        # 查询一下币种支持的最大杠杆是多少
+        swap_leverage_brackets = self.get_swap_leverage_bracket()
+        symbol_max_leverage = {
+            row['symbol']: max(int(bracket['initialLeverage']) for bracket in row['brackets'])
+            for row in swap_leverage_brackets
+        }
+        symbol_brackets = {row['symbol']: row['brackets'] for row in swap_leverage_brackets}
 
         position_risk = pd.DataFrame(account_info['positions'])  # 将数据转成DataFrame
         if len(coin_list) > 0:
             position_risk = position_risk[position_risk['symbol'].isin(coin_list)]  # 只对选币池中的币种进行调整页面杠杆
         position_risk.set_index('symbol', inplace=True)  # 将symbol设为index
 
+        reset_leverage_func = getattr(self.exchange, self.constants.get('reset_page_leverage_api'))
+
         # 遍历每一个可以持仓的币种，修改页面最大杠杆
         for symbol, row in position_risk.iterrows():
-            if int(row['leverage']) != max_leverage:
-                reset_leverage_func = getattr(self.exchange, self.constants.get('reset_page_leverage_api'))
+            if symbol not in symbol_max_leverage:
+                logger.warning(f'[{symbol}] 未在 leverage_bracket 中找到档位信息，跳过页面杠杆设置')
+                continue
+
+            desired = min(max_leverage, symbol_max_leverage[symbol])
+
+            # 当前持仓名义价值触及 maxNotional 的 buffer_ratio → 反查需要降到的档位
+            current_notional = abs(float(row.get('notional', 0) or 0))
+            cur_max_notional_raw = row.get('maxNotional', None)
+            if cur_max_notional_raw not in (None, '', 0, '0'):
+                cur_max_notional = float(cur_max_notional_raw)
+                if cur_max_notional > 0 and current_notional >= buffer_ratio * cur_max_notional:
+                    needed_lev, overflowed = self._pick_leverage_for_notional(
+                        symbol_brackets[symbol], current_notional, buffer_ratio, floor
+                    )
+                    desired = min(desired, needed_lev)
+                    if overflowed:
+                        msg = f'[{symbol}] 当前持仓名义价值 {current_notional:.2f} 超过最高档容量，已降至 {desired}x'
+                        logger.warning(msg)
+                        send_wechat_work_msg(msg, self.wechat_webhook_url)
+
+            desired = max(floor, desired)
+
+            if int(row['leverage']) != desired:
                 # 设置杠杆
                 retry_wrapper(
                     reset_leverage_func,
-                    params={'symbol': symbol, 'leverage': max_leverage, 'timestamp': ''},
+                    params={'symbol': symbol, 'leverage': desired, 'timestamp': ''},
                     func_name='设置杠杆'
                 )
+                logger.info(f'[{symbol}] 页面杠杆 {int(row["leverage"])}x → {desired}x')
+                if desired < max_leverage:
+                    logger.warning(f'[{symbol}] 页面杠杆被限制为 {desired}x（请求 {max_leverage}x，bracket/notional 约束）')
+
+    def adjust_leverage_by_target_notional(self, target_notional: dict, max_leverage: int = 3,
+                                           buffer_ratio: float = 0.9, floor: int = 1):
+        """
+        根据目标持仓名义价值精调页面杠杆。在下单前调用，避免触发 binance 「杠杆超过该档允许范围」拒单。
+        :param target_notional: {symbol: abs_notional} 字典，仅传 swap 行
+        :param max_leverage:    本账户期望的页面杠杆上限
+        :param buffer_ratio:    notionalCap 安全垫，默认 0.9
+        :param floor:           杠杆下限，默认 1
+        """
+        if not target_notional:
+            return
+
+        brackets = self.get_swap_leverage_bracket()
+        symbol_brackets = {row['symbol']: row['brackets'] for row in brackets}
+
+        account_info = self.get_swap_account(require_update=True)
+        if account_info is None:
+            logger.warning('精调页面杠杆时获取账户信息为空，跳过')
+            return
+        cur_lev = {row['symbol']: int(row['leverage']) for row in account_info['positions']}
+
+        reset_leverage_func = getattr(self.exchange, self.constants.get('reset_page_leverage_api'))
+
+        for symbol, notional in target_notional.items():
+            if notional is None or float(notional) <= 0:
+                continue
+            if symbol not in symbol_brackets:
+                logger.warning(f'[{symbol}] 未在 leverage_bracket 中找到档位信息，跳过目标 notional 精调')
+                continue
+
+            needed_lev, overflowed = self._pick_leverage_for_notional(
+                symbol_brackets[symbol], float(notional), buffer_ratio, floor
+            )
+            new_lev = max(floor, min(max_leverage, needed_lev))
+
+            if cur_lev.get(symbol, max_leverage) > new_lev:
+                retry_wrapper(
+                    reset_leverage_func,
+                    params={'symbol': symbol, 'leverage': new_lev, 'timestamp': ''},
+                    func_name='设置杠杆'
+                )
+                logger.info(f'[{symbol}] 目标 notional={float(notional):.2f}，页面杠杆 {cur_lev.get(symbol)}x → {new_lev}x')
+                if overflowed:
+                    msg = f'[{symbol}] 目标持仓名义价值 {float(notional):.2f} 超过该币所有档位上限，已降至 {new_lev}x，可能仍会被拒单'
+                    logger.warning(msg)
+                    send_wechat_work_msg(msg, self.wechat_webhook_url)
+                elif new_lev < max_leverage:
+                    logger.warning(f'[{symbol}] 因目标持仓 {float(notional):.2f} 接近 notionalCap，杠杆下调至 {new_lev}x')
 
     def get_unimmr(self):
         raise NotImplementedError
