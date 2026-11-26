@@ -67,3 +67,33 @@ REVISION_HISTORY_HOURS = 168
 
 # Failure payloads are disposable; keep bounded flat account diagnostics.
 DIAGNOSTIC_LOG_COUNT = 24
+
+
+def _apply_host_config_overrides(config_path=None):
+    """Apply optional machine-local host flags from config.json so code syncs never reset them."""
+    import json
+    from pathlib import Path
+
+    global ARROW_DEMAND_ENABLED, ARROW_CONSUMER_NAME
+    path = Path(config_path) if config_path is not None else Path(__file__).resolve().parents[2] / 'config.json'
+    if not path.is_file():
+        return
+    try:
+        data = json.loads(path.read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        return
+    if not isinstance(data, dict):
+        return
+    if 'arrow_demand_enabled' in data:
+        ARROW_DEMAND_ENABLED = bool(data['arrow_demand_enabled'])
+    if 'arrow_consumer_name' in data:
+        ARROW_CONSUMER_NAME = data['arrow_consumer_name']
+    if 'init_data_pipeline' in data:
+        INITIALIZATION['data_pipeline'] = bool(data['init_data_pipeline'])
+    if 'init_factor_symbol_batch_size' in data:
+        INITIALIZATION['factor_symbol_batch_size'] = int(data['init_factor_symbol_batch_size'])
+    if 'dynamic_burst_enabled' in data:
+        RESOURCE_POLICY['dynamic_burst_enabled'] = bool(data['dynamic_burst_enabled'])
+
+
+_apply_host_config_overrides()

@@ -441,26 +441,42 @@ class Coordinator:
         """Metadata-only preflight also restores pending invalid accounts after restart."""
         import config as _cfg
         from core.account_manager import read_exchange_from_config
+        from core.utils import datatools as _dt
+        from .initialization_config import ARROW_DEMAND_ENABLED
         self._reap()
+        ex_paths=(getattr(_dt,'exchange_data_paths',{}) or getattr(_cfg,'exchange_data_paths',{})) or {}
         for account in accounts:
             if not enabled(account):continue
             account=Path(account).resolve();values,options=settings(account)
-            if account in self.pending or account in self.jobs:continue
+            if account in self.jobs:continue
             # Initializing outside its trade offset is allowed; orders remain scheduled.
             candidate=pd.Timestamp(run_time).replace(minute=options['minute'],second=0,microsecond=0)
             if candidate>pd.Timestamp(run_time):candidate-=pd.Timedelta(hours=1)
+            candidate_dt=candidate.to_pydatetime()
+            candidate_stamp=int(candidate_dt.timestamp())
+            if account in self.pending:
+                if candidate_dt>self.pending[account]['run_time']:
+                    self.pending[account]['run_time']=candidate_dt
+                    self.drain_pending()
+                continue
+            account_exchange=read_exchange_from_config(account)
+            account_market=_dt.resolve_bmac_data_path(account_exchange) if account_exchange in ex_paths else market
             destination=location(self.root,account,values)
+            meta=None
             try:
                 with account_lock(destination.with_name(destination.name+'.initialization')), account_lock(destination):
                     status,reason=inspect(destination,account.stem,values,
-                        pd.Timestamp(candidate.timestamp(),unit='s')-pd.Timedelta(hours=1))
+                        pd.Timestamp(candidate_stamp,unit='s')-pd.Timedelta(hours=1))
+                    if status=='ready' and ARROW_DEMAND_ENABLED:
+                        meta=pd.read_pickle(destination/'warmup.pkl')
             except OSError:continue
             if status=='rebuild':
-                from core.utils import datatools as _dt
-                account_exchange=read_exchange_from_config(account)
-                ex_paths=(getattr(_dt,'exchange_data_paths',{}) or getattr(_cfg,'exchange_data_paths',{})) or {}
-                account_market=_dt.resolve_bmac_data_path(account_exchange) if account_exchange in ex_paths else market
-                self.request_rebuild(account,candidate.to_pydatetime(),account_market,reason)
+                self.request_rebuild(account,candidate_dt,account_market,reason)
+            elif status=='ready' and ARROW_DEMAND_ENABLED and isinstance(meta,dict) and meta.get('cutoff') is not None:
+                from .arrow_demand import release_demand
+                release_demand(account_market,self.root,account,options['minute'],
+                               stamp=int(cutoff(meta['cutoff']).tz_localize('UTC').timestamp())+3600,
+                               values=values)
 
     @_serialized
     def _launch(self,account,run_time,values,reason,mode,market):

@@ -297,6 +297,13 @@ def check_accounts():
         logger.ok('自检完成')
 
 
+def prepare_startup_accounts(run_time=None):
+    """启动完成时立即检查 MODEL 账户快照并同步上游 .arrow-demand 状态，不等首次 5m 睡眠。"""
+    from config import bmac_data_path
+    now = datetime.now() if run_time is None else run_time
+    server_initializer.prepare(load_multi_accounts(), now, bmac_data_path)
+
+
 if __name__ == '__main__':
     version_prompt()
     if is_debug:
@@ -326,6 +333,7 @@ if __name__ == '__main__':
     if not is_debug:
         snapshot_path.mkdir(parents=True, exist_ok=True)
         check_accounts()
+        prepare_startup_accounts()
         time.sleep(1)
     else:
         logger.debug('🐞 调试模式 - 跳过账户检查和准备')

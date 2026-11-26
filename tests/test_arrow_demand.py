@@ -144,3 +144,95 @@ def test_notification_bad_depth_cannot_fail_installed_snapshot(tmp_path, monkeyp
     import json
     path=next((tmp_path/'market/25m/.arrow-demand').glob('*/*.json'))
     assert json.loads(path.read_text())['rows']==0
+
+
+def test_initialization_config_applies_host_json_overrides(tmp_path, monkeypatch):
+    import json
+    cfg = tmp_path / 'config.json'
+    cfg.write_text(json.dumps({
+        'arrow_demand_enabled': True,
+        'init_data_pipeline': True,
+        'init_factor_symbol_batch_size': 32,
+        'dynamic_burst_enabled': True,
+    }), encoding='utf-8')
+    monkeypatch.setattr(initialization_config, 'ARROW_DEMAND_ENABLED', False)
+    monkeypatch.setitem(initialization_config.INITIALIZATION, 'data_pipeline', False)
+    monkeypatch.setitem(initialization_config.INITIALIZATION, 'factor_symbol_batch_size', 16)
+    monkeypatch.setitem(initialization_config.RESOURCE_POLICY, 'dynamic_burst_enabled', False)
+
+    initialization_config._apply_host_config_overrides(cfg)
+    assert initialization_config.ARROW_DEMAND_ENABLED is True
+    assert initialization_config.INITIALIZATION['data_pipeline'] is True
+    assert initialization_config.INITIALIZATION['factor_symbol_batch_size'] == 32
+    assert initialization_config.RESOURCE_POLICY['dynamic_burst_enabled'] is True
+
+
+def test_prepare_advances_pending_stamp_and_releases_ready_demand(tmp_path, monkeypatch):
+    import json
+    from datetime import datetime
+    import pandas as pd
+    from tools.robust40 import server
+
+    monkeypatch.setattr(initialization_config, 'ARROW_DEMAND_ENABLED', True)
+    acct = tmp_path / 'accounts' / 'acct_25m.py'
+    acct.parent.mkdir(parents=True)
+    acct.write_text(
+        "from positions.ModelRobust40Strategy import *\n"
+        "account_config = {'hour_offset': '25m', 'exchange_name': 'binance'}\n"
+        "strategy_name = 's'\n"
+        "strategy_config = {'params': {'runtime': {'server_init': True}}}\n"
+        "strategy_pool = []\n"
+        "precompute_factor_configs = {}\n",
+        encoding='utf-8',
+    )
+    values = {'account': {'hour_offset': '25m', 'exchange_name': 'binance'}, 'strategy_name': 's', 'min_kline_num': 168}
+    market = tmp_path / 'market'
+    dest = server.location(tmp_path, acct, values)
+    dest.mkdir(parents=True)
+
+    c = server.Coordinator(tmp_path)
+    monkeypatch.setattr(server, 'enabled', lambda a: True)
+    monkeypatch.setattr(server, 'settings', lambda a: (values, {'minute': 25}))
+    monkeypatch.setattr(c, '_ensure_pending_thread', lambda: None)
+
+    # 1. Missing snapshot -> prepare() registers pending and writes rows=0 with local candidate stamp
+    t1 = datetime(2026, 11, 26, 11, 14)
+    c.prepare([acct], t1, market)
+    demand_path = next((market / '25m/.arrow-demand').glob('*/*.json'))
+    d1 = json.loads(demand_path.read_text(encoding='utf-8'))
+    assert d1['rows'] == 0
+    assert d1['stamp'] == int(datetime(2026, 11, 26, 10, 25).timestamp())
+
+    # 2. Next hour arrives while still pending -> prepare() advances pending run_time & demand stamp
+    t2 = datetime(2026, 11, 26, 11, 25)
+    c.prepare([acct], t2, market)
+    d2 = json.loads(demand_path.read_text(encoding='utf-8'))
+    assert d2['rows'] == 0
+    assert d2['stamp'] == int(datetime(2026, 11, 26, 11, 25).timestamp())
+
+    # 3. Healthy ready account on fresh restart releases stale rows=0 demand immediately
+    cutoff_utc = pd.Timestamp(datetime(2026, 11, 26, 11, 25).timestamp(), unit='s') - pd.Timedelta(hours=1)
+    pd.to_pickle({'cutoff': cutoff_utc, 'complete': True}, dest / 'warmup.pkl')
+    c2 = server.Coordinator(tmp_path)
+    monkeypatch.setattr(server, 'inspect', lambda *a, **k: ('ready', ''))
+    c2.prepare([acct], datetime(2026, 11, 26, 11, 30), market)
+    d3 = json.loads(demand_path.read_text(encoding='utf-8'))
+    assert d3['rows'] == 5000
+
+
+def test_startup_prepare_startup_accounts_runs_immediately(tmp_path, monkeypatch):
+    from datetime import datetime
+    import startup
+
+    acct = tmp_path / 'a.py'
+    acct.write_text("account_config = {'hour_offset': '25m'}\n", encoding='utf-8')
+    seen = {}
+    monkeypatch.setattr(startup, 'load_multi_accounts', lambda: [acct])
+    monkeypatch.setattr(
+        startup.server_initializer, 'prepare',
+        lambda accounts, run_time, market: seen.update(accounts=list(accounts), run_time=run_time, market=market),
+    )
+    now = datetime(2026, 11, 26, 12, 20)
+    startup.prepare_startup_accounts(now)
+    assert seen['accounts'] == [acct]
+    assert seen['run_time'] == now
