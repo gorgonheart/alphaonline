@@ -1,0 +1,33 @@
+FILE /home/ubuntu/alpha2/data/preprocess_1h_resample/15m/spot_dict_1795583700.arrow
+ os_bytes 607600314
+ format ipc_file ncols 32
+ first_cols ['candle_begin_time', 'open', 'high', 'low', 'close', 'volume']
+ n_batches 520
+  batch 0 rows 5000
+  batch 1 rows 5000
+  batch 2 rows 5000
+  batch 3 rows 5000
+  batch 4 rows 5000
+ total_rows 2279065
+FILE /home/ubuntu/alpha2/data/preprocess_1h_resample/15m/swap_dict_1795583700.arrow
+ os_bytes 908911554
+ format ipc_file ncols 33
+ first_cols ['key_0', 'candle_begin_time', 'open', 'high', 'low', 'close']
+ n_batches 767
+  batch 0 rows 5000
+  batch 1 rows 5000
+  batch 2 rows 5000
+  batch 3 rows 5000
+  batch 4 rows 5000
+ total_rows 3329831
+FILE /home/ubuntu/alpha2/data/preprocess_1h_resample/25m/swap_dict_1795584300.arrow
+ os_bytes 908924202
+ format ipc_file ncols 33
+ first_cols ['key_0', 'candle_begin_time', 'open', 'high', 'low', 'close']
+ n_batches 767
+  batch 0 rows 5000
+  batch 1 rows 5000
+  batch 2 rows 5000
+  batch 3 rows 5000
+  batch 4 rows 5000
+ total_rows 3329874

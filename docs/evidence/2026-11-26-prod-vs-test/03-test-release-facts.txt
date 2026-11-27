@@ -1,0 +1,99 @@
+=== PM2 RESTART HISTORY (realtime_data) ===
+-rw-rw-r-- 1 ubuntu ubuntu    6292 Nov  4 00:00 realtime-data-error__2026-11-04_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu   18092 Nov  6 00:00 realtime-data-error__2026-11-06_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu     480 Nov  7 00:00 realtime-data-error__2026-11-07_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu     480 Nov 19 00:00 realtime-data-error__2026-11-19_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu    5496 Nov 22 00:00 realtime-data-error__2026-11-22_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu     480 Nov 24 00:00 realtime-data-error__2026-11-24_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu   21190 Nov 26 00:00 realtime-data-error__2026-11-26_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu   19227 Nov 26 16:08 realtime-data-error.log
+-rw-rw-r-- 1 ubuntu ubuntu   59797 Nov  4 00:00 realtime-data-out__2026-11-04_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu  529515 Nov  5 00:00 realtime-data-out__2026-11-05_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu  537260 Nov  6 00:00 realtime-data-out__2026-11-06_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu  338705 Nov  7 00:00 realtime-data-out__2026-11-07_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu  280343 Nov  8 00:00 realtime-data-out__2026-11-08_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu  279997 Nov  9 00:00 realtime-data-out__2026-11-09_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu  280006 Nov 10 00:00 realtime-data-out__2026-11-10_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu  281119 Nov 11 00:00 realtime-data-out__2026-11-11_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu  280001 Nov 12 00:00 realtime-data-out__2026-11-12_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu  281408 Nov 13 00:00 realtime-data-out__2026-11-13_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu  280108 Nov 14 00:00 realtime-data-out__2026-11-14_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu  280362 Nov 15 00:00 realtime-data-out__2026-11-15_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu  283001 Nov 16 00:00 realtime-data-out__2026-11-16_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu  283081 Nov 17 00:00 realtime-data-out__2026-11-17_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu  280030 Nov 18 00:00 realtime-data-out__2026-11-18_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu  148160 Nov 19 00:00 realtime-data-out__2026-11-19_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu  245232 Nov 21 00:00 realtime-data-out__2026-11-21_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu  407336 Nov 22 00:00 realtime-data-out__2026-11-22_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu  532595 Nov 23 00:00 realtime-data-out__2026-11-23_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu 1306409 Nov 24 00:00 realtime-data-out__2026-11-24_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu 7351866 Nov 25 00:00 realtime-data-out__2026-11-25_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu 6888418 Nov 26 00:00 realtime-data-out__2026-11-26_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu 5373407 Nov 26 19:22 realtime-data-out.log
+=== STARTUP MARKERS TODAY ===
+20:🌀 MODEL_REPLAY {"account": "25m-eart1106", "stamp": 1795623900, "kind": "trade", "attempt": "1495384-1795623966922628805", "mode": "preflight", "committed": false, "trained_quarters": 0, "reused_quarters": 0, "scoring_calls": 0, "status": "running", "event": "start", "elapsed_s": 4e-05}
+1114:🌀 MODEL_REPLAY {"account": "25m-eart1106", "stamp": 1795627500, "kind": "trade", "attempt": "1527035-1795627567177817710", "mode": "preflight", "committed": false, "trained_quarters": 0, "reused_quarters": 0, "scoring_calls": 0, "status": "running", "event": "start", "elapsed_s": 3.1e-05}
+2219:🌀 MODEL_REPLAY {"account": "25m-eart1106", "stamp": 1795631100, "kind": "trade", "attempt": "1558729-1795631175641582095", "mode": "preflight", "committed": false, "trained_quarters": 0, "reused_quarters": 0, "scoring_calls": 0, "status": "running", "event": "start", "elapsed_s": 2.3e-05}
+3321:🌀 MODEL_REPLAY {"account": "25m-eart1106", "stamp": 1795634700, "kind": "trade", "attempt": "1590358-1795634767463298056", "mode": "preflight", "committed": false, "trained_quarters": 0, "reused_quarters": 0, "scoring_calls": 0, "status": "running", "event": "start", "elapsed_s": 1.7e-05}
+4425:🌀 MODEL_REPLAY {"account": "25m-eart1106", "stamp": 1795638300, "kind": "trade", "attempt": "1622020-1795638367014432079", "mode": "preflight", "committed": false, "trained_quarters": 0, "reused_quarters": 0, "scoring_calls": 0, "status": "running", "event": "start", "elapsed_s": 2e-05}
+5522:🌀 MODEL_REPLAY {"account": "25m-eart1106", "stamp": 1795641900, "kind": "trade", "attempt": "1653733-1795641965866499637", "mode": "preflight", "committed": false, "trained_quarters": 0, "reused_quarters": 0, "scoring_calls": 0, "status": "running", "event": "start", "elapsed_s": 1.5e-05}
+6622:🌀 MODEL_REPLAY {"account": "25m-eart1106", "stamp": 1795645500, "kind": "trade", "attempt": "1686024-1795645565909375928", "mode": "preflight", "committed": false, "trained_quarters": 0, "reused_quarters": 0, "scoring_calls": 0, "status": "running", "event": "start", "elapsed_s": 1.5e-05}
+7728:🌀 MODEL_REPLAY {"account": "25m-eart1106", "stamp": 1795649100, "kind": "trade", "attempt": "1719030-1795649177455245021", "mode": "preflight", "committed": false, "trained_quarters": 0, "reused_quarters": 0, "scoring_calls": 0, "status": "running", "event": "start", "elapsed_s": 2.4e-05}
+8831:🌀 MODEL_REPLAY {"account": "25m-eart1106", "stamp": 1795652700, "kind": "trade", "attempt": "1751591-1795652770465460207", "mode": "preflight", "committed": false, "trained_quarters": 0, "reused_quarters": 0, "scoring_calls": 0, "status": "running", "event": "start", "elapsed_s": 2.3e-05}
+9931:🌀 MODEL_REPLAY {"account": "25m-eart1106", "stamp": 1795656300, "kind": "trade", "attempt": "1783703-1795656366729657865", "mode": "preflight", "committed": false, "trained_quarters": 0, "reused_quarters": 0, "scoring_calls": 0, "status": "running", "event": "start", "elapsed_s": 1.5e-05}
+11039:🌀 MODEL_REPLAY {"account": "25m-eart1106", "stamp": 1795659900, "kind": "trade", "attempt": "1817063-1795659968970262753", "mode": "preflight", "committed": false, "trained_quarters": 0, "reused_quarters": 0, "scoring_calls": 0, "status": "running", "event": "start", "elapsed_s": 2.2e-05}
+12462:🌀 MODEL_REPLAY {"account": "25m-eart1106", "stamp": 1795674300, "kind": "trade", "attempt": "1941578-1795674368822194063", "mode": "preflight", "committed": false, "trained_quarters": 0, "reused_quarters": 0, "scoring_calls": 0, "status": "running", "event": "start", "elapsed_s": 2.4e-05}
+13577:🌀 MODEL_REPLAY {"account": "25m-eart1106", "stamp": 1795677900, "kind": "trade", "attempt": "1974432-1795677980941810906", "mode": "preflight", "committed": false, "trained_quarters": 0, "reused_quarters": 0, "scoring_calls": 0, "status": "running", "event": "start", "elapsed_s": 0.000987}
+14692:🌀 MODEL_REPLAY {"account": "25m-eart1106", "stamp": 1795681500, "kind": "trade", "attempt": "2002373-1795681571746450294", "mode": "preflight", "committed": false, "trained_quarters": 0, "reused_quarters": 0, "scoring_calls": 0, "status": "running", "event": "start", "elapsed_s": 2.8e-05}
+15807:🌀 MODEL_REPLAY {"account": "25m-eart1106", "stamp": 1795685100, "kind": "trade", "attempt": "2034358-1795685162932120205", "mode": "preflight", "committed": false, "trained_quarters": 0, "reused_quarters": 0, "scoring_calls": 0, "status": "running", "event": "start", "elapsed_s": 7e-06}
+16916:🌀 MODEL_REPLAY {"account": "25m-eart1106", "stamp": 1795688700, "kind": "trade", "attempt": "2066370-1795688762212351426", "mode": "preflight", "committed": false, "trained_quarters": 0, "reused_quarters": 0, "scoring_calls": 0, "status": "running", "event": "start", "elapsed_s": 2.4e-05}
+=== DEPLOYED FILES TODAY ===
+2026-11-26 15:51:46.0000000000 13914 /home/ubuntu/alpha/core/storage/candle_manager.py
+2026-11-26 15:51:49.0000000000 69075 /home/ubuntu/alpha/core/strategy/preprocess.py
+2026-11-26 15:51:58.0000000000 47925 /home/ubuntu/alpha/core/pipeline/resample.py
+2026-11-26 15:53:06.0000000000 22651 /home/ubuntu/alpha/core/pipeline/runtime_supervisor.py
+2026-11-26 15:53:11.0000000000 35582 /home/ubuntu/alpha/core/pipeline/update_cycle.py
+2026-11-26 15:53:19.0000000000 10806 /home/ubuntu/alpha/core/app.py
+2026-11-26 15:53:20.0000000000 17442 /home/ubuntu/alpha/core/pipeline/backfill.py
+2026-11-26 15:56:22.0000000000 6606 /home/ubuntu/alpha/core/ingest/coin_cap.py
+2026-11-26 16:07:49.1850977440 35476 /home/ubuntu/alpha/core/pipeline/__pycache__/runtime_supervisor.cpython-311.pyc
+2026-11-26 16:07:49.2140977350 23726 /home/ubuntu/alpha/core/storage/__pycache__/candle_manager.cpython-311.pyc
+2026-11-26 16:07:49.4470976570 14076 /home/ubuntu/alpha/core/__pycache__/app.cpython-311.pyc
+2026-11-26 16:07:49.4810976460 10709 /home/ubuntu/alpha/core/ingest/__pycache__/coin_cap.cpython-311.pyc
+2026-11-26 16:07:49.6070976040 26375 /home/ubuntu/alpha/core/pipeline/__pycache__/backfill.cpython-311.pyc
+2026-11-26 16:07:49.6200976000 58861 /home/ubuntu/alpha/core/pipeline/__pycache__/resample.cpython-311.pyc
+2026-11-26 16:07:49.6350975950 83868 /home/ubuntu/alpha/core/strategy/__pycache__/preprocess.cpython-311.pyc
+2026-11-26 16:07:49.6450975920 42713 /home/ubuntu/alpha/core/pipeline/__pycache__/update_cycle.cpython-311.pyc
+=== UPDATE NOTE ===
+2026-11-03 14:48:10.016152403 +0800 /home/ubuntu/alpha/修改内容.md
+2026-11-03 14:48:10.016152403 +0800 /home/ubuntu/alpha/更新说明.md
+1. 📋 替换以下目录：
+   - [binance_fetcher_async.py](core/binance_fetcher_async.py)
+2. 🔄 重启[realtime_data.py](realtime_data.py)
+
+---
+
+### v1.1.2
+
+- 修复BN上架 PUMP后带出更名前重复名称币种数据的问题
+
+#### 🆙 更新步骤
+
+1. 📋 替换以下目录：
+   - [resample_candle.py](core/resample_candle.py)
+2. 🔄 重启[realtime_data.py](realtime_data.py)
+
+---
+
+### v1.1.1
+
+- 更新分钟偏移数据，带上资金费
+- 优化生成 market pivot 速度
+- 增加 config.py 对于 json 文件配置支持(不影响目前实盘，后面有大用，这里保密)
+
+#### 🆙 更新步骤
+
+1. 📋 替换以下目录：
+   - [core](core)
+   - [config.py](config.py)
+2. 🔄 重启[realtime_data.py](realtime_data.py)

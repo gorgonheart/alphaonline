@@ -1,0 +1,37 @@
+=== RESOURCES (2nd sample) ===
+2026-11-25 13:52:56 CST
+ 13:52:56 up 312 days, 23:16,  2 users,  load average: 3.85, 2.53, 2.31
+               total        used        free      shared  buff/cache   available
+Mem:            7685        5024         152           1        2781        2660
+Swap:          18371        1042       17329
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/vda2       178G  148G   23G  87% /
+=== TRADE ERROR COUNTS (today log) ===
+0
+=== PM2 ERROR LOG TODAY ===
+19671 /home/ubuntu/.pm2/logs/alphatrade-error.log
+    0 /home/ubuntu/.pm2/logs/alpha2-error.log
+19671 total
+/home/ubuntu/alphatrade/tools/robust40/server.py:186: FutureWarning: 'H' is deprecated and will be removed in a future version. Please use 'h' instead of 'H'.
+  hold=int(pd.Timedelta(child.get('hold_period','1h'))/pd.Timedelta(hours=1))
+/home/ubuntu/alphatrade/tools/robust40/server.py:186: FutureWarning: 'H' is deprecated and will be removed in a future version. Please use 'h' instead of 'H'.
+  hold=int(pd.Timedelta(child.get('hold_period','1h'))/pd.Timedelta(hours=1))
+/home/ubuntu/alphatrade/tools/robust40/server.py:186: FutureWarning: 'H' is deprecated and will be removed in a future version. Please use 'h' instead of 'H'.
+  hold=int(pd.Timedelta(child.get('hold_period','1h'))/pd.Timedelta(hours=1))
+=== EQUITY TAIL (25m) ===
+2026-11-25 11:25:00,2026-11-25 11:31:08.032568,17632.89532415,500.5781846715,13165.30220379,13665.8803884615,-9810.608759830002,55,69,0.0593706386084081,0.0945883004089347,binance_pm_actualEquity,USD,25
+2026-11-25 12:25:00,2026-11-25 12:30:26.043922,17653.5501517,502.652387456,13140.8251171,13643.477504556002,-9452.84480612,55,69,0.0595158367490645,0.0958414814845086,binance_pm_actualEquity,USD,25
+2026-11-25 13:25:00,2026-11-25 13:30:28.561220,17717.75489201,502.65870524699994,12756.69618545,13259.354890697,-9618.092896109998,53,69,0.05935782656493735,0.09498355577539445,binance_pm_actualEquity,USD,25
+=== REBALANCE CSV LINES ===
+  29 /home/ubuntu/alphatrade/data/25m-eart1106/账户换仓信息/20261125_11.csv
+  31 /home/ubuntu/alphatrade/data/25m-eart1106/账户换仓信息/20261125_12.csv
+  26 /home/ubuntu/alphatrade/data/25m-eart1106/账户换仓信息/20261125_13.csv
+  86 total
+=== KEY DATA SIZES ===
+3.8G	/home/ubuntu/alpha2/data/preprocess_1h_resample/25m
+5.3G	/home/ubuntu/alpha2/data/binance_spot_5m
+6.8G	/home/ubuntu/alpha2/data/binance_swap_5m
+1.1G	/home/ubuntu/alphatrade/data/snapshot/25m-eart1106_MODEL_ROBUST40_V1_25m
+=== OOM ===
+0
+no kern.log access

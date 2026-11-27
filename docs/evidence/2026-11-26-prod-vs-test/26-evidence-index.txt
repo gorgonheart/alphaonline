@@ -1,0 +1,31 @@
+=== EVIDENCE INDEX (2026-11-26, refreshed 2026-11-26 19:28:07) ===
+01-test-replay-20261126.txt                     21773 bytes     18 lines
+02-prod-25m-replay-20261126.txt                 49099 bytes     42 lines
+03-test-release-facts.txt                       10096 bytes     99 lines
+04-replay-rounds.csv                             2631 bytes     18 lines
+05-round-parsed.txt                              3775 bytes     40 lines
+06-test-upstream-raw.txt                        82290 bytes   1028 lines
+07-prod-upstream-raw.txt                        95973 bytes    930 lines
+08-test-ready-errors.txt                         1294 bytes     26 lines
+09-prod-ready-errors.txt                          715 bytes     16 lines
+11-test-products-and-gap.txt                     2710 bytes     42 lines
+12-prod-products-list.txt                        1462 bytes     18 lines
+13-test-gap-detail.txt                           6741 bytes    113 lines
+14-test-equity-errors.txt                        1171 bytes     12 lines
+16-test-products.json                         1170649 bytes      1 lines
+17-prod-products.json                         1171469 bytes      1 lines
+18-product-diff.txt                              6041 bytes     86 lines
+19-product-console.txt                           6041 bytes     86 lines
+20-lots-diff.txt                                 3997 bytes     44 lines
+21-lots-console.txt                              3997 bytes     44 lines
+22-amount-ratio.txt                              1903 bytes     32 lines
+23-amount-console.txt                            1903 bytes     32 lines
+24-test-restart-ready.txt                        1342 bytes     21 lines
+25-prod-start-ready.txt                           478 bytes     10 lines
+analyze_amount.py                                2403 bytes     65 lines
+analyze_lots.py                                  2301 bytes     63 lines
+analyze_products.py                              5355 bytes    112 lines
+collect_products_1126.py                         3002 bytes     77 lines
+parse_rounds.py                                  2593 bytes     55 lines
+=== TOTAL FILES ===
+29

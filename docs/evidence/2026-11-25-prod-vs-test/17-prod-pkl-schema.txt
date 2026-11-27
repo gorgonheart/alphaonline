@@ -1,0 +1,12 @@
+FILE /home/ubuntu/alphatrade/data/25m-eart1106/select_coin/2026-11-25_13.pkl
+SHAPE (3781, 15)
+COLS ['candle_begin_time', 'symbol', 'is_spot', 'close', 'next_close', 'symbol_spot', 'symbol_swap', '是否交易', 'strategy', 'cap_weight', '方向', 'offset', 'target_alloc_ratio', 'order_first', 'parent_name']
+       candle_begin_time      symbol is_spot     close  next_close symbol_spot symbol_swap 是否交易                      strategy  cap_weight  方向 offset  target_alloc_ratio order_first                    parent_name
+1167 2026-11-24 05:25:00  RAYSOLUSDT       0  1.327000    1.325500     RAYUSDT  RAYSOLUSDT    1  #0.Funding0021NegativeDomain        0.25  -1      6           -0.000052        swap  S13-Funding0021NegativeDomain
+1168 2026-11-24 05:25:00     SXTUSDT       0  0.007879    0.007837     SXTUSDT     SXTUSDT    1  #0.Funding0021NegativeDomain        0.25  -1      6           -0.000052        swap  S13-Funding0021NegativeDomain
+FILE /home/ubuntu/alphatrade/data/25m-eart1106/position_results/2026-11-25_13.pkl
+SHAPE (538, 6)
+COLS ['symbol', 'symbol_type', 'price', 'target_lots', 'lot_size', '目标持仓量']
+    symbol symbol_type   price  target_lots  lot_size  目标持仓量
+0  ACMUSDT        spot  0.2020            0       0.1    0.0
+1  ADXUSDT        spot  0.0412            0       1.0    0.0

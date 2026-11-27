@@ -1,0 +1,38 @@
+=== test 25m anomalous round detail (02:25 UTC) ===
+  attempt = 1082788-1795577187855223202
+  mode = replay
+  status = ok
+  committed = True
+  input_frames = 1294
+  changed_cells = 3407
+  changed_series = 390
+  revised_from = 2026-11-24 20:25:00
+  replay_hours = 7.0
+  prepare_s = 26.914138
+  copy_s = 8.232608
+  restore_s = 10.746701
+  input_read_s = 4.233894
+  account_calculation_s = 160.178091
+  account_flow_s = 162.262674
+  calculation_s = 190.414523
+  total_s = 193.731434
+  elapsed_s = 193.731476
+=== latest cutpoint row-level numeric deltas (matched keys only) ===
+matched rows = 3779 (test rows=3781, prod rows=3781)
+  close: n=3779 nonzero=0 (0.00%) max_abs=0 median_nonzero=0
+  next_close: n=3594 nonzero=0 (0.00%) max_abs=0 median_nonzero=0
+  target_alloc_ratio: n=3779 nonzero=2858 (75.63%) max_abs=1.13657e-05 median_nonzero=1.651e-07
+=== swap_dict.ready delay after 11:00, grouped by cycle offset (seconds) ===
+  test 05m: spot n=2 median=85.5 values=[91, 80] | swap n=2 median=135.5 values=[133, 138]
+  test 15m: spot n=3 median=76.0 values=[76, 114, 59] | swap n=3 median=113.0 values=[158, 97, 113]
+  test 25m: spot n=3 median=55.0 values=[60, 43, 55] | swap n=3 median=74.0 values=[82, 71, 74]
+  test 45m: spot n=3 median=104.0 values=[127, 104, 59] | swap n=3 median=113.0 values=[113, 152, 91]
+  prod 05m: spot n=3 median=82.0 values=[82, 82, 79] | swap n=3 median=102.0 values=[102, 102, 100]
+  prod 15m: spot n=3 median=82.0 values=[84, 82, 82] | swap n=3 median=103.0 values=[114, 103, 103]
+  prod 25m: spot n=3 median=95.0 values=[82, 95, 97] | swap n=3 median=113.0 values=[104, 115, 113]
+  prod 35m: spot n=3 median=85.0 values=[85, 85, 80] | swap n=3 median=106.0 values=[106, 115, 101]
+  prod 45m: spot n=3 median=86.0 values=[86, 87, 83] | swap n=3 median=115.0 values=[115, 116, 104]
+  prod 55m: spot n=2 median=85.0 values=[85, 85] | swap n=2 median=109.5 values=[106, 113]
+=== changed_series by host, incremental counted as 0 ===
+  12-test-replay-end-raw.txt: n=5 modes={'incremental': 3, 'replay': 2} changed_series values=[0, 3, 390, 0, 0] median=0.0
+  13-prod-replay-end-raw.txt: n=28 modes={'replay': 28} changed_series values=[3, 44, 39, 37, 80, 21, 259, 70, 49, 55, 50, 47, 95, 89, 84, 63, 56, 41, 92, 79, 23, 32, 24, 15, 24, 59, 43, 56] median=49.5

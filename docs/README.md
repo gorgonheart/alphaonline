@@ -1,7 +1,7 @@
 # `alpha` / `alphaonline` 统一开发入口与全局摘要
 
 > **所有后续开发对话（两仓通用）请从此文件开始。**
-> 维护基准：`2026-11-20` · 交易端 `D:/alphaonline`（`main` 与 `production/main` 已完全同步至 `940c487`+文档，含 Phase 0–3 + F1 + Q1 + Q2）· 生产者 `D:/alpha`（`main=41686c3`，生产运行 `41686c3`）。
+> 维护基准：`2026-11-27` · 交易端 `D:/alphaonline`（本地 `main`、正式机 `production/main` 与测试机 `alphatest` 三端统一对齐 **`5cab8f8`**，含 Phase 5 2A/2B、`v2.4.1`、消费端第二批及 11-26 对比收口优化；正式机 PID `374502`）· 生产者 `D:/alpha`（本地 `main`、正式机 `production/main` 与测试机 `alphatest` 三端统一对齐 **`5694033`**，含 `v2.0.2` WS 4 核并行、计算-IO 重叠、内存治理及 `spot` 优先/`T-22s`/空档节流优化；正式机 `alpha2` PID `374475`，测试机 `realtime_data` PID `2179086`）。
 > 原则：历史设计/计划文档不等于已落地；遇到文档与代码冲突时，以**现行代码 + 可复现测试 + 生产只读核验**为准，并同步更新本知识库。
 
 ---
@@ -33,7 +33,9 @@
 - **实例**：`/home/ubuntu/alphatrade`（PM2 `alphatrade-dryrun`，运行模式 `dry_run`）与 `/home/ubuntu/alpha`（PM2 `realtime_data`），非 Git 源码增量同步。
 - **Conda 环境**：交易端使用独立 `/home/ubuntu/alphatrade-env/upgrade233/alpha311`（`xbx-py11==0.1.24` / `ccxt==4.5.88`）；生产者使用 `/home/ubuntu/miniconda3/envs/alpha311`（Python `3.11.18`，固定 `chardet==5.2.0`）。
 - **SSH 连接**：已配置本机免密别名 `ssh alphatest`（或 `ssh 43.173.122.28`，私钥 `C:\Users\Administrator\.ssh\visibility-deploy.pem`）。
-- **基础设施**：`/swap.img` 已扩容至 **20 GiB**；Mihomo `v1.19.33`（日本 NTT AnyTLS）常驻 `127.0.0.1:7897`；已启用 `shared_factor_pipeline=True`、32 币分片、`ARROW_DEMAND_ENABLED=True`、`dynamic_burst_enabled=True`、`coin_cap_use_proxy=True`。**已于 2026-11-19~20 同步并验证 `edbbba3` + Phase 0–3 + F1 + Q1/Q2 统计全部改动。**
+- **基础设施**：`/swap.img` 已扩容至 **20 GiB**；Mihomo `v1.19.33` 常驻 `127.0.0.1:7897`，**2026-11-21 11:23 起改为 `AUTO` fallback 三节点组**（P1 江苏联通转日本BGP `212.87.193.53:65227` → P2 日本NTT `216.247.110.57:65102` → P3 香港BGP `45.207.152.141:65231`，全部出口在白名单内，健康检查 10 s，实测 10–16 s 完成跳档与回切）；同日试过的 65202 端口经 40 次 TCP 拨号仅 26/40，已弃用；**2026-11-22 23:45 起新增 `QUANT` 分流组**（`DOMAIN-KEYWORD,quantclass` → P2/P3，不含 P1；其余仍 `MATCH,AUTO`，因 P1 到 `api.quantclass.cn` 不可达导致市值更新静默失败 6 h，见 [网络专题 §6.3](kb/network-and-proxy.md)）；已启用 `shared_factor_pipeline=True`、32 币分片、`ARROW_DEMAND_ENABLED=True`、`dynamic_burst_enabled=True`、`coin_cap_use_proxy=True`。**已于 2026-11-19~20 同步并验证 `edbbba3` + Phase 0–3 + F1 + Q1/Q2 统计全部改动。**
+
+> **网络排障捷径**：交易/账户请求按**出口 IP** 绑定（白名单 `188.253.120.76` / `45.207.152.141` / `216.247.110.57` / `27.122.59.81` / `212.87.193.53`）。节点 ↔ 出口 IP 对照、测速结果与切换/回滚 SOP 见 **[网络代理与币安 IP 白名单速查](kb/network-and-proxy.md)**——排查时可直接跳过 IP 与节点的匹配推导，按表测试后直接连接。
 
 详细配置与历史记录 → **[三套环境与 Conda/进程拓扑](kb/environments.md)**
 
@@ -42,7 +44,7 @@
 ## 3. 正式服务器与 Conda 环境（`43.167.235.164`）
 
 - **SSH 连接（严格只读优先，变更需明确授权）**：已配置本机免密别名 `ssh alphaprod`（或 `ssh 43.167.235.164`，用户 `ubuntu`，私钥 `C:\Users\Administrator\.ssh\alphaprod-oldserveragent.pem`，源 `D:\alphaonline\env\oldserveragent.pem`）。
-- **主实盘双端**：`/home/ubuntu/alphatrade`（Git HEAD `940c487`+文档，与本地 `main` 0 差异；PM2 `startup.py` PID `464274`，模式 `none`）消费 `/home/ubuntu/alpha2`（Git HEAD `41686c3`，`realtime_data.py` PID `3634429`）；两仓通过 `/home/ubuntu/repos/{alphatrade,alpha}.git` 私有裸仓 fast-forward 更新，工作区 sparse checkout 排除根 `tests/`。
+- **主实盘双端**：`/home/ubuntu/alphatrade`（Git HEAD `5cab8f8`，与本地 `main` 0 差异；PM2 `startup.py` PID `374502`，模式 `none`，**11-27 09:30:47 重启**）消费 `/home/ubuntu/alpha2`（Git HEAD `5694033`，`realtime_data.py` PID `374475`，**11-27 09:30:45 重启**）；两仓通过 `/home/ubuntu/repos/{alphatrade,alpha}.git` 私有裸仓 fast-forward 更新，工作区 sparse checkout 排除根 `tests/`。
 - **并行旧实例（严禁误动）**：`/home/ubuntu/alphatradetest`（PID `3983440`）消费 `/home/ubuntu/alpha`（PID `3982664`），独立运行，主线部署绝不重启或修改。
 - **Conda 环境**：主实盘消费者独立运行 `/home/ubuntu/alphatrade-env/upgrade233/alpha311`（Python `3.11.14`，`xbx-py11==0.1.24` / `ccxt==4.5.88`）；生产者与旧组件保持 `/home/ubuntu/miniconda3/envs/alpha311`（`ccxt==4.5.53`）。
 - **PM2 陷阱**：PM2 遇到含 `/home/ubuntu`（含 `bun` 子串）的绝对 `interpreter` 路径会误用 Bun 容器导致语法错误，**必须**用短名 `python` + 独立 `PATH`。
@@ -82,7 +84,7 @@
 
 ## 7. 与外部第三方版本 `core` 的关系
 
-- **当前集成版本**：交易端为邢不行框架 **`2.3.3`（`v2.3.3.20261030`）** 本地增量集成；生产者端已完整合入 **`coin-realtime-data_v1.1.12`**。根目录 `2.1.1core`～`2.3.3core` 与 `coin-realtime-data_v1.1.12` 仅作只读对照参考，不入库。
+- **当前集成版本**：交易端本地 `main`（`5cab8f8`）、测试机 `alphatest` 与**正式机（11-27 09:30 部署）**已一致集成 **`2.4.1`（`v2.4.1.20261120`）** 增量窄合入、消费端第二批加速及 `bStocks` 脏行容错/磁盘缓存优化；生产者端本地 `main`（`5694033`）、测试机与**正式机 `alpha2`（11-27 09:30）**均已合入 **`coin-realtime-data_v2.0.2`** WS 4 核并行底座（正式机已弃用 `v1.1.12` REST 路径）。根目录 `2.1.1core`～`2.3.3core`、`position-mgmt-trading_v2.4.1` 与 `coin-realtime-data_v1.1.12`/`v2.0.2` 仅作只读对照参考，不入库。
 - **核心边界**：严禁整体覆盖 `core/`；必须永久保留 Arrow mmap + PKL 回退、Polars 截面、动量 V2 全历史回退、`entry_exit` 续算、`dry_run` 防写保护、MODEL 窄钩子与 26 点恢复、执行器 JIT 缓存、局部 GC、统计单源快照及资源治理。升级依赖须在独立 `upgrade233/alpha311` 环境完整解析并通过 `pip check`。
 
 详细版本对比与不可丢失定制清单 → **[与外部版本 `core` 的关系及定制边界](kb/upstream-core-relations.md)**
@@ -91,10 +93,13 @@
 
 ## 8. 当前未合并主干的分支与多机同步状态
 
-- **未合并分支**：`D:/alphaonline` 与 `D:/alpha` 两仓 `git branch --no-merged main` **均为空**（全部功能分支已合入各自 `main`）。
-- **已合入但未发布差异**：
-  1. `D:/alphaonline` 本地 `main`（`bac2443`）比正式机 `production/main`（`edbbba3`）多出 1 个未发布提交 **`6c02e58`**（`2026-11-07` 统计展示精简与多空分侧前 5）。
-  2. 测试服务器 `43.173.122.28` 停留在 `2026-11-06`，尚未同步 `2026-11-19` 的 `edbbba3`。
+- **未合并分支（特性分支，未合入 `main`、未发正式机）**：
+  - `D:/alpha`：`feat/v202-migration-2b`（HEAD `15205e7`，超前 `main=b5eb945` 24 提交，已在测试机验收）。
+  - `D:/alphaonline`：`feat/phase5-2b-consumer-hardening`（HEAD `6cd263b`，超前 `main=2001075` 3 提交，已在测试机运行验证）；在其之上分支 `feat/v241-and-consumer-batch2` 已离线完成 `v2.4.1` 窄合入与消费端第二批（环节 5+6+7）落地及全套单测回归，待终审与测试机实测。
+- **主干与多机同步**：
+  1. `D:/alphaonline` 本地 `main`、测试机与**正式机 `production/main`** 三端统一对齐 `5cab8f8`（11-27 09:30 正式机部署）；`D:/alpha` 本地 `main`、测试机与正式机 `alpha2` 三端统一对齐 `5694033`（含 `v2.0.2` WS 4 核并行）。
+  2. 测试服务器 `43.173.122.28` 运行 `alphaonline 5cab8f8` 与 `alpha 5694033`（WS 屏障 `0.3~2.2 s`、`missed=0`，个别批次 swap barrier 抖动到 `19.8 s`）。
+  3. **同版本核验方式**：测试机 `alphatrade` 非 git 仓库，只能按 `core/factors/signals/sections` 文件哈希比对（2026-11-27 核验：157 个文件逐字节一致，测试机多一个未跟踪 `core/utils/factor_metrics.py`）。
 - **遗留现场**：存在 1 条历史保护 `stash@{0}` 及 2 个附加 worktree（`s3-hotfix`、`research/coin-cap-proxy`），待确认后再清理。
 
 完整分支、stash、worktree 与同步明细 → **[分支、未发布提交与多机同步状态](kb/branches-and-sync.md)**
@@ -103,9 +108,10 @@
 
 ## 9. 重要性能分析
 
-- **现行线上常态（正式机 `25m-eart1106`，2026-11-19）**：`prepare_s ≈ 6.7–9.9 s`（`compare_s ≈ 0.75–0.96 s`，D1 5000 根联动使修订读取从原 `18.3 s` 降至 `5–8 s`）、`account_calculation_s ≈ 138–142 s`、`total_s ≈ 166–170 s`；2h 回放 `total_s ≈ 180–184 s`；全量单户初始化 `13–15 分钟`（单槽位）。
+- **现行线上常态（正式机 `5cab8f8`+`5694033`，2026-11-27 实测）**：`incremental` 轮 `total_s ≈ 102 s`（`prepare_s 4.5`、`input_read_s 1.2`、`calculation_s 85`、`account_calculation_s 80`）；`replay` 轮 `total_s ≈ 130 s`（`prepare_s 24`、`read 6.7`、`calc 113`）——**正式机今日 63/64 轮都是 `replay`**，比增量贵 **+28.1 s/轮**（`prepare +19.5`、`read +5.5`、`calc +27.9`）；测试机同版本 25m 账户 11 轮全为 `incremental`，`changed_series` 恒空（**0 修订**）。上游 `v2.0.2` 上线后 `market_dict` 从 `40.5/63.2 s` 降至 **`17.5/32.9 s`**，`barrier` `0.13/1.39 s`。
+- **正式机资源效率（2026-11-27，`sar` 全天 67 点 + 1 s 采样）**：CPU 日均 `%user 22.9 / %nice 6.1 / %system 9.2 / %iowait 6.2 / %idle 55.6`→**平均利用率 44.4%（1.78 核）**；轮内 1 s 采样 `busy 86–99%`（3.5–3.95 核，MODEL 4 worker 占 88–97%）；内存 `%memused` 均值 11.25%、峰值 17.05%，`MemAvailable` 轮内最低 **710 MB**、swap used 峰值 **4,353 MB**，全天 swap 进出各 **~1.5–1.7 MB/s**（日均 ~135 GB）。**瓶颈是"峰值全占 + 谷值全空"的锯齿负载，不是均值不足**；`MemoryHigh=4.5 GiB` 只保护自动初始化，不约束常态轮次与旧栈。
 - **已兑现的大项收益**：动量 V2 C 快速路径（`30.3→2.88 ms`/币）、局部 gen-0 GC（映射全代 GC `13.13 s→2.3 ms`）、MODEL 原生日期（特征 `-60%`）、P1 `LiveRebRobust40` 可缓存 JIT（目标计算 `~15 s→~1.4 s`；注意修改该文件后首轮会一次性重编译 `~29 s`）、新上币扩张免全量重建（每波消除 `73–97 分钟` 停单）。
-- **当前第一大剩余瓶颈**：**时序因子阶段（`FACTOR_BLOCKS`，低干扰 `~82–93 s`）**，CPU 热点集中于市值外部处理（`29.4` 核秒）、`ZfMeanQ`（`29.2`）、`Cci异常隔离`（`23.5`）、`111_输入隔离`（`17.0`）、`CorrBTC`（`16.3`）、`pandas→Polars`（`15.0`）；且与上游生产重叠窗口会引发数十秒 swap/IO 波动。
+- **当前第一大剩余瓶颈**：**时序因子阶段（`FACTOR_BLOCKS`，低干扰 `~82–93 s`）**，CPU 热点集中于市值外部处理（`29.4` 核秒）、`ZfMeanQ`（`29.2`）、`Cci异常隔离`（`23.5`）、`111_输入隔离`（`17.0`）、`CorrBTC`（`16.3`）、`pandas→Polars`（`15.0`）；且与上游生产重叠窗口会引发数十秒 swap/IO 波动。**修订回放（`replay`）的 `prepare 19.5 s` + `calc 27.9 s` 现已成为与因子阶段同量级的第二瓶颈。**
 
 完整阶段剖面与热点数据 → **[重要性能分析与瓶颈剖面](kb/performance-analysis.md)**
 
@@ -113,11 +119,11 @@
 
 ## 10. 未完成或未尝试的任务方向
 
-- **P0（近期）**：实施 [plan.md](../plan.md) 问题 B（24h 盈亏 `[未匹配]` 历史归属回填）；决策 `6c02e58` 是否同批发布；测试机同步 `edbbba3` 并在线上观察下一次自然新上币遥测；盘点正式机 86% 磁盘水位。
-- **P1（中期）**：问题 A Phase 2（两周观测后再评估零持仓退市/移除序列放宽）；闭环 Windows vs Linux 21 个现货杠杆准入规则差异；按独立 oracle 对 `ZfMeanQ`/`Cci`/`111`/市值等时序因子热点单项优化；评估 P4 相邻 `ticker` 复用。
-- **P2（条件推进）**：更广范围子策略模拟行情共享、修订 Arrow 读取再窄化、传统 45m/偶发聚合慢轮定位、1.1.12 历史映射账户影响对账、异步统计争用观察。
+- **P0（近期）**：盘点并经授权清理正式机 86% 磁盘水位（`Q4`）；持续观察 `Q1`/`Q3` 自然实战表现（`Q5` Phase 4 与 `Q6` 项目 1 已上线正式机闭环）。
+- **P1（中短期）**：`F5` Phase 5 子项目 2A（收口 `P5-A1` + `P5-C1` + `P5-D1`，测试机首轮自然轮验收通过，待多轮观察稳定与授权后合 `main`/发生产）；`F6` 项目 2B 生产端升级 `v2.0.2` 底座 + 消费端平滑衔接（**2B-1 & 2B-2 已在双仓隔离分支离线落地并通过跨仓契约验证**，待用户授权启动阶段 **2B-3** 测试机 24h 验收）；`F1b`/`F2`/`F3`/`F4`。
+- **P2（条件推进 / 推后独立需求）**：**`O8` Replay 阶段 `copy_s`/`restore_s` 深度优化（原 `P5-B1`/`P5-B2`，2026-11-23 裁决推后拆分为独立需求，本轮不再关注）**；以及更广范围子策略模拟行情共享、修订 Arrow 再窄化、传统 45m/偶发聚合慢轮定位等 `O1–O7`。
 
-完整优先级路线图 → **[未完成与未尝试的任务方向](kb/roadmap-and-backlog.md)**
+完整优先级路线图 → **[未完成与未尝试的任务方向](kb/roadmap-and-backlog.md)** · **[2026-11-23 Phase 5 低并发优化与生产端 `v2.0.2` 底座升级规划](2026-11-23-phase5-and-v202-migration-plan.md)**
 
 ---
 

@@ -1,0 +1,71 @@
+采集命令（两机相同，仅别名不同）：
+ssh alphatest 'echo "=== HOST ==="; hostname; date "+LOCAL %F %T %Z"; date -u "+UTC   %F %T"; echo "=== UPTIME ==="; uptime; echo "=== CPU ==="; grep -m1 "model name" /proc/cpuinfo; nproc; echo "=== MEM ==="; free -m; echo "=== DISK ==="; df -h /; echo "=== PM2 ==="; pm2 list --no-color 2>&1 | head -30; echo "=== PROCS ==="; ps -eo pid,ppid,etime,pcpu,pmem,cmd | grep -E "realtime_data|startup.py|server_robust40" | grep -v grep'
+
+================ alphatest / 43.173.122.28 / 2026-11-25 13:46:09 CST ================
+=== HOST ===
+VM-0-8-ubuntu
+LOCAL 2026-11-25 13:46:09 CST
+UTC   2026-11-25 05:46:09
+=== UPTIME ===
+ 13:46:09 up 47 days, 22:06,  2 users,  load average: 3.94, 1.56, 1.19
+=== CPU ===
+model name	: Intel(R) Xeon(R) CPU E5-26xx v4
+4
+=== MEM ===
+               total        used        free      shared  buff/cache   available
+Mem:            7685        5924        1180           1         902        1761
+Swap:          20479        1727       18752
+=== DISK ===
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/vda2       178G  120G   51G  71% /
+=== PM2 ===
+┌────┬──────────────────────┬─────────────┬─────────┬─────────┬──────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name                 │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼──────────────────────┼─────────────┼─────────┼─────────┼──────┬────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┼──────────┤
+│ 2  │ alphatrade-dryrun    │ default     │ N/A     │ fork    │ 1914052  │ 4D     │ 6    │ online    │ 0%       │ 95.8mb   │ ubuntu   │ disabled │
+│ 3  │ realtime_data        │ default     │ N/A     │ fork    │ 1066920  │ 2h     │ 4    │ online    │ 0%       │ 2.0gb    │ ubuntu   │ disabled │
+└────┴──────────────────────┴─────────────┴─────────┴─────────┴──────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┴──────────┘
+Module
+┌────┬────┬──────────────────────────────┬───────────┬──────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ module                       │ version       │ pid      │ status   │ ↺    │ cpu      │ mem      │ user     │
+├────┼────┼──────────────────────────────┼───────────┼──────┼──────────┼──────────┼──────────┼──────────┤
+│ 0  │ pm2-logrotate                │ 3.0.0         │ 2363321  │ online   │ 0    │ 0%       │ 15.1mb   │ ubuntu   │
+└────┴────┴──────────────────────────────┴───────────┴──────┴──────────┴──────────┴──────────┴──────────┘
+host metrics | cpu: 91.6% | ram usage: 83.1% | eth0: ⇓ 77kb/s ⇑ 12kb/s | disk: ⇓ 75.8mb/s ⇑ 56.7mb/s / 70.68%
+=== PROCS ===
+1066920 2363100    02:48:15  5.5 26.2 python /home/ubuntu/alpha/realtime_data.py
+1914052 2363100  4-04:48:50  0.6  1.2 /home/ubuntu/alphatrade-env/upgrade233/alpha311/bin/python -X utf8 -B /home/ubuntu/alphatrade/startup.py
+
+================ alphaprod / 43.167.235.164 / 2026-11-25 13:46:19 CST ================
+=== HOST ===
+VM-0-15-ubuntu
+LOCAL 2026-11-25 13:46:19 CST
+UTC   2026-11-25 05:46:19
+=== UPTIME ===
+ 13:46:19 up 312 days, 23:09,  2 users,  load average: 1.94, 2.41, 2.29
+=== CPU ===
+model name	: Intel(R) Xeon(R) Platinum 8255C CPU @ 2.50GHz
+4
+=== MEM ===
+               total        used        free      shared  buff/cache   available
+Mem:            7685        6335         206           1        1451        1349
+Swap:          18371         880       17491
+=== DISK ===
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/vda2       178G  148G   23G  87% /
+=== PM2 ===
+┌────┬───────────────────┬─────────────┬─────────┬─────────┬──────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name              │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼───────────────────┼─────────────┼─────────┼─────────┼──────┬────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┼──────────┤
+│ 0  │ alpha             │ default     │ N/A     │ fork    │ 3982664  │ 20D    │ 0    │ online    │ 0%       │ 102.7mb  │ ubuntu   │ disabled │
+│ 1  │ alpha2            │ default     │ N/A     │ fork    │ 3809122  │ 2D     │ 3    │ online    │ 0%       │ 193.6mb  │ ubuntu   │ disabled │
+│ 2  │ alphatrade        │ default     │ N/A     │ fork    │ 464274   │ 18D    │ 33   │ online    │ 0%       │ 41.3mb   │ ubuntu   │ disabled │
+│ 3  │ alphatradetest    │ default     │ N/A     │ fork    │ 3983440  │ 20D    │ 0    │ online    │ 0%       │ 147.1mb  │ ubuntu   │ disabled │
+└────┴───────────────────┴─────────────┴─────────┴─────────┴──────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┴──────────┘
+=== PROCS ===
+ 249185 3809122       01:35 75.4 59.7 python /home/ubuntu/alpha2/realtime_data.py
+ 249186 3809122       01:35 26.3  3.9 python /home/ubuntu/alpha2/realtime_data.py
+ 464274 3824630 18-14:29:19  0.4  0.5 python /home/ubuntu/alphatrade/startup.py
+3809122 3824630  2-00:11:34  2.4  2.5 python /home/ubuntu/alpha2/realtime_data.py
+3982664 3824630 20-04:24:24  0.8  1.3 python /home/ubuntu/alpha/realtime_data.py
+3983440 3824630 20-04:23:18  0.1  1.9 python /home/ubuntu/alphatradetest/startup.py

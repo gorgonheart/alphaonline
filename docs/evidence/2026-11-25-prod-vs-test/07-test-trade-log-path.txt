@@ -1,0 +1,54 @@
+=== pm2 describe dryrun ===
+│ status            │ online                                                                 │
+│ restarts          │ 6                                                                      │
+│ uptime            │ 4D                                                                     │
+│ script path       │ /home/ubuntu/alphatrade/research/live25_restart_20261104/run-dryrun.sh │
+│ script args       │ N/A                                                                    │
+│ error log path    │ /home/ubuntu/alphatrade/reports/startup.log                            │
+│ out log path      │ /home/ubuntu/alphatrade/reports/startup.log                            │
+│ pid path          │ /home/ubuntu/.pm2/pids/alphatrade-dryrun-2.pid                         │
+│ interpreter       │ /bin/bash                                                              │
+│ interpreter args  │ N/A                                                                    │
+│ exec cwd          │ /home/ubuntu/alphatrade                                                │
+│ unstable restarts │ 0                                                                      │
+=== logs modified today (excluding test/) ===
+/home/ubuntu/alphatrade/data/25m-eart1106/position_results/2026-11-25_11.pkl	26792	11:29
+/home/ubuntu/alphatrade/data/25m-eart1106/position_results/2026-11-25_12.pkl	26792	12:28
+/home/ubuntu/alphatrade/data/25m-eart1106/position_results/2026-11-25_13.pkl	26792	13:28
+/home/ubuntu/alphatrade/data/25m-eart1106/select_coin/2026-11-25_11.pkl	331682	11:29
+/home/ubuntu/alphatrade/data/25m-eart1106/select_coin/2026-11-25_12.pkl	332394	12:28
+/home/ubuntu/alphatrade/data/25m-eart1106/select_coin/2026-11-25_13.pkl	331739	13:28
+/home/ubuntu/alphatrade/data/25m-eart1106/账户信息/equity.csv	84223	13:30
+/home/ubuntu/alphatrade/data/25m-eart1106/账户信息/equity.pkl	89019	13:30
+/home/ubuntu/alphatrade/data/25m-eart1106/账户信息/pnl_history.pkl	3442460	13:30
+/home/ubuntu/alphatrade/data/25m-eart1106/账户信息/pos_spot.pkl	444767	13:30
+/home/ubuntu/alphatrade/data/25m-eart1106/账户信息/pos_swap.pkl	1101022	13:30
+/home/ubuntu/alphatrade/data/25m-eart1106/账户信息/spot_cost_estimate.json	1164	13:30
+/home/ubuntu/alphatrade/data/25m-eart1106/账户信息/spot_position_history.pkl	22317	13:26
+/home/ubuntu/alphatrade/data/25m-eart1106/账户信息/sub_stg_eqs.pkl	24995271	13:30
+/home/ubuntu/alphatrade/data/25m-eart1106/账户信息/swap_position_history.pkl	1242044	13:26
+/home/ubuntu/alphatrade/data/25m-eart1106/账户换仓信息/20261125_11.csv	2717	11:29
+/home/ubuntu/alphatrade/data/25m-eart1106/账户换仓信息/20261125_12.csv	2906	12:28
+/home/ubuntu/alphatrade/data/25m-eart1106/账户换仓信息/20261125_13.csv	2827	13:28
+/home/ubuntu/alphatrade/data/cache/all_factors_kline.parquet	338728	13:27
+/home/ubuntu/alphatrade/data/cache/exginfo_spot.pkl	53712	13:26
+/home/ubuntu/alphatrade/data/cache/exginfo_swap.pkl	80405	13:26
+/home/ubuntu/alphatrade/data/runtime/df_spot_ratio.pkl	3141824	13:28
+/home/ubuntu/alphatrade/data/runtime/df_swap_ratio.pkl	54440467	13:28
+/home/ubuntu/alphatrade/data/runtime/spot_ratio_20261125_1325.csv	150	13:28
+/home/ubuntu/alphatrade/data/runtime/swap_ratio_20261125_1325.csv	1390	13:28
+/home/ubuntu/alphatrade/data/snapshot/25m-eart1106_MODEL_ROBUST40_V1_25m/snapshot_time.txt	25	13:28
+/home/ubuntu/alphatrade/data/snapshot/25m-eart1106_MODEL_ROBUST40_V1_25m/warmup.pkl	11446	13:28
+/home/ubuntu/alphatrade/data/仓位管理回测结果/final_select_results.pkl	71035	13:27
+/home/ubuntu/alphatrade/data/子策略回测结果/25m-eart1106_MODEL_ROBUST40_V1_25m/仓位比例.csv	3521380	13:28
+/home/ubuntu/alphatrade/data/子策略回测结果/25m-eart1106_MODEL_ROBUST40_V1_25m/仓位比例-原始.csv	3521380	13:28
+/home/ubuntu/alphatrade/reports/startup.log	1189047	13:45
+/home/ubuntu/.pm2/logs/realtime-data-out.log	3752079	13:47
+=== data/runtime ===
+total 56256
+drwx------  2 ubuntu ubuntu     4096 Nov 25 13:28 .
+drwxrwxr-x 15 ubuntu ubuntu     4096 Nov 25 13:26 ..
+-rw-------  1 ubuntu ubuntu  3141824 Nov 25 13:28 df_spot_ratio.pkl
+-rw-------  1 ubuntu ubuntu 54440467 Nov 25 13:28 df_swap_ratio.pkl
+-rw-------  1 ubuntu ubuntu      150 Nov 25 13:28 spot_ratio_20261125_1325.csv
+-rw-------  1 ubuntu ubuntu     1390 Nov 25 13:28 swap_ratio_20261125_1325.csv

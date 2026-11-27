@@ -1,0 +1,32 @@
+
+--- 2026-11-26_17 notional ratio (test/prod), same-direction symbols=126 ---
+median=0.6850  mean=0.7569  p10=0.4549  p90=1.0008  min=0.3666  max=1.0036
+sum notional test=180048.65 prod=303388.60 ratio=0.5935
+ratio histogram (rounded 0.1): {0.4: 12, 0.5: 24, 0.6: 25, 0.7: 4, 1.0: 61}
+
+--- 2026-11-26_18 notional ratio (test/prod), same-direction symbols=126 ---
+median=0.6193  mean=0.7512  p10=0.4601  p90=1.0007  min=0.3767  max=1.0106
+sum notional test=211054.71 prod=277798.82 ratio=0.7597
+ratio histogram (rounded 0.1): {0.4: 10, 0.5: 32, 0.6: 23, 0.7: 1, 1.0: 60}
+by strategy (median ratio, n):
+  #0.Funding0021NegativeDomain       median=0.5807 n=30
+  #0.Strategy_VolumeMaxBias          median=0.5001 n=19
+  #0.Strategy_大学生                    median=0.9999 n=18
+  #0.Strategy_截面因子                   median=0.9996 n=1
+  #0.minmax59614空头                   median=1.0000 n=1
+  #0.动量空头                            median=1.0007 n=2
+  #0.双均线                             median=0.7871 n=4
+  #0.线上实盘多头                          median=0.7743 n=4
+  #0.选0.2                            median=0.9999 n=9
+  #1.Funding0021NegativeDomain       median=0.6109 n=3
+  #1.Strategy_截面因子                   median=0.9990 n=5
+  #1.动量空头                            median=0.9990 n=1
+  #1.双均线                             median=0.5621 n=5
+  #1.线上实盘多头                          median=0.5541 n=2
+  #1.选0.2                            median=0.6235 n=5
+  #2.Funding0021NegativeDomain       median=0.9965 n=6
+  #2.Strategy_动态回撤阈值                 median=1.0016 n=3
+  #2.minmax59614空头                   median=0.5721 n=1
+  #2.选0.2                            median=0.9999 n=2
+  #3.Funding0021NegativeDomain       median=1.0005 n=4
+  #3.线上实盘多头                          median=0.4051 n=1

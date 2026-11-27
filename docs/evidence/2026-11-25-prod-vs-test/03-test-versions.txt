@@ -1,0 +1,138 @@
+=== trade logs dir ===
+total 812
+drwxr-xr-x  2 ubuntu ubuntu   4096 Nov 23 21:47 .
+drwx------ 19 ubuntu ubuntu   4096 Nov  6 23:11 ..
+-rw-rw-r--  1 ubuntu ubuntu 193122 Nov 20 00:13 benchmark_phase0_abba.log
+-rw-rw-r--  1 ubuntu ubuntu 426930 Nov 19 23:59 benchmark_phase0_abba.log.2026-11-19
+-rw-rw-r--  1 ubuntu ubuntu  33243 Nov 20 11:51 benchmark_phase3_step6.log
+-rw-rw-r--  1 ubuntu ubuntu   5124 Nov 20 00:00 -c.log
+-rw-rw-r--  1 ubuntu ubuntu      0 Nov  5 11:14 -c.log.2026-11-05
+-rw-rw-r--  1 ubuntu ubuntu    231 Nov 19 23:30 -c.log.2026-11-19
+-rw-rw-r--  1 ubuntu ubuntu      0 Nov 20 14:37 -.log
+-rw-rw-r--  1 ubuntu ubuntu   4483 Nov 23 21:47 __main__.log
+-rw-rw-r--  1 ubuntu ubuntu    222 Nov  4 17:18 __main__.log.2026-11-04
+-rw-rw-r--  1 ubuntu ubuntu    690 Nov 19 23:24 __main__.log.2026-11-19
+-rw-rw-r--  1 ubuntu ubuntu  50962 Nov 20 14:37 __main__.log.2026-11-20
+-rw-rw-r--  1 ubuntu ubuntu  14303 Nov 22 23:19 __main__.log.2026-11-22
+-rw-r--r--  1 ubuntu ubuntu   1212 Nov 21 11:38 server_robust40.log
+-rw-r--r--  1 ubuntu ubuntu   8088 Nov  4 02:29 server_robust40.log.2026-11-04
+-rw-r--r--  1 ubuntu ubuntu  13367 Nov  5 23:40 server_robust40.log.2026-11-05
+-rw-r--r--  1 ubuntu ubuntu   1109 Nov  6 23:43 server_robust40.log.2026-11-06
+-rw-r--r--  1 ubuntu ubuntu   1109 Nov 12 19:37 server_robust40.log.2026-11-12
+-rw-r--r--  1 ubuntu ubuntu   2218 Nov 17 20:38 server_robust40.log.2026-11-17
+-rw-r--r--  1 ubuntu ubuntu   7292 Nov 20 10:37 server_robust40.log.2026-11-20
+-rw-rw-r--  1 ubuntu ubuntu      0 Nov 20 14:37 statistics.log
+-rw-rw-r--  1 ubuntu ubuntu   1304 Nov  4 06:32 ubuntu_io_optimization.log
+=== pm2 logs ===
+total 18076
+-rw-rw-r-- 1 ubuntu ubuntu    6292 Nov  4 00:00 realtime-data-error__2026-11-04_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu   18092 Nov  6 00:00 realtime-data-error__2026-11-06_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu     480 Nov  7 00:00 realtime-data-error__2026-11-07_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu     480 Nov 19 00:00 realtime-data-error__2026-11-19_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu    5496 Nov 22 00:00 realtime-data-error__2026-11-22_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu     480 Nov 24 00:00 realtime-data-error__2026-11-24_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu   11945 Nov 25 10:57 realtime-data-error.log
+-rw-rw-r-- 1 ubuntu ubuntu   59797 Nov  4 00:00 realtime-data-out__2026-11-04_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu  529515 Nov  5 00:00 realtime-data-out__2026-11-05_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu  537260 Nov  6 00:00 realtime-data-out__2026-11-06_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu  338705 Nov  7 00:00 realtime-data-out__2026-11-07_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu  280343 Nov  8 00:00 realtime-data-out__2026-11-08_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu  279997 Nov  9 00:00 realtime-data-out__2026-11-09_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu  280006 Nov 10 00:00 realtime-data-out__2026-11-10_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu  281119 Nov 11 00:00 realtime-data-out__2026-11-11_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu  280001 Nov 12 00:00 realtime-data-out__2026-11-12_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu  281408 Nov 13 00:00 realtime-data-out__2026-11-13_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu  280108 Nov 14 00:00 realtime-data-out__2026-11-14_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu  280362 Nov 15 00:00 realtime-data-out__2026-11-15_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu  283001 Nov 16 00:00 realtime-data-out__2026-11-16_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu  283081 Nov 17 00:00 realtime-data-out__2026-11-17_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu  280030 Nov 18 00:00 realtime-data-out__2026-11-18_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu  148160 Nov 19 00:00 realtime-data-out__2026-11-19_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu  245232 Nov 21 00:00 realtime-data-out__2026-11-21_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu  407336 Nov 22 00:00 realtime-data-out__2026-11-22_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu  532595 Nov 23 00:00 realtime-data-out__2026-11-23_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu 1306409 Nov 24 00:00 realtime-data-out__2026-11-24_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu 7351866 Nov 25 00:00 realtime-data-out__2026-11-25_00-00-00.log
+-rw-rw-r-- 1 ubuntu ubuntu 3750544 Nov 25 13:46 realtime-data-out.log
+=== trade GIT ===
+fatal: not a git repository (or any of the parent directories): .git
+fatal: not a git repository (or any of the parent directories): .git
+=== alpha GIT ===
+7790bc1
+ M .gitignore
+ M config.py
+ M core/arrow_publish.py
+ M core/backfill.py
+ M core/binance_fetcher_async.py
+ M core/binance_market_async.py
+ M core/binance_update.py
+ M core/candle_manager.py
+ M core/coin_cap.py
+ M core/data_api_update.py
+ M core/factor_calc.py
+ M core/handle.py
+ M core/history_data/candle.py
+ M core/history_data/funding.py
+ M core/history_data/history.py
+ M core/history_data/utils.py
+ M core/preprocess.py
+ M core/quantclass_async.py
+ M core/resample_candle.py
+ M core/symbol_filter.py
+ M core/symbol_match.py
+ M core/ts_manager.py
+ M core/utils/file_system.py
+ M core/version.py
+ M realtime_data.py
+ M tests/test_shared_factor_pool.py
+ M tools/deploy_alpha.sh
+?? backups/
+?? core/alert.py
+?? core/app.py
+=== alpha deploy files ===
+/home/ubuntu/alpha/config.py	8026	2026-11-25 00:28:41.3915425560
+/home/ubuntu/alpha/core/pipeline/barrier.py	5501	2026-11-25 10:53:08.0716403810
+/home/ubuntu/alpha/core/pipeline/__pycache__/barrier.cpython-311.pyc	5722	2026-11-25 10:56:45.1266563280
+/home/ubuntu/alpha/core/pipeline/__pycache__/data_update.cpython-311.pyc	28226	2026-11-25 00:31:30.4885581120
+/home/ubuntu/alpha/core/pipeline/__pycache__/resample.cpython-311.pyc	52862	2026-11-25 10:56:24.0746545180
+/home/ubuntu/alpha/core/pipeline/__pycache__/runtime_supervisor.cpython-311.pyc	29326	2026-11-25 00:31:30.3085580040
+/home/ubuntu/alpha/core/pipeline/__pycache__/update_cycle.cpython-311.pyc	39986	2026-11-25 10:56:45.1346563290
+/home/ubuntu/alpha/core/pipeline/resample.py	42984	2026-11-25 10:53:14.4266408310
+/home/ubuntu/alpha/core/pipeline/update_cycle.py	33151	2026-11-25 10:53:19.0496411590
+/home/ubuntu/alpha/core/__pycache__/arrow_demand.cpython-311.pyc	1578	2026-11-25 00:31:41.6465647660
+/home/ubuntu/alpha/core/__pycache__/arrow_publish.cpython-311.pyc	1585	2026-11-25 00:31:30.2575579740
+/home/ubuntu/alpha/core/__pycache__/candle_manager.cpython-311.pyc	275	2026-11-25 00:31:30.2625579770
+/home/ubuntu/alpha/core/__pycache__/handle.cpython-311.pyc	28153	2026-11-25 00:28:41.4075425560
+/home/ubuntu/alpha/core/__pycache__/resample_candle.cpython-311.pyc	761	2026-11-25 10:56:24.0626545170
+/home/ubuntu/alpha/core/__pycache__/symbol_filter.cpython-311.pyc	274	2026-11-25 00:31:39.0065631920
+/home/ubuntu/alpha/core/__pycache__/symbol_match.cpython-311.pyc	271	2026-11-25 00:31:39.0085631930
+/home/ubuntu/alpha/core/__pycache__/ts_manager.cpython-311.pyc	263	2026-11-25 00:31:39.0045631900
+/home/ubuntu/alpha/core/snapshot/__pycache__/__init__.cpython-311.pyc	299	2026-11-25 00:31:39.0025631890
+/home/ubuntu/alpha/core/storage/candle_manager.py	12568	2026-11-25 10:53:23.7876414950
+/home/ubuntu/alpha/core/storage/__pycache__/candle_manager.cpython-311.pyc	21473	2026-11-25 10:56:24.0436545160
+/home/ubuntu/alpha/core/storage/__pycache__/writer.cpython-311.pyc	27311	2026-11-25 10:56:45.0656563230
+/home/ubuntu/alpha/core/storage/writer.py	19880	2026-11-25 10:53:27.4856417560
+/home/ubuntu/alpha/core/strategy/arrow_publish.py	9938	2026-11-25 00:02:29.9161022000
+/home/ubuntu/alpha/core/strategy/preprocess.py	68755	2026-11-25 10:53:32.0166420750
+/home/ubuntu/alpha/core/strategy/__pycache__/arrow_publish.cpython-311.pyc	16116	2026-11-25 00:31:30.1165578900
+/home/ubuntu/alpha/core/strategy/__pycache__/preprocess.cpython-311.pyc	83545	2026-11-25 10:56:24.2766545360
+/home/ubuntu/alpha/core/ws/__pycache__/ws_local_cache.cpython-311.pyc	19569	2026-11-25 10:56:24.1246545230
+/home/ubuntu/alpha/core/ws/__pycache__/ws_runner.cpython-311.pyc	23308	2026-11-25 00:31:30.3215580120
+/home/ubuntu/alpha/core/ws/ws_local_cache.py	12603	2026-11-25 10:53:36.6066423990
+=== data products ===
+total 60
+drwxrwxr-x 15 ubuntu ubuntu 4096 Nov 25 13:26 .
+drwx------ 19 ubuntu ubuntu 4096 Nov  6 23:11 ..
+drwx------  6 ubuntu ubuntu 4096 Nov  4 03:20 15m-nheart1020
+drwx------  7 ubuntu ubuntu 4096 Nov  4 23:31 25m-eart1020
+drwx------  6 ubuntu ubuntu 4096 Nov  6 00:29 25m-eart1106
+drwxr-xr-x  6 ubuntu ubuntu 4096 Nov  4 09:29 45m_gonheart1020
+drwx------  6 ubuntu ubuntu 4096 Nov  4 02:10 5m-onheart1020
+drwx------  2 ubuntu ubuntu 4096 Nov 25 13:27 cache
+drwx------  4 ubuntu ubuntu 4096 Nov  6 23:27 model_replay
+drwx------  2 ubuntu ubuntu 4096 Nov 25 13:28 runtime
+drwx------  2 ubuntu ubuntu 4096 Nov  5 23:28 server_account_locks
+drwx------  6 ubuntu ubuntu 4096 Nov  5 23:28 server_initialization
+drwxrwxr-x  4 ubuntu ubuntu 4096 Nov 25 11:29 snapshot
+drwxrwxr-x  2 ubuntu ubuntu 4096 Nov  4 01:49 仓位管理回测结果
+drwxrwxr-x  6 ubuntu ubuntu 4096 Nov 25 13:26 子策略回测结果

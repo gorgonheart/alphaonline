@@ -1,0 +1,35 @@
+=== RESOURCES (2nd sample) ===
+2026-11-25 13:52:50 CST
+ 13:52:50 up 47 days, 22:13,  2 users,  load average: 0.39, 0.87, 1.02
+               total        used        free      shared  buff/cache   available
+Mem:            7685        3293        1648           1        3050        4392
+Swap:          20479        1578       18901
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/vda2       178G  120G   51G  71% /
+=== TRADE ERROR COUNTS (today log) ===
+0
+=== PM2 ERROR LOG SIZE/TAIL ===
+11945 /home/ubuntu/.pm2/logs/realtime-data-error.log
+    buf = self._recv(4)
+          ^^^^^^^^^^^^^
+  File "/home/ubuntu/miniconda3/envs/alpha311/lib/python3.11/multiprocessing/connection.py", line 395, in _recv
+    chunk = read(handle, remaining)
+            ^^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt
+=== EQUITY TAIL ===
+2026-11-25 11:25:00,2026-11-25 11:32:05.423280,17640.00333626,7105.259315598119,13179.71613303,20284.97544862812,-9819.23613322,57,69,0.1872204464832671,0.0942606624445534,binance_pm_actualEquity,USD,25
+2026-11-25 12:25:00,2026-11-25 12:30:46.066508,17652.25527034,7107.377232783655,13134.079188879998,20241.456421663654,-9447.46752884,57,69,0.1871242687248162,0.09578298817494,binance_pm_actualEquity,USD,25
+2026-11-25 13:25:00,2026-11-25 13:30:32.770620,17715.44498149,7107.879646601925,12755.41459981,19863.294246411926,-9619.223167929998,55,69,0.18647546499873896,0.09512159302070598,binance_pm_actualEquity,USD,25
+=== REBALANCE CSV LINES ===
+  74 /home/ubuntu/alphatrade/data/25m-eart1106/账户换仓信息/20261125_11.csv
+  79 /home/ubuntu/alphatrade/data/25m-eart1106/账户换仓信息/20261125_12.csv
+  77 /home/ubuntu/alphatrade/data/25m-eart1106/账户换仓信息/20261125_13.csv
+ 230 total
+=== KEY DATA SIZES ===
+3.7G	/home/ubuntu/alpha/data/preprocess_1h_resample/25m
+407M	/home/ubuntu/alpha/data/binance_spot_5m
+590M	/home/ubuntu/alpha/data/binance_swap_5m
+1.1G	/home/ubuntu/alphatrade/data/snapshot/25m-eart1106_MODEL_ROBUST40_V1_25m
+=== OOM ===
+0
+no kern.log access

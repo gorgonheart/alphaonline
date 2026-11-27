@@ -1,0 +1,65 @@
+=== 2026-11-25_11 ===
+select_coin shape test=[3777, 15] prod=[3778, 15] | groups test=257 prod=258 | cap_weight_total test=1308.79166667 prod=1309.04166667
+  groups: only_test=0 only_prod=1 common=257 value_diff=2
+   ONLY_PROD SHELLUSDT|#3.线上实盘多头|1|1|0 -> [3, 0.75]
+   DIFF COWUSDT|#1.Funding0021NegativeDomain|-1|1|0 test=[24, 6.0] prod=[23, 5.75]
+   DIFF LISTAUSDT|#3.线上实盘多头|1|1|0 test=[2, 0.5] prod=[1, 0.25]
+  parent strategies: test=11 prod=11 diff=2
+   PARENT_DIFF S13-Funding0021NegativeDomain test=[2611, 652.75] prod=[2610, 652.5]
+   PARENT_DIFF S5-动量实盘多头 test=[28, 7.0] prod=[30, 7.5]
+position_results shape test=[538, 6] prod=[538, 6] | nonzero 122/122 | long 50/50 | short 72/72 | flat 416/416
+  abs(target_lots) test=3321029.0 prod=3975096.0 | direction_diff_symbols=0
+=== 2026-11-25_12 ===
+select_coin shape test=[3788, 15] prod=[3789, 15] | groups test=255 prod=256 | cap_weight_total test=1313.375 prod=1313.625
+  groups: only_test=0 only_prod=1 common=255 value_diff=2
+   ONLY_PROD SHELLUSDT|#3.线上实盘多头|1|1|0 -> [3, 0.75]
+   DIFF COWUSDT|#1.Funding0021NegativeDomain|-1|1|0 test=[23, 5.75] prod=[22, 5.5]
+   DIFF LISTAUSDT|#3.线上实盘多头|1|1|0 test=[2, 0.5] prod=[1, 0.25]
+  parent strategies: test=11 prod=11 diff=2
+   PARENT_DIFF S13-Funding0021NegativeDomain test=[2617, 654.25] prod=[2616, 654.0]
+   PARENT_DIFF S5-动量实盘多头 test=[28, 7.0] prod=[30, 7.5]
+position_results shape test=[538, 6] prod=[538, 6] | nonzero 122/122 | long 50/50 | short 72/72 | flat 416/416
+  abs(target_lots) test=3252974.0 prod=3882659.0 | direction_diff_symbols=0
+=== 2026-11-25_13 ===
+select_coin shape test=[3781, 15] prod=[3781, 15] | groups test=251 prod=251 | cap_weight_total test=1313.29166667 prod=1313.29166667
+  groups: only_test=1 only_prod=1 common=250 value_diff=1
+   ONLY_TEST LISTAUSDT|#3.线上实盘多头|1|1|0 -> [1, 0.25]
+   ONLY_PROD SHELLUSDT|#3.线上实盘多头|1|1|0 -> [2, 0.5]
+   DIFF COWUSDT|#1.Funding0021NegativeDomain|-1|1|0 test=[22, 5.5] prod=[21, 5.25]
+  parent strategies: test=11 prod=11 diff=2
+   PARENT_DIFF S13-Funding0021NegativeDomain test=[2615, 653.75] prod=[2614, 653.5]
+   PARENT_DIFF S5-动量实盘多头 test=[23, 5.75] prod=[24, 6.0]
+position_results shape test=[538, 6] prod=[538, 6] | nonzero 120/120 | long 48/48 | short 72/72 | flat 418/418
+  abs(target_lots) test=3282024.0 prod=3889513.0 | direction_diff_symbols=0
+=== latest cutpoint row-level (13) ===
+row keys test=3781 prod=3781 | only_test=2 only_prod=2 | count_mismatch=0
+  ONLY_TEST_ROW ('COWUSDT', '#1.Funding0021NegativeDomain', -1, 1, 0, 2, 'swap', 'S13-Funding0021NegativeDomain', 0.25) x1
+  ONLY_TEST_ROW ('LISTAUSDT', '#3.线上实盘多头', 1, 1, 0, 2, 'swap', 'S5-动量实盘多头', 0.25) x1
+  ONLY_PROD_ROW ('SHELLUSDT', '#3.线上实盘多头', 1, 1, 0, 2, 'swap', 'S5-动量实盘多头', 0.25) x1
+  ONLY_PROD_ROW ('SHELLUSDT', '#3.线上实盘多头', 1, 1, 0, 3, 'swap', 'S5-动量实盘多头', 0.25) x1
+signal columns compared (group-level): 方向, 是否交易, is_spot, order_first
+  close: test n=3781 min=0.000588 max=729.59 | prod n=3781 min=0.000588 max=729.59
+  next_close: test n=3596 min=0.000855 max=731.85 | prod n=3596 min=0.000855 max=731.85
+  target_alloc_ratio: test n=3781 min=-0.0109416 max=0.0148519 | prod n=3781 min=-0.0109302 max=0.0148519
+=== 25m aligned cutoffs (UTC) ===
+cutoff | test mode/status | prod mode/status | total test/prod/diff | prepare test/prod | account_calc test/prod | input_read test/prod | changed_series test/prod
+2026-11-25 00:25:00 | incremental/ok | replay/ok | 118.87/143.77/-24.90 | 4.11/23.12 | 109.50/102.81 | 2.32/6.24 | None/39
+2026-11-25 01:25:00 | replay/ok | replay/ok | 140.25/146.84/-6.59 | 20.35/29.83 | 114.09/99.23 | 3.28/11.65 | 3/49
+2026-11-25 02:25:00 | replay/ok | replay/ok | 193.73/128.55/+65.18 | 26.91/23.38 | 160.18/87.40 | 4.23/6.25 | 390/84
+2026-11-25 03:25:00 | incremental/ok | replay/ok | 138.14/131.46/+6.68 | 8.77/23.32 | 118.99/87.55 | 6.78/7.24 | None/23
+2026-11-25 04:25:00 | incremental/ok | replay/ok | 120.18/128.54/-8.37 | 6.22/23.46 | 106.63/87.38 | 4.27/7.03 | None/43
+test 25m all n=5 | total=138.14 prepare=8.77 account_calc=114.09 input_read=4.23 changed_series=196.5
+prod 25m all n=5 | total=131.46 prepare=23.38 account_calc=87.55 input_read=7.03 changed_series=43
+prod all 6 accounts n=28 | total=137.91 prepare=23.88 account_calc=92.12 input_read=7.42 changed_series=49.5
+=== upstream ready delay medians (s since XX:M5:00) ===
+test all_today n=56 | spot_ready=68.0 swap_ready=89.0 | barrier_spot=6.51 barrier_swap=13.21 | missed_spot_zero=52/56 missed_swap_zero=29/56 | market_dict_spot=29.9 market_dict_swap=52.5
+test after_11h n=11 | spot_ready=76.0 swap_ready=113.0 | barrier_spot=1.12 barrier_swap=2.31 | missed_spot_zero=11/11 missed_swap_zero=11/11 | market_dict_spot=41.4 market_dict_swap=70.0
+prod all_today n=83 | spot_ready=83.0 swap_ready=104.0 | barrier_spot=-1.00 barrier_swap=-1.00 | missed_spot_zero=0/83 missed_swap_zero=0/83 | market_dict_spot=38.9 market_dict_swap=62.6
+prod after_11h n=17 | spot_ready=84.0 swap_ready=106.0 | barrier_spot=-1.00 barrier_swap=-1.00 | missed_spot_zero=0/17 missed_swap_zero=0/17 | market_dict_spot=39.1 market_dict_swap=64.2
+=== prod 6 accounts latest rounds ===
+15m-nheart1104 cutoff=2026-11-25 04:15:00 mode=replay total_s=132.15 account_calc=90.47 prepare=28.96 input_read=11.37 changed_series=59
+25m-eart1106 cutoff=2026-11-25 04:25:00 mode=replay total_s=128.54 account_calc=87.38 prepare=23.46 input_read=7.03 changed_series=43
+35m_t1104 cutoff=2026-11-25 04:35:00 mode=replay total_s=136.46 account_calc=88.41 prepare=28.17 input_read=10.16 changed_series=56
+45m_gonheart1104 cutoff=2026-11-25 03:45:00 mode=replay total_s=130.46 account_calc=87.36 prepare=22.74 input_read=6.99 changed_series=24
+55m_o.rgonheart1104 cutoff=2026-11-25 03:55:00 mode=replay total_s=130.67 account_calc=87.57 prepare=22.89 input_read=6.57 changed_series=15
+5m-onheart1104 cutoff=2026-11-25 04:05:00 mode=replay total_s=139.35 account_calc=93.78 prepare=26.14 input_read=10.02 changed_series=24

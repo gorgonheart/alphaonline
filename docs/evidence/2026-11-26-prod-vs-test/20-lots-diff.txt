@@ -1,0 +1,44 @@
+
+--- 2026-11-26_17 ---
+symbols=535 both_flat=408 same_dir=126 dir_or_zero_mismatch=1
+sum|target_lots| test=3126087 prod=4035725 diff=-909638 (-22.54%)
+max |lots diff| = 217451.000000 at IOSTUSDT
+max relative  = 100.0000% at KERNELUSDT
+symbols with relative lots diff >1%: 66
+  IOSTUSDT       test= 208559.000000 prod= 426010.000000 diff=-217451.000000 rel= -51.04% price 0.0006099/0.0006095
+  DOODUSDT       test=  91183.000000 prod= 204090.000000 diff=-112907.000000 rel= -55.32% price 0.001395/0.001394
+  AUDIOUSDT      test= 119101.000000 prod= 226698.000000 diff=-107597.000000 rel= -47.46% price 0.01068/0.01068
+  WUSDT          test= -73564.000000 prod=-149435.000000 diff= +75871.000000 rel= +50.77% price 0.008698/0.0087
+  SOPHUSDT       test=  88214.000000 prod= 154907.000000 diff= -66693.000000 rel= -43.05% price 0.000842/0.000844
+  BBUSDT         test=  68655.000000 prod= 119824.000000 diff= -51169.000000 rel= -42.70% price 0.00507/0.005066
+  RAREUSDT       test= -79185.000000 prod=-114468.000000 diff= +35283.000000 rel= +30.82% price 0.01162/0.01162
+  GUSDT          test= -24107.000000 prod= -51568.000000 diff= +27461.000000 rel= +53.25% price 0.002765/0.002763
+  1000BONKUSDT   test= -20228.000000 prod= -40240.000000 diff= +20012.000000 rel= +49.73% price 0.002192/0.002192
+  PLAYUSDT       test=  17887.000000 prod=  35684.000000 diff= -17797.000000 rel= -49.87% price 0.007111/0.007113
+  ESPORTSUSDT    test=  12976.000000 prod=  29825.000000 diff= -16849.000000 rel= -56.49% price 0.009802/0.009802
+  KOMAUSDT       test=   9632.000000 prod=  23652.000000 diff= -14020.000000 rel= -59.28% price 0.013205/0.013204
+  LYNUSDT        test=   7473.000000 prod=  17925.000000 diff= -10452.000000 rel= -58.31% price 0.01702/0.01704
+  HAEDALUSDT     test=   6928.000000 prod=  16309.000000 diff=  -9381.000000 rel= -57.52% price 0.01836/0.01836
+  ALPINEUSDT     test=  13736.000000 prod=  22967.000000 diff=  -9231.000000 rel= -40.19% price 0.2534/0.2532
+
+--- 2026-11-26_18 ---
+symbols=535 both_flat=407 same_dir=126 dir_or_zero_mismatch=2
+sum|target_lots| test=3145344 prod=4036778 diff=-891434 (-22.08%)
+max |lots diff| = 212960.000000 at IOSTUSDT
+max relative  = 100.0000% at KERNELUSDT
+symbols with relative lots diff >1%: 68
+  IOSTUSDT       test= 213050.000000 prod= 426010.000000 diff=-212960.000000 rel= -49.99% price 0.000609/0.000609
+  DOODUSDT       test=  92942.000000 prod= 204090.000000 diff=-111148.000000 rel= -54.46% price 0.001396/0.001395
+  AUDIOUSDT      test= 122058.000000 prod= 226698.000000 diff=-104640.000000 rel= -46.16% price 0.01063/0.01065
+  SOPHUSDT       test=  73535.000000 prod= 154907.000000 diff= -81372.000000 rel= -52.53% price 0.000844/0.000843
+  WUSDT          test= -69939.000000 prod=-149435.000000 diff= +79496.000000 rel= +53.20% price 0.008625/0.008622
+  BBUSDT         test=  70313.000000 prod= 119824.000000 diff= -49511.000000 rel= -41.32% price 0.005085/0.005081
+  GUSDT          test= -23733.000000 prod= -51568.000000 diff= +27835.000000 rel= +53.98% price 0.002763/0.002764
+  1000BONKUSDT   test= -19732.000000 prod= -40240.000000 diff= +20508.000000 rel= +50.96% price 0.002207/0.002207
+  PLAYUSDT       test=  18422.000000 prod=  35684.000000 diff= -17262.000000 rel= -48.37% price 0.007043/0.007043
+  ESPORTSUSDT    test=  13160.000000 prod=  29825.000000 diff= -16665.000000 rel= -55.88% price 0.009859/0.009854
+  KOMAUSDT       test=   9765.000000 prod=  23652.000000 diff= -13887.000000 rel= -58.71% price 0.013286/0.013302
+  1000PEPEUSDT   test= -21856.000000 prod= -35526.000000 diff= +13670.000000 rel= +38.48% price 0.0035502/0.0035535
+  BLESSUSDT      test=  10303.000000 prod=  20865.000000 diff= -10562.000000 rel= -50.62% price 0.017361/0.017475
+  LYNUSDT        test=   7614.000000 prod=  17925.000000 diff= -10311.000000 rel= -57.52% price 0.01704/0.01703
+  HAEDALUSDT     test=   7176.000000 prod=  16309.000000 diff=  -9133.000000 rel= -56.00% price 0.01808/0.01807

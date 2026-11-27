@@ -1,0 +1,20 @@
+25m专属          preprocess_1h_resample/25m                                     test=   3764.1 MiB prod=   3869.3 MiB delta=   -105.2 MiB (-2.72%) files 43/22 ready 25/4
+25m专属          binance_spot_1h_resample/25m                                   test=    430.7 MiB prod=    451.8 MiB delta=    -21.1 MiB (-4.67%) files 1046/1046 ready 523/523
+25m专属          data_api_spot_1h_resample/25m                                  test=    422.1 MiB prod=    422.2 MiB delta=     -0.1 MiB (-0.02%) files 1030/1042 ready 515/521
+25m专属          binance_swap_1h_resample/25m                                   test=    559.6 MiB prod=    580.8 MiB delta=    -21.2 MiB (-3.64%) files 1544/1544 ready 772/772
+25m专属          data_api_swap_1h_resample/25m                                  test=    542.8 MiB prod=    542.1 MiB delta=     +0.7 MiB (+0.13%) files 1520/1520 ready 760/760
+25m专属          25m-eart1106                                                   test=     57.9 MiB prod=     63.0 MiB delta=     -5.1 MiB (-8.08%) files 659/703 ready 0/0
+25m专属          snapshot/25m-eart1106_MODEL_ROBUST40_V1_25m                    test=   1028.8 MiB prod=   1077.1 MiB delta=    -48.2 MiB (-4.48%) files 79/79 ready 0/0
+25m专属          snapshot/25m-eart1106_MODEL_ROBUST40_V1_25m.previous           test=   1028.7 MiB prod=   1077.0 MiB delta=    -48.3 MiB (-4.49%) files 79/79 ready 0/0
+25m专属          子策略回测结果/25m-eart1106_MODEL_ROBUST40_V1_25m                     test=     64.4 MiB prod=     68.0 MiB delta=     -3.6 MiB (-5.24%) files 104/104 ready 0/0
+25m专属          server_initialization/25m-eart1106                             test=      2.3 MiB prod=      2.8 MiB delta=     -0.6 MiB (-19.42%) files 11/11 ready 0/0
+25m专属          __SUBTOTAL__                                                   test=   7901.5 MiB prod=   8154.1 MiB delta=   -252.6 MiB (-3.10%)
+共享底座           ws_cache                                                       test=     86.4 MiB prod=      0.0 MiB delta=    +86.4 MiB (n/a%) files 6/0 ready 0/0
+共享底座           binance_spot_5m                                                test=    406.2 MiB prod=   5416.9 MiB delta=  -5010.7 MiB (-92.50%) files 2653/8335 ready 520/0
+共享底座           binance_swap_5m                                                test=    589.8 MiB prod=   6951.8 MiB delta=  -6361.9 MiB (-91.52%) files 3898/10782 ready 767/0
+共享底座           __SUBTOTAL__                                                   test=   1082.4 MiB prod=  12368.7 MiB delta= -11286.3 MiB (-91.25%)
+全部             __TOTAL__                                                      test=   8983.9 MiB prod=  20522.8 MiB delta= -11538.9 MiB (-56.22%)
+
+增大的目录（25m 口径内）:
+  data_api_swap_1h_resample/25m                                  +757760 bytes (+0.13%) 25m专属
+  ws_cache                                                       +90619904 bytes (正式机无此目录) 共享底座

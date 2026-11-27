@@ -1,0 +1,43 @@
+=== 2026-11-25_11 ===
+select_coin shape test=[3777, 15] prod=[3778, 15] | groups test=257 prod=258 | cap_weight_total test=1308.79166667 prod=1309.04166667
+  groups: only_test=0 only_prod=1 common=257 value_diff=2
+   ONLY_PROD SHELLUSDT|#3.线上实盘多头|1|1|0 -> [3, 0.75]
+   DIFF COWUSDT|#1.Funding0021NegativeDomain|-1|1|0 test=[24, 6.0] prod=[23, 5.75]
+   DIFF LISTAUSDT|#3.线上实盘多头|1|1|0 test=[2, 0.5] prod=[1, 0.25]
+  parent strategies: test=11 prod=11 diff=2
+   PARENT_DIFF S13-Funding0021NegativeDomain test=[2611, 652.75] prod=[2610, 652.5]
+   PARENT_DIFF S5-动量实盘多头 test=[28, 7.0] prod=[30, 7.5]
+position_results shape test=[538, 6] prod=[538, 6] | nonzero 122/122 | long 50/50 | short 72/72 | flat 416/416
+  abs(target_lots) test=3321029.0 prod=3975096.0 | direction_diff_symbols=0
+=== 2026-11-25_12 ===
+select_coin shape test=[3788, 15] prod=[3789, 15] | groups test=255 prod=256 | cap_weight_total test=1313.375 prod=1313.625
+  groups: only_test=0 only_prod=1 common=255 value_diff=2
+   ONLY_PROD SHELLUSDT|#3.线上实盘多头|1|1|0 -> [3, 0.75]
+   DIFF COWUSDT|#1.Funding0021NegativeDomain|-1|1|0 test=[23, 5.75] prod=[22, 5.5]
+   DIFF LISTAUSDT|#3.线上实盘多头|1|1|0 test=[2, 0.5] prod=[1, 0.25]
+  parent strategies: test=11 prod=11 diff=2
+   PARENT_DIFF S13-Funding0021NegativeDomain test=[2617, 654.25] prod=[2616, 654.0]
+   PARENT_DIFF S5-动量实盘多头 test=[28, 7.0] prod=[30, 7.5]
+position_results shape test=[538, 6] prod=[538, 6] | nonzero 122/122 | long 50/50 | short 72/72 | flat 416/416
+  abs(target_lots) test=3252974.0 prod=3882659.0 | direction_diff_symbols=0
+=== 2026-11-25_13 ===
+select_coin shape test=[3781, 15] prod=[3781, 15] | groups test=251 prod=251 | cap_weight_total test=1313.29166667 prod=1313.29166667
+  groups: only_test=1 only_prod=1 common=250 value_diff=1
+   ONLY_TEST LISTAUSDT|#3.线上实盘多头|1|1|0 -> [1, 0.25]
+   ONLY_PROD SHELLUSDT|#3.线上实盘多头|1|1|0 -> [2, 0.5]
+   DIFF COWUSDT|#1.Funding0021NegativeDomain|-1|1|0 test=[22, 5.5] prod=[21, 5.25]
+  parent strategies: test=11 prod=11 diff=2
+   PARENT_DIFF S13-Funding0021NegativeDomain test=[2615, 653.75] prod=[2614, 653.5]
+   PARENT_DIFF S5-动量实盘多头 test=[23, 5.75] prod=[24, 6.0]
+position_results shape test=[538, 6] prod=[538, 6] | nonzero 120/120 | long 48/48 | short 72/72 | flat 418/418
+  abs(target_lots) test=3282024.0 prod=3889513.0 | direction_diff_symbols=0
+=== latest cutpoint row-level (13) ===
+row keys test=3781 prod=3781 | only_test=2 only_prod=2 | count_mismatch=0
+  ONLY_TEST_ROW ('COWUSDT', '#1.Funding0021NegativeDomain', -1, 1, 0, 2, 'swap', 'S13-Funding0021NegativeDomain', 0.25) x1
+  ONLY_TEST_ROW ('LISTAUSDT', '#3.线上实盘多头', 1, 1, 0, 2, 'swap', 'S5-动量实盘多头', 0.25) x1
+  ONLY_PROD_ROW ('SHELLUSDT', '#3.线上实盘多头', 1, 1, 0, 2, 'swap', 'S5-动量实盘多头', 0.25) x1
+  ONLY_PROD_ROW ('SHELLUSDT', '#3.线上实盘多头', 1, 1, 0, 3, 'swap', 'S5-动量实盘多头', 0.25) x1
+signal columns compared (group-level): 方向, 是否交易, is_spot, order_first
+  close: test n=3781 min=0.000588 max=729.59 | prod n=3781 min=0.000588 max=729.59
+  next_close: test n=3596 min=0.000855 max=731.85 | prod n=3596 min=0.000855 max=731.85
+  target_alloc_ratio: test n=3781 min=-0.0109416 max=0.0148519 | prod n=3781 min=-0.0109302 max=0.0148519

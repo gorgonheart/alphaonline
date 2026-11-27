@@ -1,0 +1,13 @@
+2026-11-27 prod-vs-test evidence index
+01. 02-prod-rounds-1127.csv        prod today all MODEL_REPLAY end events (65 rounds)
+02. 04-test-rounds-1127.csv        test today all MODEL_REPLAY end events (11 rounds)
+03. 05-round-summary.txt           aggregated round stats + duty cycle
+04. 06-prod-sar-today.txt          sar -u/-r/-W/-q full-day history from prod host
+05. 16-prod-products.json          prod select_coin/position_results _09/_10
+06. 17-test-products.json          test select_coin/position_results _09/_10
+07. 18-product-diff.txt            structure/group/parent/direction/price diff
+08. 20-lots-diff.txt               per-symbol target_lots diff
+09. 22-amount-ratio.txt            notional ratio overall + per sub-strategy
+10. 23-capital-derivation.txt      implied capital base per sub-strategy
+11. collect_products_1127.py       read-only product collector (ran on both hosts via stdin)
+12. analyze_1127.py / analyze_capital.py / summarize_rounds.py  analysis scripts

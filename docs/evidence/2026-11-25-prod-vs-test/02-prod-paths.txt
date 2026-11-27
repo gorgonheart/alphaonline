@@ -1,0 +1,110 @@
+=== alphatrade root ===
+total 184
+drwxrwxr-x  2 ubuntu ubuntu  4096 Nov 23 12:55  \
+drwxrwxr-x 20 ubuntu ubuntu  4096 Nov 23 12:55 .
+drwxr-x--- 27 ubuntu ubuntu  4096 Nov  6 23:46 ..
+drwx------  3 ubuntu ubuntu  4096 Nov  6 00:47 accounts
+drwxrwxr-x  2 ubuntu ubuntu  4096 Nov  5 00:27 accounts_backup
+drwxrwxr-x  2 ubuntu ubuntu  4096 Nov  6 00:47 accountsbackup
+-rw-rw-r--  1 ubuntu ubuntu   304 Nov  5 00:01 accounts.local.example.json
+-rw-------  1 ubuntu ubuntu  1870 Nov  5 22:14 accounts.local.json
+-rw-rw-r--  1 ubuntu ubuntu  1047 Nov 20 14:40 AGENTS.md
+-rw-rw-r--  1 ubuntu ubuntu   555 Nov  5 00:01 check_extra_data_source.py
+-rw-rw-r--  1 ubuntu ubuntu 13408 Nov 20 14:40 CLAUDE.md
+-rw-rw-r--  1 ubuntu ubuntu   125 Nov  5 00:01 config.example.json
+-rw-------  1 ubuntu ubuntu   244 Nov  6 14:59 config.json
+-rw-r--r--  1 ubuntu ubuntu 15730 Nov  6 23:16 config.py
+drwx------  7 ubuntu ubuntu  4096 Nov 23 12:55 core
+drwxrwxr-x 17 ubuntu ubuntu  4096 Nov 25 13:41 data
+drwxrwxr-x  4 ubuntu ubuntu 12288 Nov 23 12:55 docs
+drwx------  3 ubuntu ubuntu  4096 Nov  2 09:42 examples
+drwx------  3 ubuntu ubuntu  4096 Nov 23 12:55 factors
+drwx------  8 ubuntu ubuntu  4096 Nov 23 22:45 .git
+-rw-rw-r--  1 ubuntu ubuntu    17 Nov  5 00:01 .gitattributes
+-rw-rw-r--  1 ubuntu ubuntu   660 Nov  5 08:45 .gitignore
+drwxrwxr-x  2 ubuntu ubuntu  4096 Nov 25 00:06 logs
+drwxrwxr-x  4 ubuntu ubuntu  4096 Nov  5 08:48 .numba_cache
+drwx------  3 ubuntu ubuntu  4096 Nov 23 12:55 positions
+drwxrwxr-x  2 ubuntu ubuntu  4096 Nov  6 23:17 __pycache__
+-rw-r--r--  1 ubuntu ubuntu   494 Nov  6 23:16 requirements-deploy.txt
+-rw-r--r--  1 ubuntu ubuntu   111 Nov  6 23:16 requirements.txt
+-rw-rw-r--  1 ubuntu ubuntu   314 Nov  5 00:01 run_pkl_to_csv.py
+drwx------  3 ubuntu ubuntu  4096 Nov 23 12:55 sections
+-rw-rw-r--  1 ubuntu ubuntu   487 Nov  5 00:01 shared_account_config.py
+drwx------  3 ubuntu ubuntu  4096 Nov  2 10:55 signals
+-rw-rw-r--  1 ubuntu ubuntu 11529 Nov  6 15:09 startup.py
+drwx------ 20 ubuntu ubuntu  4096 Nov 23 13:00 test
+drwx------  4 ubuntu ubuntu  4096 Nov 20 14:40 tools
+-rw-r--r--  1 ubuntu ubuntu   906 Nov  6 23:16 加密apikey.py
+=== log files ===
+/home/ubuntu/alphatrade/logs/statistics.log.2026-11-19	30080	2026-11-19 23:51:12.4157236330
+/home/ubuntu/alphatrade/logs/statistics.log.2026-11-20	30775	2026-11-20 23:51:02.5627713320
+/home/ubuntu/alphatrade/logs/statistics.log.2026-11-21	33840	2026-11-21 23:50:51.4689031620
+/home/ubuntu/alphatrade/logs/statistics.log.2026-11-22	33840	2026-11-22 23:51:26.4572399250
+/home/ubuntu/alphatrade/logs/statistics.log.2026-11-23	30560	2026-11-23 23:50:30.0483134300
+/home/ubuntu/alphatrade/logs/statistics.log.2026-11-24	33840	2026-11-24 23:51:05.4007622020
+/home/ubuntu/alphatrade/logs/ubuntu_1755_market_rules.log	1069	2026-11-02 18:03:40.5530288190
+/home/ubuntu/alphatrade/test/deployment-verify-e32f503.log	44697	2026-11-05 08:58:39.6310222740
+/home/ubuntu/alphatrade/test/factor-release-20261106/finish-ab-driver.log	0	2026-11-06 13:34:34.0860949890
+/home/ubuntu/alphatrade/test/factor-release-20261106/prod-a.log	362	2026-11-06 13:21:47.4579199590
+/home/ubuntu/alphatrade/test/factor-release-20261106/prod-b.log	354	2026-11-06 13:36:26.4021206520
+/home/ubuntu/alphatrade/test/factor-release-20261106/release-ab-driver.log	292	2026-11-06 13:22:19.6229271760
+/home/ubuntu/alphatrade/test/factor-release-20261106/resume-ab-driver.log	264	2026-11-06 13:33:55.3990861490
+/home/ubuntu/alphatrade/test/factor-release-20261106/test-a.log	254	2026-11-06 13:22:19.5609271620
+/home/ubuntu/alphatrade/test/factor-release-20261106/test-a-retry.log	2808	2026-11-06 13:30:09.4150345140
+/home/ubuntu/alphatrade/test/factor-release-20261106/test-b.log	2804	2026-11-06 13:33:43.1840833580
+/home/ubuntu/alphatrade/test/hourly-pnl-20261106/tests.log	2453	2026-11-06 23:49:12.9907717850
+/home/ubuntu/alphatrade/test/lightgbm-install.log	529	2026-11-05 08:55:50.5290176120
+/home/ubuntu/alphatrade/test/local-risk-recheck.log	265	2026-11-05 08:56:58.4330110840
+/home/ubuntu/alphatrade/test/logs/verify-84ji6seu.log	2819	2026-11-20 14:40:56.9992039370
+/home/ubuntu/alphatrade/test/logs/verify-csm5yd72.log	1163	2026-11-23 13:00:50.9964246080
+/home/ubuntu/alphatrade/test/logs/verify-wktip78f.log	3866	2026-11-20 14:21:44.8349148580
+/home/ubuntu/alphatrade/test/main-release-20261106/clone.log	5164	2026-11-06 22:49:35.9409580400
+/home/ubuntu/alphatrade/test/main-release-20261106/dependencies.log	47101	2026-11-06 22:49:57.1159636890
+/home/ubuntu/alphatrade/test/main-release-20261106/verify.log	31465	2026-11-06 23:05:19.8032062980
+/home/ubuntu/alphatrade/test/narwhals-install.log	336	2026-11-05 08:56:27.3410160530
+/home/ubuntu/alphatrade/test/release-20261106/alpha-applicable-driver.log	0	2026-11-06 14:49:54.1213770150
+/home/ubuntu/alphatrade/test/release-20261106/alpha-applicable.log	2100	2026-11-06 14:50:13.8863817630
+/home/ubuntu/alphatrade/test/release-20261106/alpha-baseline-golden.log	15022	2026-11-06 14:49:31.8483716650
+/home/ubuntu/alphatrade/test/release-20261106/alpha-driver.log	0	2026-11-06 14:47:10.7403470430
+/home/ubuntu/alphatrade/test/release-20261106/alpha-missing-fixtures.log	5023	2026-11-06 14:45:44.7693307810
+/home/ubuntu/alphatrade/test/release-20261106/alpha-tests.log	21131	2026-11-06 14:47:36.9723509150
+/home/ubuntu/alphatrade/test/release-20261106/natural-25m-initialization.log	288620	2026-11-06 15:43:57.9010267710
+/home/ubuntu/alphatrade/test/release-20261106/trade-config-fixture.log	9148	2026-11-06 14:56:58.2504797020
+/home/ubuntu/alphatrade/test/release-20261106/trade-launch.log	0	2026-11-06 14:58:02.5655018170
+/home/ubuntu/alphatrade/test/release-20261106/trade-suite.log	35655	2026-11-06 15:04:19.3386001210
+/home/ubuntu/alphatrade/test/s3-hotfix-verification.log	1048	2026-11-05 12:31:32.7389832180
+/home/ubuntu/alphatrade/test/verify-6nah0ryp/verify.log	882	2026-11-05 12:31:31.4989830290
+/home/ubuntu/alphatrade/test/verify-bshdonik/verify.log	99	2026-11-05 08:56:58.1650111270
+/home/ubuntu/alphatrade/test/verify-i4hr7688/verify.log	44531	2026-11-05 08:58:36.7360218430
+=== alpha2 root ===
+total 288
+drwxrwxr-x 13 ubuntu ubuntu   4096 Nov 23 13:34 .
+drwxr-x--- 27 ubuntu ubuntu   4096 Nov  6 23:46 ..
+-rw-rw-r--  1 ubuntu ubuntu   1040 Nov 23 12:57 AGENTS.md
+-rw-rw-r--  1 ubuntu ubuntu    198 Nov  2 08:38 config.example.json
+-rw-------  1 ubuntu ubuntu    578 Nov 23 13:34 config.json
+-rw-rw-r--  1 ubuntu ubuntu   6602 Nov 23 12:57 config.py
+drwxrwxr-x  5 ubuntu ubuntu   4096 Nov 23 12:57 core
+drwxrwxr-x 13 ubuntu ubuntu   4096 Nov 23 13:34 data
+drwxrwxr-x  3 ubuntu ubuntu   4096 Nov 23 12:57 docs
+drwxrwxr-x  4 ubuntu ubuntu   4096 Nov  2 09:16 factors
+drwxrwxr-x  8 ubuntu ubuntu   4096 Nov 23 12:57 .git
+-rw-rw-r--  1 ubuntu ubuntu    839 Nov  2 08:42 .gitattributes
+-rw-------  1 ubuntu ubuntu    441 Nov  5 07:53 .gitignore
+-rw-rw-r--  1 ubuntu ubuntu 108542 Nov  2 08:38 incremental_update.patch
+-rw-rw-r--  1 ubuntu ubuntu  14488 Nov  2 08:38 jazzy-shimmying-valiant.md
+-rw-rw-r--  1 ubuntu ubuntu  37097 Nov  2 08:38 LICENSE
+drwxrwxr-x  2 ubuntu ubuntu   4096 Nov 25 00:04 logs
+drwxrwxr-x  2 ubuntu ubuntu   4096 Nov 23 13:03 __pycache__
+-rw-rw-r--  1 ubuntu ubuntu   2887 Nov  2 08:38 README.md
+-rw-rw-r--  1 ubuntu ubuntu   9964 Nov 23 12:57 realtime_data.py
+-rw-------  1 ubuntu ubuntu    371 Nov  5 00:10 requirements-deploy.txt
+-rw-rw-r--  1 ubuntu ubuntu     17 Nov  2 08:38 requirements.txt
+drwx------  8 ubuntu ubuntu   4096 Nov 23 12:57 test
+drwxrwxr-x  2 ubuntu ubuntu   4096 Nov  2 08:38 .tmp_module2_review
+drwxrwxr-x  2 ubuntu ubuntu   4096 Nov  6 23:10 tools
+drwxrwxr-x  2 ubuntu ubuntu   4096 Nov  2 08:42 .vscode
+-rw-rw-r--  1 ubuntu ubuntu   6560 Nov  2 08:38 修改内容.md
+-rw-rw-r--  1 ubuntu ubuntu   4814 Nov  2 08:38 更新说明.md
+-rw-rw-r--  1 ubuntu ubuntu    242 Nov  2 08:38 部署命令.md

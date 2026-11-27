@@ -1,0 +1,40 @@
+=== [K] all .arrow files under preprocess_1h_resample (name / bytes / mtime) ===
+--- /home/ubuntu/alpha2/data/preprocess_1h_resample/15m
+spot_dict_1795583700.arrow	607600314	2026-11-25 13:16:16.6696687700
+swap_dict_1795583700.arrow	908911554	2026-11-25 13:16:36.1026742340
+--- /home/ubuntu/alpha2/data/preprocess_1h_resample/25m
+spot_dict_1795584300.arrow	607597786	2026-11-25 13:26:28.3528406980
+swap_dict_1795584300.arrow	908924202	2026-11-25 13:26:44.4498452200
+--- /home/ubuntu/alpha2/data/preprocess_1h_resample/35m
+spot_dict_1795584900.arrow	607608818	2026-11-25 13:36:15.4180038830
+swap_dict_1795584900.arrow	908934090	2026-11-25 13:36:34.7810092390
+--- /home/ubuntu/alpha2/data/preprocess_1h_resample/45m
+spot_dict_1795585500.arrow	607608818	2026-11-25 13:46:17.7771705720
+swap_dict_1795585500.arrow	908941122	2026-11-25 13:46:37.1231759270
+--- /home/ubuntu/alpha2/data/preprocess_1h_resample/55m
+spot_dict_1795586100.arrow	607608818	2026-11-25 13:56:19.4353308660
+swap_dict_1795586100.arrow	908943282	2026-11-25 13:56:38.1323358350
+--- /home/ubuntu/alpha2/data/preprocess_1h_resample/5m
+spot_dict_1795586700.arrow	607629506	2026-11-25 14:06:13.8164880430
+swap_dict_1795586700.arrow	908956498	2026-11-25 14:06:34.7184934710
+=== [L] all files 15m (name / bytes / mtime) ===
+market_pivot_spot_1795583700.ready	16	2026-11-25 13:16
+market_pivot_spot_2025.complete	25	2026-11-23 14:13
+market_pivot_spot_2025.pkl	65235755	2026-11-23 14:13
+market_pivot_spot_2026.pkl	98376405	2026-11-25 13:16
+market_pivot_swap_1795583700.ready	17	2026-11-25 13:16
+market_pivot_swap_2025.complete	25	2026-11-23 14:14
+market_pivot_swap_2025.pkl	107863094	2026-11-23 14:14
+market_pivot_swap_2026.pkl	193407919	2026-11-25 13:16
+spot_dict_1795583700.arrow	607600314	2026-11-25 13:16
+spot_dict_1795583700.ready	17	2026-11-25 13:16
+spot_dict_batch1.pkl	306489816	2026-11-25 13:15
+spot_dict_batch2.pkl	298975902	2026-11-25 13:15
+spot_dict_batch3.pkl	277100865	2026-11-25 13:16
+swap_dict_1795583700.arrow	908911554	2026-11-25 13:16
+swap_dict_1795583700.ready	17	2026-11-25 13:16
+swap_dict_batch1.pkl	301391292	2026-11-25 13:15
+swap_dict_batch2.pkl	268306591	2026-11-25 13:15
+swap_dict_batch3.pkl	273096694	2026-11-25 13:16
+swap_dict_batch4.pkl	277169606	2026-11-25 13:16
+swap_dict_batch5.pkl	73206412	2026-11-25 13:16

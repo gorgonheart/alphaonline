@@ -1,0 +1,44 @@
+
+--- 2026-11-27_09 ---
+symbols=535 both_flat=411 same_dir=122 dir_or_zero_mismatch=2
+sum|target_lots| test=3356455 prod=4474235 diff=-1117780 (-24.98%)
+max |lots diff| = 290385.000000 at TLMUSDT
+max relative  = 100.0000% at BEAMXUSDT
+symbols with relative lots diff >1%: 78
+  TLMUSDT        test= 186790.000000 prod= 477175.000000 diff=-290385.000000 rel= -60.86% price 0.000934/0.000934
+  IOSTUSDT       test= 226193.000000 prod= 426010.000000 diff=-199817.000000 rel= -46.90% price 0.0006072/0.0006074
+  DOODUSDT       test=  99597.000000 prod= 204090.000000 diff=-104493.000000 rel= -51.20% price 0.001379/0.001379
+  AUDIOUSDT      test= 128720.000000 prod= 226698.000000 diff= -97978.000000 rel= -43.22% price 0.01067/0.01067
+  BBUSDT         test=  70539.000000 prod= 119824.000000 diff= -49285.000000 rel= -41.13% price 0.005135/0.005134
+  TRIAUSDT       test=  86396.000000 prod= 126256.000000 diff= -39860.000000 rel= -31.57% price 0.002077/0.002082
+  WUSDT          test= -49316.000000 prod= -86457.000000 diff= +37141.000000 rel= +42.96% price 0.008883/0.008892
+  AKEUSDT        test= -34461.000000 prod= -67289.000000 diff= +32828.000000 rel= +48.79% price 0.001464/0.001467
+  RSRUSDT        test= -20532.000000 prod= -39879.000000 diff= +19347.000000 rel= +48.51% price 0.001278/0.001278
+  ESPORTSUSDT    test=  14016.000000 prod=  29825.000000 diff= -15809.000000 rel= -53.01% price 0.009799/0.0098
+  PLAYUSDT       test=  20114.000000 prod=  35684.000000 diff= -15570.000000 rel= -43.63% price 0.006828/0.006803
+  CYBERUSDT      test= -13753.000000 prod= -27510.000000 diff= +13757.000000 rel= +50.01% price 0.2116/0.2114
+  KOMAUSDT       test=  10520.000000 prod=  23652.000000 diff= -13132.000000 rel= -55.52% price 0.013055/0.013051
+  BEAMXUSDT      test=      0.000000 prod=  12266.000000 diff= -12266.000000 rel=-100.00% price 0.003279/0.003279
+  RECALLUSDT     test=  15664.000000 prod=  26925.000000 diff= -11261.000000 rel= -41.82% price 0.02212/0.02212
+
+--- 2026-11-27_10 ---
+symbols=535 both_flat=409 same_dir=124 dir_or_zero_mismatch=2
+sum|target_lots| test=3216933 prod=4259115 diff=-1042182 (-24.47%)
+max |lots diff| = 204813.000000 at IOSTUSDT
+max relative  = 100.0000% at BEAMXUSDT
+symbols with relative lots diff >1%: 83
+  IOSTUSDT       test= 221197.000000 prod= 426010.000000 diff=-204813.000000 rel= -48.08% price 0.000614/0.000614
+  TLMUSDT        test= 165945.000000 prod= 283006.000000 diff=-117061.000000 rel= -41.36% price 0.000946/0.000946
+  DOODUSDT       test=  97638.000000 prod= 204090.000000 diff=-106452.000000 rel= -52.16% price 0.001391/0.001391
+  AUDIOUSDT      test= 126339.000000 prod= 226698.000000 diff=-100359.000000 rel= -44.27% price 0.01075/0.01075
+  THEUSDT        test= 137657.000000 prod= 232582.000000 diff= -94925.000000 rel= -40.81% price 0.02602/0.02601
+  BBUSDT         test=  68894.000000 prod= 119824.000000 diff= -50930.000000 rel= -42.50% price 0.005199/0.005192
+  WUSDT          test= -47987.000000 prod= -86457.000000 diff= +38470.000000 rel= +44.50% price 0.00915/0.009139
+  AKEUSDT        test= -32799.000000 prod= -67289.000000 diff= +34490.000000 rel= +51.26% price 0.001547/0.001546
+  HEIUSDT        test=  44024.000000 prod=  74552.000000 diff= -30528.000000 rel= -40.95% price 0.07751/0.07747
+  RSRUSDT        test= -20450.000000 prod= -39879.000000 diff= +19429.000000 rel= +48.72% price 0.001288/0.001287
+  PLAYUSDT       test=  19564.000000 prod=  35684.000000 diff= -16120.000000 rel= -45.17% price 0.006942/0.006946
+  ESPORTSUSDT    test=  13785.000000 prod=  29825.000000 diff= -16040.000000 rel= -53.78% price 0.009852/0.009844
+  CYBERUSDT      test= -12813.000000 prod= -27510.000000 diff= +14697.000000 rel= +53.42% price 0.2158/0.2158
+  KOMAUSDT       test=  10284.000000 prod=  23652.000000 diff= -13368.000000 rel= -56.52% price 0.013206/0.0132
+  RECALLUSDT     test=  14538.000000 prod=  26925.000000 diff= -12387.000000 rel= -46.01% price 0.0225/0.0225

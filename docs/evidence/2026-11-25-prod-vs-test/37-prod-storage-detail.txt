@@ -1,0 +1,53 @@
+=== [F] alpha2/data L1 EXACT BYTES ===
+172032	/home/ubuntu/alpha2/data/exginfo
+495616	/home/ubuntu/alpha2/data/preprocess_1h_resample_origins
+52543488	/home/ubuntu/alpha2/data/funding
+122867712	/home/ubuntu/alpha2/data/coin_cap
+2690240512	/home/ubuntu/alpha2/data/data_api_spot_1h_resample
+2842546176	/home/ubuntu/alpha2/data/binance_spot_1h_resample
+3445727232	/home/ubuntu/alpha2/data/data_api_swap_1h_resample
+3653914624	/home/ubuntu/alpha2/data/binance_swap_1h_resample
+5680058368	/home/ubuntu/alpha2/data/binance_spot_5m
+7289462784	/home/ubuntu/alpha2/data/binance_swap_5m
+24344281088	/home/ubuntu/alpha2/data/preprocess_1h_resample
+=== [G] preprocess offsets (bytes/files/first-file/newest-mtime) ===
+/home/ubuntu/alpha2/data/preprocess_1h_resample/15m bytes=4057260032 files=22 first=[swap_dict_1795583700.arrow 908911554] newest=2026-11-25 13:16
+/home/ubuntu/alpha2/data/preprocess_1h_resample/25m bytes=4057284608 files=22 first=[market_pivot_swap_2025.pkl 107863094] newest=2026-11-25 13:26
+/home/ubuntu/alpha2/data/preprocess_1h_resample/35m bytes=4057337856 files=22 first=[market_pivot_swap_2025.pkl 107863094] newest=2026-11-25 13:36
+/home/ubuntu/alpha2/data/preprocess_1h_resample/45m bytes=4057350144 files=22 first=[market_pivot_swap_2025.pkl 107863094] newest=2026-11-25 13:46
+/home/ubuntu/alpha2/data/preprocess_1h_resample/55m bytes=4057473024 files=22 first=[market_pivot_swap_2025.pkl 107878134] newest=2026-11-25 13:56
+/home/ubuntu/alpha2/data/preprocess_1h_resample/5m bytes=4057571328 files=22 first=[market_pivot_swap_1795586700.ready 17] newest=2026-11-25 14:06
+=== [H] largest files 15m ===
+total 3962160
+-rw-rw-r-- 1 ubuntu ubuntu 908911554 Nov 25 13:16 swap_dict_1795583700.arrow
+-rw-rw-r-- 1 ubuntu ubuntu 607600314 Nov 25 13:16 spot_dict_1795583700.arrow
+-rw-rw-r-- 1 ubuntu ubuntu 306489816 Nov 25 13:15 spot_dict_batch1.pkl
+-rw-rw-r-- 1 ubuntu ubuntu 301391292 Nov 25 13:15 swap_dict_batch1.pkl
+-rw-rw-r-- 1 ubuntu ubuntu 298975902 Nov 25 13:15 spot_dict_batch2.pkl
+-rw-rw-r-- 1 ubuntu ubuntu 277169606 Nov 25 13:16 swap_dict_batch4.pkl
+=== [H2] largest files 25m ===
+total 3962184
+-rw-rw-r-- 1 ubuntu ubuntu 908924202 Nov 25 13:26 swap_dict_1795584300.arrow
+-rw-rw-r-- 1 ubuntu ubuntu 607597786 Nov 25 13:26 spot_dict_1795584300.arrow
+-rw-rw-r-- 1 ubuntu ubuntu 306489816 Nov 25 13:25 spot_dict_batch1.pkl
+-rw-rw-r-- 1 ubuntu ubuntu 301393836 Nov 25 13:25 swap_dict_batch1.pkl
+-rw-rw-r-- 1 ubuntu ubuntu 298975902 Nov 25 13:25 spot_dict_batch2.pkl
+-rw-rw-r-- 1 ubuntu ubuntu 277171514 Nov 25 13:26 swap_dict_batch4.pkl
+=== [I] ws_cache ===
+ls: cannot access '/home/ubuntu/alpha2/data/ws_cache/': No such file or directory
+=== [J] alphatrade/data L1 EXACT BYTES ===
+4096	/home/ubuntu/alphatrade/data/runtime
+32768	/home/ubuntu/alphatrade/data/model_replay
+77824	/home/ubuntu/alphatrade/data/仓位管理回测结果
+86016	/home/ubuntu/alphatrade/data/server_account_locks
+151552	/home/ubuntu/alphatrade/data/cache
+23560192	/home/ubuntu/alphatrade/data/server_initialization
+31129600	/home/ubuntu/alphatrade/data/25m-eart1020
+65925120	/home/ubuntu/alphatrade/data/15m-nheart1104
+65945600	/home/ubuntu/alphatrade/data/45m_gonheart1104
+66101248	/home/ubuntu/alphatrade/data/25m-eart1106
+66334720	/home/ubuntu/alphatrade/data/5m-onheart1104
+66457600	/home/ubuntu/alphatrade/data/35m_t1104
+66519040	/home/ubuntu/alphatrade/data/55m_o.rgonheart1104
+423829504	/home/ubuntu/alphatrade/data/子策略回测结果
+14708432896	/home/ubuntu/alphatrade/data/snapshot

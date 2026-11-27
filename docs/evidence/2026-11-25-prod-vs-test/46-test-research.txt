@@ -1,0 +1,47 @@
+=== [P] /home/ubuntu/alphatrade/research L1 EXACT BYTES ===
+4096	/home/ubuntu/alphatrade/research/capture_s5.py
+4096	/home/ubuntu/alphatrade/research/collect_four_coins.py
+4096	/home/ubuntu/alphatrade/research/compress_light.py
+4096	/home/ubuntu/alphatrade/research/final_health.py
+4096	/home/ubuntu/alphatrade/research/inventory_gaps.py
+4096	/home/ubuntu/alphatrade/research/read_test_round.py
+4096	/home/ubuntu/alphatrade/research/restart_test_pm2.py
+4096	/home/ubuntu/alphatrade/research/s5_source_equality.py
+4096	/home/ubuntu/alphatrade/research/test_live25_light.py
+4096	/home/ubuntu/alphatrade/research/ubuntu_test_preflight.py
+4096	/home/ubuntu/alphatrade/research/verify_test_pm2.py
+8192	/home/ubuntu/alphatrade/research/live25_compare.py
+8192	/home/ubuntu/alphatrade/research/live25_light.py
+8192	/home/ubuntu/alphatrade/research/migrate_test_pm2.py
+8192	/home/ubuntu/alphatrade/research/monitor_cleanup_20261104
+8192	/home/ubuntu/alphatrade/research/ubuntu_test_observer.py
+16384	/home/ubuntu/alphatrade/research/live25_capture.py
+49152	/home/ubuntu/alphatrade/research/speed-followup-candidate.tar.gz
+3280326656	/home/ubuntu/alphatrade/research/live25_restart_20261104
+10364366848	/home/ubuntu/alphatrade/research/io_20261104
+14160171008	/home/ubuntu/alphatrade/research/speed_20261104
+27989684224	/home/ubuntu/alphatrade/research/live25_20261104
+=== [Q] research identity ===
+2026-11-04 23:45:44.955491317 +0800 /home/ubuntu/alphatrade/research
+total_files=23972
+find: I cannot figure out how to interpret ‘"2026-11-25’ as a date or time
+today_files=0
+post_release_files=0
+--- 5 newest files ---
+find: I cannot figure out how to interpret ‘"2026-11-25’ as a date or time
+2026-11-04 22:31 46 /home/ubuntu/alphatrade/research/live25_20261104/four-coins-targeted/funding-residual-meta.json
+2026-11-04 22:56 1278 /home/ubuntu/alphatrade/research/live25_20261104/post-selection-audit/probe_execution_jit.py
+2026-11-04 22:57 488 /home/ubuntu/alphatrade/research/live25_20261104/post-selection-audit/execution-jit-ubuntu-first.json
+2026-11-04 22:58 489 /home/ubuntu/alphatrade/research/live25_20261104/post-selection-audit/execution-jit-ubuntu-second.json
+2026-11-06 18:58 167 /home/ubuntu/alphatrade/research/live25_restart_20261104/run-dryrun.sh
+--- 5 largest files ---
+1917844866 /home/ubuntu/alphatrade/research/speed_20261104/section2a/frozen_market/15m/swap_dict_1793744100.arrow
+1917844866 /home/ubuntu/alphatrade/research/speed_20261104/section2b/frozen_market/15m/swap_dict_1793744100.arrow
+1917844866 /home/ubuntu/alphatrade/research/speed_20261104/section4a/frozen_market/15m/swap_dict_1793744100.arrow
+1917844866 /home/ubuntu/alphatrade/research/speed_20261104/section4b/frozen_market/15m/swap_dict_1793744100.arrow
+1918319994 /home/ubuntu/alphatrade/research/speed_20261104/traditional-fixture/frozen_market/45m/swap_dict_1793753100.arrow
+=== [R] new/extra dirs mtime ===
+2026-11-25 11:05:59.086703728 +0800 /home/ubuntu/alpha/data/ws_cache
+2026-11-05 22:44:53.050951644 +0800 /home/ubuntu/alpha/data/funding111
+2026-11-25 14:10:11.528760147 +0800 /home/ubuntu/alpha/data/binance_spot_5m
+2026-11-25 13:16:53.410199895 +0800 /home/ubuntu/alpha/data/preprocess_1h_resample/15m

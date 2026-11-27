@@ -1,15 +1,15 @@
 # 当前分支、未发布提交、Stash、Worktree 与多机同步状态
 
-> 所属体系：[统一开发入口](../README.md) · 核对时间：`2026-11-20 14:42+08:00`
+> 所属体系：[统一开发入口](../README.md) · 核对时间：`2026-11-27 09:31+08:00`
 
 ---
 
 ## 1. 未合并主干的分支检查结论
 
-- **`D:/alphaonline`**：`git branch --no-merged main` 为**空**（全部本地分支已合入 `main`）。
-- **`D:/alpha`**：`git branch --no-merged main` 为**空**（当前本地 7 个分支已全部合入 `main`）。
+- **`D:/alphaonline`**：`git branch --no-merged main` 为**空**；本地 `main`、正式机 `production/main`（PID `374502`）与测试机 `alphatest`（PID `1884098`）已三端统一对齐 **`5cab8f8`**。
+- **`D:/alpha`**：`git branch --no-merged main` 为**空**；本地 `main`、正式机 `production/main`（`alpha2` PID `374475`）与测试机 `alphatest`（`realtime_data` PID `2179086`）已三端统一对齐 **`5694033`**。
 
-> **同步状态**：两仓本地 `main` 与正式机 `production/main` 现已**完全对齐（0 未发布提交）**；历史未发布提交 `6c02e58` 已随 `940c487` 同步发布至测试与正式服务器。
+> **主干同步状态**：双仓本地 `main` 与正式机 `production/main` **0 分叉、0 未发布提交**，正式机与测试机代码完全一致（仅各机 `config.json` 与 `accounts/` 按环境独立维护；正式机并行旧实例 `alpha` / `alphatradetest` 未触碰）。
 
 ---
 
@@ -17,8 +17,8 @@
 
 | 仓库 | 本地 `main` | 正式服务器（`43.167.235.164`） | 测试服务器（`43.173.122.28`） | 关键差异说明 |
 | --- | --- | --- | --- | --- |
-| **`D:/alphaonline`** | `940c487`（+文档同步） | `940c487`（+文档同步，`production/main`） | 增量同步至 `940c487`（含 Phase 0–3 + F1 + Q1/Q2） | 正式与本地 `main` **0 代码差异**；原本地独有提交 `6c02e58`（统计精简）与 `940c487`（24h `[未匹配]` 归属回填）已于 `2026-11-20 14:36–14:40` 同步部署至测试机与正式机并通过 127/127 离线验收。 |
-| **`D:/alpha`** | `41686c3` | `41686c3`（`production/main`） | `2026-11-06` 源码全文件对齐 `494d22a` | 生产与本地完全同步（`main...production/main` 0 差异）。 |
+| **`D:/alphaonline`** | `5cab8f8` | `5cab8f8`（`production/main`，`alphatrade` PID `374502`，主机开关已持久化至 `config.json`） | `5cab8f8`（`alphatrade-dryrun` PID `1884098`） | 三端代码 0 差异；正式机 6 户实盘 `none` 模式，测试机单户 `dry_run` 模式。 |
+| **`D:/alpha`** | `5694033` | `5694033`（`production/main`，`alpha2` PID `374475`，`use_ws=True`） | `5694033`（`realtime_data` PID `2179086`） | 三端代码 0 差异；正式机 `kline_count_1h=15000` 直连，测试机走 Mihomo 代理。 |
 
 ---
 

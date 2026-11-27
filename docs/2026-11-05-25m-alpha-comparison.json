@@ -1,0 +1,361 @@
+{
+  "hkt": "2026-11-05 21:25:00+08:00",
+  "ready_delay_s": [
+    88.3,
+    101.7
+  ],
+  "funding_sample": [
+    [
+      -0.00174234,
+      -0.00174234,
+      -0.00174234,
+      -0.00174234
+    ],
+    [
+      -0.00174234,
+      -0.00174234,
+      -0.00174234,
+      -0.00174234
+    ]
+  ],
+  "depth": {
+    "spot": [
+      "(b'1', 194, 14061, 512)",
+      "(b'1', 194, 14061, 512)"
+    ],
+    "swap": [
+      "(b'1', 171, 14061, 756)",
+      "(b'1', 171, 14061, 756)"
+    ]
+  },
+  "spot": {
+    "series": 512,
+    "common_rows": 86016,
+    "only_rows": [
+      0,
+      0
+    ],
+    "common_cols": 30,
+    "only_cols": [
+      [],
+      []
+    ],
+    "origin_differences_vs_formal_reference": 0,
+    "difference_counts_168h_24h_latest": {
+      "volume": [
+        5,
+        5,
+        5
+      ],
+      "quote_volume": [
+        6,
+        6,
+        6
+      ],
+      "trade_num": [
+        2,
+        2,
+        2
+      ],
+      "taker_buy_base_asset_volume": [
+        2,
+        2,
+        2
+      ],
+      "taker_buy_quote_asset_volume": [
+        6,
+        6,
+        6
+      ],
+      "ILLQStdBbi45208_2184": [
+        2,
+        2,
+        2
+      ],
+      "ILLQStdBbi45208_2320": [
+        2,
+        2,
+        2
+      ],
+      "ILLQStdBbi45208_1104": [
+        2,
+        2,
+        2
+      ],
+      "ILLQStdBbi45208_264": [
+        2,
+        2,
+        2
+      ],
+      "ILLQStdBbi45208_96": [
+        2,
+        2,
+        2
+      ]
+    },
+    "pivot": {
+      "close": {
+        "common_shape": [
+          168,
+          512
+        ],
+        "only_rows": [
+          0,
+          0
+        ],
+        "only_cols": [
+          0,
+          0
+        ],
+        "different_168h": 0,
+        "different_24h": 0
+      },
+      "open": {
+        "common_shape": [
+          168,
+          512
+        ],
+        "only_rows": [
+          0,
+          0
+        ],
+        "only_cols": [
+          0,
+          0
+        ],
+        "different_168h": 0,
+        "different_24h": 0
+      },
+      "vwap1m": {
+        "common_shape": [
+          168,
+          512
+        ],
+        "only_rows": [
+          0,
+          0
+        ],
+        "only_cols": [
+          0,
+          0
+        ],
+        "different_168h": 0,
+        "different_24h": 0
+      }
+    }
+  },
+  "swap": {
+    "series": 756,
+    "common_rows": 126964,
+    "only_rows": [
+      0,
+      44
+    ],
+    "common_cols": 31,
+    "only_cols": [
+      [],
+      []
+    ],
+    "origin_differences_vs_formal_reference": 0,
+    "difference_counts_168h_24h_latest": {
+      "low": [
+        1,
+        1,
+        1
+      ],
+      "close": [
+        153,
+        153,
+        153
+      ],
+      "volume": [
+        236,
+        236,
+        236
+      ],
+      "quote_volume": [
+        238,
+        238,
+        238
+      ],
+      "trade_num": [
+        236,
+        236,
+        236
+      ],
+      "taker_buy_base_asset_volume": [
+        132,
+        132,
+        132
+      ],
+      "taker_buy_quote_asset_volume": [
+        133,
+        133,
+        133
+      ],
+      "funding_fee": [
+        2581,
+        0,
+        0
+      ],
+      "last_candle_time": [
+        7348,
+        1012,
+        0
+      ],
+      "symbol_spot": [
+        190,
+        190,
+        190
+      ],
+      "动量210401_双项异常隔离V2_13608": [
+        153,
+        153,
+        153
+      ],
+      "动量210401_双项异常隔离V2_5421": [
+        153,
+        153,
+        153
+      ],
+      "动量210401_双项异常隔离V2_3509": [
+        153,
+        153,
+        153
+      ],
+      "动量210401_双项异常隔离V2_12600": [
+        153,
+        153,
+        153
+      ],
+      "ILLQStdBbi45208_2184": [
+        236,
+        236,
+        236
+      ],
+      "ILLQStdBbi45208_2320": [
+        236,
+        236,
+        236
+      ],
+      "ILLQStdBbi45208_1104": [
+        236,
+        236,
+        236
+      ],
+      "ILLQStdBbi45208_264": [
+        236,
+        236,
+        236
+      ],
+      "ILLQStdBbi45208_96": [
+        236,
+        236,
+        236
+      ],
+      "CciV3_1176": [
+        153,
+        153,
+        153
+      ],
+      "CciV3_10248": [
+        153,
+        153,
+        153
+      ],
+      "CciV3_5208": [
+        153,
+        153,
+        153
+      ]
+    },
+    "pivot": {
+      "close": {
+        "common_shape": [
+          168,
+          756
+        ],
+        "only_rows": [
+          0,
+          0
+        ],
+        "only_cols": [
+          0,
+          0
+        ],
+        "different_168h": 197,
+        "different_24h": 197
+      },
+      "open": {
+        "common_shape": [
+          168,
+          756
+        ],
+        "only_rows": [
+          0,
+          0
+        ],
+        "only_cols": [
+          0,
+          0
+        ],
+        "different_168h": 44,
+        "different_24h": 44
+      },
+      "vwap1m": {
+        "common_shape": [
+          168,
+          756
+        ],
+        "only_rows": [
+          0,
+          0
+        ],
+        "only_cols": [
+          0,
+          0
+        ],
+        "different_168h": 44,
+        "different_24h": 44
+      },
+      "funding_rate": {
+        "common_shape": [
+          168,
+          756
+        ],
+        "only_rows": [
+          0,
+          0
+        ],
+        "only_cols": [
+          0,
+          0
+        ],
+        "different_168h": 2625,
+        "different_24h": 44
+      }
+    }
+  },
+  "columns_legend": "各字段的三项数字依次是共同 168 小时、最近 24 小时、最后一根 K 线的不同单元数。时间范围 2026-10-29 21:25 至 2026-11-05 20:25 HKT。",
+  "missing_rows": {
+    "formal_only": 0,
+    "test_only": 44,
+    "time_hkt": "2026-11-05 20:25",
+    "pivot_funding_24h_unpaired": 44
+  },
+  "closed_bar_sample": {
+    "1000PEPEUSDT": {
+      "public_close": 0.0049307,
+      "formal_close": 0.0049307,
+      "test_close": 0.0049323,
+      "public_volume": 4098891207,
+      "formal_volume": 4098891207,
+      "test_volume": 4098285007
+    },
+    "AAOIUSDT": {
+      "public_close": 56.96,
+      "formal_close": null,
+      "test_close": 56.95
+    }
+  }
+}

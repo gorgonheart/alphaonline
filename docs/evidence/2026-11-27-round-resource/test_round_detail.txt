@@ -1,0 +1,46 @@
+D 12:05:43 pid=2179086 other       rss= 1417MB cpu=2339.6s rd=192765.4MB wr=271138.1MB
+D 12:05:43 pid=2635639 spawn       rss=  912MB cpu=  27.3s rd=   541.5MB wr=   277.4MB
+D 12:05:43 pid=2635644 spawn       rss=  882MB cpu=  26.4s rd=   538.5MB wr=   269.2MB
+D 12:05:43 pid=2635642 spawn       rss=  789MB cpu=  27.8s rd=   524.6MB wr=   258.8MB
+D 12:05:43 pid=2635643 spawn       rss=  780MB cpu=  28.0s rd=   364.4MB wr=   347.9MB
+D 12:05:53 pid=2179086 other       rss= 1487MB cpu=2341.7s rd=192765.4MB wr=271138.1MB
+D 12:05:53 pid=2635644 spawn       rss= 1145MB cpu=  36.6s rd=   538.6MB wr=   524.7MB
+D 12:05:53 pid=2635639 spawn       rss=  693MB cpu=  36.6s rd=   541.5MB wr=   526.1MB
+D 12:05:53 pid=2635642 spawn       rss=  631MB cpu=  35.9s rd=   524.6MB wr=   507.1MB
+D 12:05:53 pid=2635643 spawn       rss=  532MB cpu=  28.9s rd=   364.4MB wr=   347.9MB
+D 12:15:18 pid=2642732 spawn       rss=  405MB cpu=   9.0s rd=   222.2MB wr=     0.0MB
+D 12:15:18 pid=2642730 spawn       rss=  399MB cpu=   9.0s rd=   217.7MB wr=     1.9MB
+D 12:15:18 pid=2642727 spawn       rss=  384MB cpu=   8.9s rd=   203.5MB wr=     0.0MB
+D 12:15:18 pid=2642731 spawn       rss=  367MB cpu=   8.8s rd=   189.2MB wr=     0.0MB
+D 12:15:28 pid=2642732 spawn       rss=  920MB cpu=  18.1s rd=   282.1MB wr=   276.6MB
+D 12:15:28 pid=2642730 spawn       rss=  915MB cpu=  18.0s rd=   275.3MB wr=   271.1MB
+D 12:15:28 pid=2642727 spawn       rss=  909MB cpu=  17.6s rd=   262.3MB wr=   258.8MB
+D 12:15:28 pid=2642731 spawn       rss=  829MB cpu=  16.5s rd=   279.3MB wr=     0.0MB
+D 12:15:39 pid=2179086 other       rss= 1323MB cpu=2378.6s rd=195923.0MB wr=275731.2MB
+D 12:15:39 pid=2642727 spawn       rss=  879MB cpu=  24.5s rd=   520.2MB wr=   258.8MB
+D 12:15:39 pid=2642732 spawn       rss=  848MB cpu=  23.9s rd=   541.2MB wr=   276.6MB
+D 12:15:39 pid=2642730 spawn       rss=  791MB cpu=  22.6s rd=   535.0MB wr=   271.1MB
+D 12:15:39 pid=2642731 spawn       rss=  763MB cpu=  24.6s rd=   351.7MB wr=   277.1MB
+D 12:15:49 pid=2179086 other       rss= 1234MB cpu=2380.4s rd=196018.3MB wr=275826.5MB
+D 12:15:49 pid=2642727 spawn       rss= 1078MB cpu=  33.8s rd=   520.3MB wr=   507.1MB
+D 12:15:49 pid=2642732 spawn       rss= 1012MB cpu=  33.9s rd=   541.2MB wr=   525.2MB
+D 12:15:49 pid=2642730 spawn       rss=  983MB cpu=  32.4s rd=   541.4MB wr=   526.6MB
+D 12:15:49 pid=2642731 spawn       rss=  590MB cpu=  28.8s rd=   351.8MB wr=   346.9MB
+D 12:15:59 pid=2179086 other       rss= 1598MB cpu=2386.0s rd=196204.4MB wr=276696.2MB
+D 12:15:59 pid=2642732 spawn       rss=  681MB cpu=  36.1s rd=   541.2MB wr=   525.2MB
+D 12:15:59 pid=2642727 spawn       rss=  641MB cpu=  35.9s rd=   520.3MB wr=   507.1MB
+D 12:15:59 pid=2642730 spawn       rss=  632MB cpu=  36.0s rd=   541.4MB wr=   526.6MB
+D 12:15:59 pid=2642731 spawn       rss=  590MB cpu=  28.8s rd=   351.8MB wr=   346.9MB
+D 12:25:04 pid=2649754 model       rss=  370MB cpu=   3.1s rd=   287.2MB wr=     0.0MB
+D 12:25:14 pid=2649754 model       rss=  370MB cpu=   3.1s rd=   287.2MB wr=     0.0MB
+D 12:25:24 pid=2649667 spawn       rss=  795MB cpu=  14.0s rd=   279.9MB wr=     1.9MB
+D 12:25:24 pid=2649664 spawn       rss=  761MB cpu=  13.7s rd=   260.3MB wr=     7.0MB
+D 12:25:24 pid=2649668 spawn       rss=  727MB cpu=  13.8s rd=   271.3MB wr=     0.0MB
+D 12:25:24 pid=2649669 spawn       rss=  694MB cpu=  13.2s rd=   278.6MB wr=     0.0MB
+D 12:25:24 pid=2649754 model       rss=  370MB cpu=   3.1s rd=   287.2MB wr=     0.0MB
+D 12:25:35 pid=2649669 spawn       rss= 1145MB cpu=  22.1s rd=   278.9MB wr=   277.1MB
+D 12:25:35 pid=2649668 spawn       rss= 1134MB cpu=  21.7s rd=   271.3MB wr=   269.2MB
+D 12:25:35 pid=2649667 spawn       rss= 1104MB cpu=  21.7s rd=   279.9MB wr=   278.5MB
+D 12:25:35 pid=2649664 spawn       rss=  713MB cpu=  21.2s rd=   316.1MB wr=   258.8MB
+D 12:25:35 pid=2179086 other       rss=  689MB cpu=2414.4s rd=199154.3MB wr=279835.3MB
+D 12:25:35 pid=2649754 model       rss=  370MB cpu=   3.1s rd=   287.2MB wr=     0.0MB

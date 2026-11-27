@@ -1,0 +1,10 @@
+=== PROCESS START ===
+    PID                  STARTED     ELAPSED CMD
+3809122 Mon Nov 23 13:34:45 2026  3-05:52:39 python /home/ubuntu/alpha2/realtime_data.py
+=== READY 25m LATEST ===
+spot_dict_1795692300.ready 19:26:25.9351906160
+swap_dict_1795692300.ready 19:26:55.7071988460
+=== REBALANCE LINES ===
+  23 /home/ubuntu/alphatrade/data/25m-eart1106/账户换仓信息/20261126_17.csv
+  22 /home/ubuntu/alphatrade/data/25m-eart1106/账户换仓信息/20261126_18.csv
+  45 total

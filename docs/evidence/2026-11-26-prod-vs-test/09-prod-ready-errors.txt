@@ -1,0 +1,16 @@
+=== READY 25m TODAY ===
+market_pivot_spot_1795688700.ready	2026-11-26 18:26:27.6731087960
+market_pivot_swap_1795688700.ready	2026-11-26 18:26:56.4421160810
+spot_dict_1795688700.ready	2026-11-26 18:26:27.7061088040
+swap_dict_1795688700.ready	2026-11-26 18:26:56.4911160940
+=== ERROR COUNTS ===
+trade_errors=0
+upstream_errors=0
+=== RESOURCES ===
+2026-11-26 19:23:39 CST
+ 19:23:39 up 314 days,  4:46,  3 users,  load average: 3.83, 2.74, 2.26
+               total        used        free      shared  buff/cache   available
+Mem:            7685        2716        3609           1        1593        4968
+/dev/vda2       178G  148G   23G  87% /
+=== PM2 ERROR TAIL ===
+27492 /home/ubuntu/.pm2/logs/alphatrade-error.log

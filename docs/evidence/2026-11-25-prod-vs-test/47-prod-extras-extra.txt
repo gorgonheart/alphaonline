@@ -1,0 +1,22 @@
+=== [P] research / funding111 existence ===
+ls: cannot access '/home/ubuntu/alphatrade/research': No such file or directory
+ls: cannot access '/home/ubuntu/alpha2/data/funding111': No such file or directory
+=== [Q] legacy /home/ubuntu/alpha (old instance) ===
+2026-11-02 08:25:40.731884409 +0800 /home/ubuntu/alpha
+2026-11-05 09:21:58.556256371 +0800 /home/ubuntu/alpha/data
+176128	/home/ubuntu/alpha/data/exginfo
+65818624	/home/ubuntu/alpha/data/funding
+122871808	/home/ubuntu/alpha/data/coin_cap
+2252165120	/home/ubuntu/alpha/data/binance_spot_1h_resample
+2252374016	/home/ubuntu/alpha/data/data_api_spot_1h_resample
+2927935488	/home/ubuntu/alpha/data/data_api_swap_1h_resample
+2927992832	/home/ubuntu/alpha/data/binance_swap_1h_resample
+5400121344	/home/ubuntu/alpha/data/binance_spot_5m
+7010365440	/home/ubuntu/alpha/data/binance_swap_5m
+28034584576	/home/ubuntu/alpha/data/preprocess_1h_resample
+=== [R] extra dirs mtime ===
+2026-11-20 02:07:10.254720817 +0800 /home/ubuntu/alpha2/data/binance_spot_5m
+2026-11-25 13:16:42.874676137 +0800 /home/ubuntu/alpha2/data/preprocess_1h_resample/15m
+=== [S] other top-level data dirs ===
+624111616	/home/ubuntu/alphatrade1
+2819645440	/home/ubuntu/alphatradetest

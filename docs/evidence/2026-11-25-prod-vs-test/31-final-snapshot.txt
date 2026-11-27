@@ -1,0 +1,21 @@
+=== HOST/TIME ===
+VM-0-15-ubuntu
+2026-11-25 13:55:09 CST
+=== UPTIME ===
+ 13:55:09 up 312 days, 23:18,  2 users,  load average: 1.66, 2.31, 2.27
+=== FREE ===
+               total        used        free      shared  buff/cache   available
+Mem:            7685        1507        4593           1        1892        6177
+Swap:          18371        1026       17345
+=== DF ===
+Filesystem      Size  Used Avail Use% Mounted on
+/dev/vda2       178G  148G   23G  87% /
+=== PM2 ===
+┌────┬───────────────────┬─────────────┬─────────┬─────────┬──────────┬────────┬──────┬───────────┬──────────┬──────────┬──────────┬──────────┐
+│ id │ name              │ namespace   │ version │ mode    │ pid      │ uptime │ ↺    │ status    │ cpu      │ mem      │ user     │ watching │
+├────┼───────────────────┼─────────────┼─────────┼─────────┼──────────┼────────┼──────┼───────────┼──────────┼──────────┼──────────┼──────────┤
+│ 0  │ alpha             │ default     │ N/A     │ fork    │ 3982664  │ 20D    │ 0    │ online    │ 0%       │ 76.6mb   │ ubuntu   │ disabled │
+│ 1  │ alpha2            │ default     │ N/A     │ fork    │ 3809122  │ 2D     │ 3    │ online    │ 0%       │ 161.5mb  │ ubuntu   │ disabled │
+│ 2  │ alphatrade        │ default     │ N/A     │ fork    │ 464274   │ 18D    │ 33   │ online    │ 0%       │ 23.6mb   │ ubuntu   │ disabled │
+│ 3  │ alphatradetest    │ default     │ N/A     │ fork    │ 3983440  │ 20D    │ 0    │ online    │ 0%       │ 146.6mb  │ ubuntu   │ disabled │
+└────┴───────────────────┴─────────────┴─────────┴─────────┴──────────┴────────┴──────┴───────────┴──────────┴──────────┴──────────┴──────────┘

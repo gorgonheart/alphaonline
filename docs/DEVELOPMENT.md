@@ -2,6 +2,266 @@
 
 > **统一开场入口**：[docs/README.md](README.md)（汇总三套环境、账户矩阵、存储限制、主干历史、核心关系、分支状态、性能分析、待办路线、避坑清单与历史归档索引）；本文件保留按时间倒序的逐条详细技术与发布流水。
 
+## 2026-11-27 同版本双机数据对比与正式机 CPU/内存效率分析（全程 SSH 只读）
+
+正式机 `09:30` 完成 `alpha2=5694033` / `alphatrade=5cab8f8` 发布后，按"两机已同版本"前提做了一次 `10:47–11:16 CST` 的只读取证，报告见 [2026-11-27 正式机 vs 测试机数据对比与资源效率分析](2026-11-27-prod-vs-test-and-resource-efficiency.md)，原始留底 `docs/evidence/2026-11-27-prod-vs-test/`。
+
+- **版本核验**：测试机 `alphatrade` 非 git 仓库，改按文件哈希比对——`core/factors/signals/sections` + `startup.py`/`config.py`/`shared_account_config.py` 共 **157 个文件逐字节一致**，测试机仅多一个未跟踪 `core/utils/factor_metrics.py`；生产者 `core/factors` 合并哈希 `f57afe4b…` 与 `realtime_data.py` `039667bd…` 两端相同（测试机 git `HEAD` 仍是 `7790bc1` + 53 个未提交改动，属记录不一致而非代码不一致）。
+- **性能口径修正**：正式机今日 **63/64 轮为 `replay`**（`changed_series` 中位 37，9–171，无一为 0），测试机 11 轮**全部 `incremental` 且 `changed_series` 恒空**。同账户（`45m`）回放比增量多 **+28.1 s/轮**（`prepare +19.5`、`input_read +5.5`、`calc +27.9`）。因此"正式 128 s vs 测试 95 s"是**模式差**；同为 `incremental` 时正式机 `calc 85.2 s` 反而比测试机 `92.9 s` 快 8–10%（Xeon 8255C vs E5-26xx v4）。
+- **数据一致性**：`select_coin` 的 `close/next_close/cap_weight` 3623 个公共 key **最大差 `0.000e+00`**；535 币方向仅 `BEAMXUSDT`/`OPGUSDT` 两处不同（均在 `线上实盘多头`，依赖实盘持仓）。`sum(abs(target_lots))` 仍差 **−24.5%～−25.0%**，按子策略双峰分化（`大学生`/`截面因子`/`线上实盘多头`≈1.00，`VolumeMaxBias` 0.52、`Funding0021` 0.56）；用 `|lots|×price/|alloc_ratio|` 反推**隐含资金基数**，测试/正式中位比 **0.604**（0.43–1.04 分策略），同期两机 `totalEquity` 几乎相同（16,850.90 vs 16,855.77）而**现货净值 7,107.91 vs 503.10**，指向 `base_margin(0.6/0.2/0.2)` 与 `dry_run` 虚拟资金口径，而非信号或行情。
+- **上游**：正式机 `v2.0.2` WS 上线后同批次 `barrier 0.13/1.39 s`、`market_dict 17.5/32.9 s`、`pivot 2.2/4.8 s`，全面快于测试机（`0.34/19.83 s`、`20.9/38.8 s`、`2.0/3.7 s`）。
+- **正式机 CPU 效率**（`sar` 全天 67 点 + 1 s 采样）：日均 `%user 22.92 / %nice 6.10 / %system 9.16 / %iowait 6.19 / %idle 55.63` → **利用率 44.4%（1.78/4 核）**；无轮窗口基线 `busy 4.7%`（0.19 核）；轮内 `busy 86–99%`（3.47–3.95 核），归属上 **MODEL 4 个 `spawn_main` worker 占 88–97%**，`alpha2` 仅在发布窗口占 9–26%。结论：**4 路并行已吃满 4 核，加 `MODEL_JOB_NUM` 无收益**，瓶颈转为串行段（`prepare`/`calc` 中的修订回放）。
+- **正式机内存效率**：`%memused` 均值 11.25%（峰值 17.05% @09:40）、`kbcached` 均值 2.69 GB、`%commit` 峰值 29.2%；**swap 全天持续抖动**（`pswpin 396 页/s`、`pswpout 424 页/s`，折算 ~1.55/1.66 MB/s、日均 ~135 GB）；1 s 采样轮内 `MemAvailable` 最低 **710 MB**（11:11）、swap used 峰值 **4,353 MB**（30 s 内 +3 GB 后回落）。峰值成因是**主线轮次与旧栈 `alphatradetest` 4×`account_exec`（各 ~1 GB）重叠**；`MemoryHigh=4.5 GiB` 只作用于自动初始化（`systemd-run` scope），常态轮次与旧栈均在 `session-23.scope` 下**无任何上限**。
+- **未决策**：① 测试机 `changed_series` 恒空属漏检还是基线被同进程刷新；② 资金基数分化归因（`base_margin` vs `dry_run` 虚拟资金）；③ 旧栈是否可回收（可释放 ~4 GB 峰值内存）。本轮未做任何变更，仅更新 `README`/`DEVELOPMENT` 与本文档。
+
+## 2026-11-27 主实盘正式环境双端发布（`alphaprod`：`alpha2=5694033` PID `374475` · `alphatrade=5cab8f8` PID `374502`）
+
+经 `2026-11-27 00:25–08:25 CST` 测试机连续 9 轮 `25m` 过夜/早盘实测与正式机同切点对拍验收（测试机 9/9 轮 `incremental` 0 修订、`total_s` 中位 `91.85 s` vs 正式机 9/9 轮 `replay` 中位 `129.55 s`；11/14 子策略逐位一致，536/538 标的持仓方向一致），按用户明确授权于 `09:27–09:30 CST` 空闲窗完成正式服务器 `alphaprod`（`43.167.235.164`）主实盘双端发布（**并行旧实例 `alpha` PID `3982664` 与 `alphatradetest` PID `3983440` 全程未触碰**）：
+
+- **裸仓推送与备份**：双仓 `main` 推送至 `/home/ubuntu/repos/{alpha,alphatrade}.git`（`b5eb945..5694033`、`06c8b15..5cab8f8`）；原配置与 HEAD 分别备份至 `/home/ubuntu/alpha2/test/release-v202-post1126-20261127/backup/` 与 `/home/ubuntu/alphatrade/test/release-v241-post1126-20261127/backup/`。
+- **正式机主机开关持久化与快进更新**：将正式机原有工作区差异（`is_simulate="none"`、`shared_factor_pipeline=True`、`arrow_demand_enabled=True`、`init_data_pipeline=True`、`init_factor_symbol_batch_size=32`、`dynamic_burst_enabled=True`）持久化写入 `/home/ubuntu/alphatrade/config.json` 后，双仓干净 `git pull --ff-only origin main`；校验导入与主机开关覆盖 100% 生效、`warm-numba` 预编译通过；同步调优宿主 `vm.swappiness=15`（持久化至 `/etc/sysctl.d/99-alphaprod-swappiness.conf`）。
+- **平滑重启与状态核验**：`09:30:44 CST` 在 `NO_ACTIVE_TRADE_WORKER` 空闲窗平滑重启 `pm2 restart alpha2`（新 PID **`374475`**，`v2.0.2` WS 底座、`use_ws=True`）与 `pm2 restart alphatrade`（新 PID **`374502`**，`v2.4.1` `[正式模式]`），全部 6 个实盘账户（`5m/15m/25m/35m/45m/55m`）`warmup.pkl` 均保持 `complete=True`，零启动报错。
+
+## 2026-11-26~27 双端对比收口优化（项 2–5）合入本地主干与测试机过夜实测验收（`D:/alphaonline` `main=5cab8f8` · `D:/alpha` `main=5694033`，已部署 `alphatest`）
+
+基于 [2026-11-26 正式机与测试机运行对比](2026-11-26-prod-vs-test-comparison.md) 的根因诊断与用户决策（**项 1 P0 测试机账户 `accounts/25m-eart1106.py` 保证金配置保持不调整；完成项 2–5，合并本地 `main` 主干并发布测试环境 `alphatest`，不动正式机 `alphaprod` 与 `production` 远端**），按 RED→GREEN TDD 完成跨双仓 4 项优化、合入双仓本地 `main`（`git branch --no-merged main` 均为空），并于 `2026-11-26 21:46 CST` 部署测试机 `alphatest`（`43.173.122.28`），经 `21:50 CST`～`2026-11-27 03:40 CST` 近 6 小时过夜自然轮实测闭环验证：
+
+1. **项 2 · 消费端 `fork` 前修订缓冲释放 + 宿主 `vm.swappiness=15`（`D:/alphaonline` `5cab8f8`）**：
+   - `tools/robust40/cli/server_robust40.py` 新增 `_release_trade_input_buffers()`（执行 `pa.default_memory_pool().release_unused()` + `gc.collect(0)`）；`_trade_wait_ready` 通过单槽列表转移所有权并在传参前释放栈帧中的 `old_inputs` / `current_inputs`，`_trade` 在 `handoff.prepare` 后释放 `preloaded_*`、在写完 `revision_inputs.pending.pkl` 进入 `account_exec.main()`（`fork` `FACTOR_BLOCKS` 与 `Step 6` 子进程）前立即 `del inputs` 并归还 PyArrow 内存池；测试机宿主同步调低 `vm.swappiness`（`60 → 15`，持久化至 `/etc/sysctl.d/99-alphatest-swappiness.conf`）。
+   - **过夜实测（`00:25`–`03:25 CST` 连续 4 轮 `25m`）**：`FACTOR_BLOCKS` `swap_out_pages` 从优化前的 `114,576–203,489` 页（`447–795 MiB`）骤降 **`87%~100%`** 至 **`11,446` / `25,949` / `0` / `19,117` 页**（其中 `02:25` 轮实现 **`swap_out_pages=0`**）；`FACTOR_BLOCKS` 墙钟从 `54.0–66.2 s` 降至 **`42.17 / 42.83 / 43.06 / 50.40 s`**；`account_calculation_s` 从 `97.4–115.6 s` 降至 **`85.57 / 86.81 / 85.60 / 100.18 s`**（中位数 **`86.2 s`**）；`total_s` 从 `105.0–125.9 s` 降至 **`90.50 / 91.85 / 90.79 / 105.26 s`**（中位数 **`91.3 s`**，整轮 `XX:27:30~27:46` 收尾，较正式机 Xeon `126–135 s` 快 **`35~43 s`**）；6 小时后整机 `MemAvailable = 6,278 MiB`。
+2. **项 3 · 生产端 `spot` 优先确定性提交 Wave 1 批次（`D:/alpha` `5694033`）**：
+   - `core/strategy/preprocess.py` 为 `preprocess_type_data` 增加异常安全的 `wait_before_submit` / `on_batches_submitted` 事件门控，`preprocess_offset_data` 固定先提交 `spot`（3 个 batch）再放行提交 `swap`（5 个 batch），在不改变 4 核两波总时长的前提下确保 `spot` 100% 在第 1 波完成发布。
+   - **过夜实测**：连续 10 轮启用偏移 `[io-stat]` 显示 `spot market_dict` 稳定在 **`19.9–23.8 s`**（`swap market_dict` 为 `37.1–44.9 s`）；消费端 `00:25`–`03:25` 4/4 轮 `spot_early_lead_s` 全部稳定命中 **`16.83 / 18.16 / 21.37 / 17.96 s`**（彻底根治此前 `50%` 概率退化至 `0.005 s` 的竞态），`input_read_s` 压至 **`1.41–1.59 s`**，`prepare_s` 稳定在 **`2.65–2.92 s`**（较竞态退化轮 `5.96–6.52 s` 减半）。
+3. **项 4 · 生产端启用偏移提前至 `T-22s` 唤醒 + 非启用 5m 空档跳过实时预测资金费全量重写（`D:/alpha` `5694033`）**：
+   - `core/app.py` 新增 `ENABLED_META_LEAD_SEC = 22`（非启用 5m 保持 `T-15s`），并通过签名兼容的 `_invoke_update_meta` 在非启用 5m 空档传入 `include_realtime_funding=False`（同步穿透 `core/exchange/adapter.py` 与 `core/pipeline/data_update.py`），保留 `exginfo` 刷新与已结算历史资金费渐进回补落盘，跳过空档对 767 个 `.pkl` 的实时预测资金费重复重写。
+   - **过夜实测**：连续 12 个启用偏移 `Exchange Info 与实时资金费获取成功` 稳定在 **`XX:XX:45~49 CST`** 完成（距整点安全余量从 `3 s` 扩至 **`11~15 s`**）；非启用 5m 空档（`interval` / `hour_complete`）资金费 `保存=0.000s`（消除每 5 分钟 `5.0–7.7 s` 的 767 文件重写），且 `18:00`/`19:00 UTC` 整点结算历史资金费均 `767/767 complete` 零漏补。
+4. **项 5 · 交易端 `bStocks` 局部脏行容错 + 跨进程磁盘缓存 + 杠杆精调免冗余查账（`D:/alphaonline` `5cab8f8`）**：
+   - `core/binance/base_client.py`：`__init__` 开启 `_disk_cache_enabled = True`（保持 `__new__` 轻量单测桩与全局 `data/` 隔离），新增原子 `.tmp + os.replace` JSON 缓存；`_parse_bstocks_coins` 跳过 `sapi_get_capital_config_getall` 中个别 `name=None` / 空 `coin` 脏行（仍拒绝非列表或全空无效响应）并启用 12h 磁盘缓存 `data/bstocks_cache.json`；`get_swap_leverage_bracket` 启用 6h 磁盘缓存 `data/leverage_brackets_<api>.json`；`adjust_leverage_by_target_notional` 在 `self.swap_account is None` 且所有计划标的目标名义价值均未触及最高杠杆档位上限（无降档、无溢出）时跳过额外 `get_swap_account(require_update=True)` 私有请求。
+   - **过夜实测**：此前测试机每小时必现的 `ValueError: bStocks 钱包名单字段无效` **100% 归零**，`00:25`–`03:25` 每轮均稳定输出 `🚫 bStocks 动态过滤：118 个股票代币并入黑名单（缓存共 118 个）`；`bstocks_cache.json`（`1.1 KiB`）与 `leverage_brackets_papiGetUmLeverageBracket.json`（`1.1 MiB`）跨轮直接命中（缓存读取 `<0.1 ms` vs 在线 `0.908 s`）。
+- **验证与备份记录**：
+  - 本地 Windows `alpha311`：新增 [test_producer_post1126_optimizations.py](../../alpha/tests/test_producer_post1126_optimizations.py) 与 [test_consumer_post1126_optimizations.py](../tests/test_consumer_post1126_optimizations.py)，`D:/alpha` 全量 **`437 passed, 0 failed`**，`D:/alphaonline` 专项及契约回归 **`1,380 passed`** + `warm-numba` 通过。
+  - 测试机 `alphatest`：原文件分别备份于 `/home/ubuntu/alpha/test/release-post1126-opt-20261126/backup/` 与 `/home/ubuntu/alphatrade/test/release-post1126-opt-20261126/backup/`；远端 `pytest` **`10 passed` + `10 passed`**；`realtime_data` 新 PID **`2179086`**（`error.log` 0 字节），`alphatrade-dryrun` PID **`1884098`**（子进程每轮自动加载新代码），`accounts/25m-eart1106.py` 未改动。
+
+## 2026-11-26 生产端内存治理与消费端计算窗口隔离（`D:/alpha` `baa6e94`，已部署测试机 `alphatest` PID `1998396`）
+
+针对测试机 `alphatest` 排查定位的 `FACTOR_BLOCKS` 换页根因（上游 `compute_pool` 4 个常驻 spawn 子进程空闲期因 `pymalloc`/`glibc` 堆碎片常驻 `2.43 GiB` 匿名页、`~3.0 GB` 只写不读 PKL 冲刷页缓存、`.ready` 后前 `12.4 s` `bg_1h_flush` 读写 `~2.0 GiB` 与下游撞车及 `aux_exe` 陪跑），在 `D:/alpha`（提交 `baa6e94`）按 TDD 落地 4 项零跨仓契约改动的极窄治理，并按用户授权备份部署至测试机 `alphatest`（正式机 `alphaprod` 未触碰）：
+
+1. **计算池周期内复用、发完 `.ready` 即销毁 + `T-15s` 隐藏预热**：`core/pipeline/runtime_supervisor.py` 新增 `warm_compute_pool()` 与 `release_compute_pool(wait=False)`；`core/pipeline/update_cycle.py::run_ws_cycle` 在 `preprocess` 完成（`.ready` 发出或异常退出）后立即销毁 4 个 worker 让 OS 100% 回收匿名堆页；`core/app.py::update_all` 在启用 offset 的 `T-15s`（`update_meta` 前）提前异步预热计算池，隐藏 `~1 s` spawn 冷启动。
+2. **只写不读 PKL 落盘释放页缓存（`POSIX_FADV_DONTNEED`）**：`core/storage/candle_manager.py` 新增跨平台 `drop_file_page_cache()`（Windows 无操作，Linux 调用 `os.posix_fadvise(..., POSIX_FADV_DONTNEED)`）及 `save_data_file`/`set_candle` 可选 `drop_page_cache` 参数；`core/strategy/preprocess.py`（Raw `batch*.pkl`）与 `core/pipeline/resample.py`（`1h_resample/*.pkl`）写后即弃页缓存，`market_pivot_*.pkl` 与 `.arrow` 保持热缓存供下游秒读。
+3. **`bg_1h_flush` 挂入主进程轻量待办槽错峰刷盘**：`RuntimeSupervisor` 新增 `defer_1h_flush()` / `flush_pending_1h()` 并在 `shutdown()` 兜底刷盘；`run_ws_cycle` 发布成功后将 `1h_resample` 刷盘延后至 `app.py` 下个非启用 5m 空档执行（等待期仅占 `~5–8 MiB` 主进程内存、0 FD/磁盘，同 offset 下轮前及异常未发布时自动兜底同步刷盘）。
+4. **移除 `aux_exe` 陪跑、`coin_cap` 空档冷却缓存与 `maybe_backfill` 消费端让路**：`core/ingest/coin_cap.py` 缓存目录级最新日期（兼容无 `base_dir` 测试桩）并新增 `maybe_update_coin_cap_idle(min_interval_sec=1800)` 由非启用空档调度；`run_ws_cycle` 仅在 `handle.data_api is not None` 时才创建 `aux_exe`；`core/pipeline/backfill.py` 新增 `has_active_consumer()` 检测 `.arrow-demand` 或活跃交易/初始化进程时暂缓本轮空档补算且不进冷却。
+- **离线回归验证（Windows `alpha311`，由 `agy-b --model gemini-4-hydrogen-medium` 执行）**：
+  - 新增 `D:/alpha/tests/test_producer_memory_hygiene.py` **`8/8` RED→GREEN 通过**；
+  - `D:/alpha/tests/test_*.py` 全量回归（435 项）：修复 `coin_cap` 无 `base_dir` 桩兼容后 **`434 passed, 1 failed`（`67.16 s`）**（`test_coin_cap_proxy.py` `9/9` 全过；唯一失败为既有时序抖动用例 `test_2b_ws_supervisor.py::test_ws_runner_prunes_stale_cache_on_start_and_periodically`，单独复跑确认通过）；
+  - `D:/alphaonline/tests/` 跨仓契约 9 文件：**`67 passed, 4 skipped, 0 failed`（`24.95 s`）**。
+- **测试机 `alphatest`（`43.173.122.28`）备份、同步与重启验证**：
+  - 原 8 个 `.py` 文件已备份至 `/home/ubuntu/alpha/test/release-memory-hygiene-20261126/backup/`；
+  - 同步 `baa6e94` 全部 9 个文件后，Ubuntu `alpha311` 远端回归（`test_producer_memory_hygiene.py` + `test_compute_io_overlap_phase2.py`）**`25 passed in 2.92 s`**；
+  - `16:08 CST` 空闲窗平滑重启 PM2 `realtime_data`（新 PID **`1998396`**，`online`；`alphatrade-dryrun` PID `1884098` 未触碰），重启后整机 `MemAvailable = 6,613 MiB`（`used = 1,072 MiB`）。待 `16:25 CST` 主交易轮自然观察 `FACTOR_BLOCKS_PROFILE` 的 `swap_out_pages` 与空闲期 `MemAvailable` 水位。
+
+## 2026-11-26 交易端 `v2.4.1` 增量合入 + 消费端第二批（环节 5+6+7）离线落地、Carbon 终审与测试机发布（`D:/alphaonline` 分支 `feat/v241-and-consumer-batch2`，`ee62015..b8599ef`，已部署测试机 `alphatest`）
+
+基于 [设计文档](superpowers/specs/2026-11-25-v241-and-consumer-batch2-design.md) 与 [实施计划](superpowers/plans/2026-11-25-v241-and-consumer-batch2.md)，在基于 `feat/phase5-2b-consumer-hardening`（`6cd263b`）的隔离分支 `feat/v241-and-consumer-batch2` 上以严格 RED→GREEN TDD 完成「Phase A `v2.4.1` 窄合入 + Phase B 消费端第二批（环节 5+6+7）」全部 6 个 Task 编码、Carbon 独立全分支终审及测试机首轮排障修复（共 9 个提交 `ee62015..b8599ef`，保留工作区原有未提交 `docs/*`，未触碰正式机，未合入 `main`）：
+
+- **Phase A：`v2.4.1` 增量窄合入（`ee62015`、`286e2cb`、`95dae79`）**：
+  - **`ee62015`（Task 1 · 多交易所路径、`fast ready check`、映射与选币过滤）**：`.gitignore` 忽略 `2.3.3core/` 与 `position-mgmt-trading_v*/`；`core/version.py` 更新至 `2.4.1`（`v2.4.1.20261120`）；`config.py` 新增 `exchange_data_paths = {}`、`lookback_save_interval_hours = 0`（强制默认关闭归档）、非 `_` 账户组子目录查找及账户级 `exchange_name` 覆盖；`core/utils/datatools.py` 新增 `resolve_bmac_data_path` 与多交易所 `check_bmac_update_flag(run_time, exchanges=None)`、去除 `check_flags` 就绪后 `time.sleep(1)` 并将 `poll_interval` 降至 `0.1 s`、同步修正 `align_spot_swap_mapping` 与 `align_spot_swap_mapping_fast` 对空字符串分组键的处理；`core/select_coin.py::_selection_input_filters` 放开预过滤为 `[]` 并保留 `'是否交易'` 列供截面因子使用（5 文件验证 `288 passed, 2 skipped`）。
+  - **`286e2cb`（Task 2 · BN/OKX 客户端修复与账户组统计）**：合入 `core/binance/{standard,portfolio_margin}_client.py` 子账户转账 `sub_side` 修复（完整保留 `portfolio_margin_client.py` 本地定制）；完整增量合入 `core/okx/{base,portfolio_margin}_client.py` 全部 `v2.4.1` 改动（`MARGIN` 现货类型、`acctLv='3'` 强校验、`0.3s` 档位限频、`adjust_leverage_by_target_notional`、`51138`/`54000` 处理、10 天账单去重等）；新增 `core/utils/statis_func.py::net_fund` 与 `core/utils/group_statistics.py`（延迟导入 `core.account_group`），`statistics.py`/`statistics_debug.py` 兼容账户组子目录配置（按 `delist.py`/`monitor.py` 未启用现状裁决略过；8 文件验证 `217 passed`）。
+  - **`95dae79`（Task 3 · 账户组、`calc`/`trade` 两阶段拆分与 `MODEL` 组兼容）**：新增 `core/account_group.py` 与 `accounts/_demo_group/`；`core/account_manager.py`、`core/equity.py`（`ratio_folder`）、`core/position.py`（`calc_target_position` 向后兼容 `None` 回退 + `scale` 与现货不加杠杆约束）合入 `v2.4.1`；`core/real_trading.py` 拆分为 `calc_by_account` / `trade_by_account` 并严格保持 `lookback_save_interval_hours=0` 不篡改 `lookback_days` 与全路径 `dry_run` 防写保护；`core/account_exec.py`、`tools/robust40/server.py`（`Coordinator.command(..., *extra_args)` + `--stage trade` 跳过重复预检）、`tools/robust40/cli/server_robust40.py` 与 `startup.py` 实现传统与 `MODEL` 成员在账户组内统一 `calc -> group -> trade` 调度及退出码 `75` 组级熔断（15 文件验证 `155 passed`）。
+- **Phase B：消费端第二批（环节 5+6+7）零差协同加速（`e88278e`、`e27fbe1`、`c323ad3`）**：
+  - **`e88278e`（Task 4 · 环节 5 跨进程预热 + `spot` 先到先读）**：`tools/robust40/initialization_config.py` 新增 `PREWARM_LEAD_SECONDS = 10.0`；`telemetry.py` 新增 `reset_timer` 保证 `total_s` 从所有 `.ready` 齐备后起算；`startup.py` 对单户 `MODEL` 于 `run_time - 10 s` 通过 `Coordinator.launch_prewarmed_trade` 提前拉起 `server_robust40.py trade --wait-ready`（先无锁导入全量依赖再短持锁记录 `warmup_sig` 后放锁等待，不阻塞后台 `install()`；`spot` 双 `.ready` 先到即并发读 `spot` Arrow 与 Pivot；`swap` 就绪后重新持锁校验 `warmup_sig` 与列完备性并并发读 `swap`，超时返回退出码 `76` 静默跳过，6 文件验证 `86 passed`）。
+  - **`e27fbe1`（Task 5 · 环节 6 `state.pkl` 隐藏预读 + 权益保存去重 + 非阻塞写后台化）**：新增 `core/utils/async_disk.py::AsyncDiskWriter`（单工作线程顺序写盘、严格错误传播）；`tools/local_risk_model.py` 新增 `start_model_state_preload`/`consume_preloaded_model_state`/`clear_preloaded_model_state`，由 `core/backtest.py::run_backtest_multi` 在 `fork` 子进程池提交任务**之后**启动 `model/state.pkl` 后台预读并由 `ModelRobust40Strategy.py::prepare` 持锁校验文件签名后直接复用；`core/equity.py` 消除 `create_ratio_snapshot` 第 3 次冗余 `reindex` 并将持仓数量统计向量化；`core/model/backtest_config.py` 支持 `process_equities` 4 线程读盘及与 `calc_ratios`/`calc_by_account` 共用 `AsyncDiskWriter` 后台刷盘（6 文件验证 `75 passed`）。
+  - **`c323ad3`（Task 6 · 环节 7 `DeferredAtomicSave`、`finish_live` 事务闭环、`warm-numba` 与杠杆精调兼容保护）**：`tools/local_risk_model.py` 新增 `DeferredAtomicSave` 在主线程计算目标仓位期间并发完成 `model/state.pkl` 的 `.tmp` pickle + `fsync`，由 `tools/robust40/server.py::finish_live` 在写入 `revision_inputs.pkl`/`warmup.pkl(complete=True)` 之前先执行 `.commit()` 原子替换并释放 `.lock`；`core/real_trading.py::calc_by_account` 外层 `finally` 调用 `.abort()` 确保异常时保留旧 `state.pkl`、清理 `.tmp` 与释放锁，并为 `trade_by_account` 6.1 节精调杠杆补齐 `hasattr(..., 'adjust_leverage_by_target_notional')` 与必要列检查保护 `BinanceClient` 及轻量单测；`server_robust40.py` 新增 `warm-numba` CLI 模式集中预编译 `LiveRebRobust40`、`RebRobust40` 与 `start_simulation` 缓存。
+- **第一轮自审修复（`ee2ef23`）**：针对初审识别出的 5 项问题补齐 TDD 回归用例并修复落地——① `startup.py::_dispatch_unit_member` 为非 `MODEL` 账户组成员补全 `X3S_TRADING_ACCOUNT` 与 `PYTHONPATH`（及单户 `launch_prewarmed_trade` 前置环境一致）；② `core/real_trading.py` 向 `trade_by_account` 透传 `async_writer` 并在 `calc_equity`（`simulate` 模式）与 `save_final_select_results` 读盘前执行 `flush()` 消除竞态，同时 `calc_by_account` 改用 `ExitStack` 管理 `own_writer` 避免写盘异常掩盖计算异常；③ `core/account_exec.py::run_calc_stage` 返回跳过布尔态使 `main()` 跳过时正确返回 `None` 供 `server_robust40` 还原 `warmup.pkl(complete=True)`；④ `server_robust40.py::warm_numba_kernels` 将 `require_rebalance` 改用 `np.int8` 精准对齐 `ModelRobust40Strategy.build_context`；⑤ `tools/robust40/server.py::Coordinator.prepare` 按账户 `exchange_name` 解析 `resolve_bmac_data_path` 后登记重建，以及 `DeferredAtomicSave` 线程启动失败清理 `.tmp`。
+- **Carbon 独立全分支代码终审与补齐闭环（`d21d5a1`）**：逐文件核对 `6cd263b..ee2ef23` 与 `position-mgmt-trading_v2.4.1` 全量差异后识别并按 RED→GREEN TDD 修复 4 项问题——① **补齐 `BinanceClient` `v2.4.1` 杠杆档位与按目标名义价值精调能力**：在 `core/binance/{standard,portfolio_margin}_client.py` 补入 `get_leverage_bracket` 常量，并在 `core/binance/base_client.py` 完整合入 `get_swap_leverage_bracket`、`_pick_leverage_for_notional`、带档位上限保护的 `reset_max_leverage` 及 `adjust_leverage_by_target_notional`（同时保留 `trade_by_account` `hasattr` 守卫兼容轻量测试桩与全路径 `dry_run` 防写）；② **修正 `--wait-ready` 遥测起算锚点与消除重复累加**：`handoff.wait_and_read_inputs_streaming` 返回 `swap_ready_at` 锚点与就绪后真实读取墙钟 `input_read_s`，`telemetry.reset_timer(start_perf=...)` 将 `_start` 精确锚定在 4 个 `.ready` 齐备时刻（防止漏计就绪后 `swap` 读取墙钟且将 `prewarm_s` 收窄至等待前准备耗时），并删除 `server_robust40.py` 对 `revision_arrow_{spot,swap}_s`/`revision_pivot_s` 的二次重复 `telemetry.add`、补齐 `prepare_s` 累加；③ **加固 `--wait-ready` 预读损坏/空快照自愈回退**：捕获 `warmup.pkl` / `revision_inputs.pkl` 反序列化异常与空字典，回退持锁 `_trade()` 返回退出码 `75` 触发后台自愈重建而非裸抛崩溃；④ **`FactorHub` 多线程安全与消除重复 `setlocale`**：`core/utils/factor_hub.py` 引入一次性线程安全 `_ensure_locale()` 与缓存锁并在 `process_equities` 4 线程并发前主线程预解析因子，彻底消除多线程并发调用 C `setlocale(LC_ALL, ...)` 的潜在竞态。
+- **测试机首轮部署排障与启动 `.arrow-demand` 同步加固（`b8599ef`）**：① 修复 `test_consumer_batch2_pipeline.py` 中 `simulate` 用例未隔离 `rt.snapshot_path` 导致在实盘目录跑单测误删 `data/snapshot/` 的隔离漏洞；② `tools/robust40/initialization_config.py` 新增 `_apply_host_config_overrides()` 支持从主机本地 `config.json` 读取 `arrow_demand_enabled` / `init_data_pipeline` / `init_factor_symbol_batch_size` / `dynamic_burst_enabled`，杜绝代码同步覆盖主机开关；③ `tools/robust40/server.py::Coordinator.prepare` 修正 `candidate` 统一按本地 `datetime.timestamp()` 计算（消除 8h UTC/CST 偏差）、为持续 `pending` 账户推进 `run_time` 防止被旧 `stamp` 拦截，并在重启 `status=='ready'` 时主动调用 `release_demand` 清理残留全量需求；④ `startup.py` 新增 `prepare_startup_accounts()` 在 `check_accounts()` 后立即执行首次快照与 `.arrow-demand` 同步（不等首次 5m 睡眠）；本地 `test_arrow_demand.py` + `test_consumer_batch2_pipeline.py` + `test_upgrade_241.py` **`46 passed, 0 failed`**，已同步测试机 `alphatest` 并持久化主机开关至 `/home/ubuntu/alphatrade/config.json`。
+- **全仓离线回归验证（Windows `alpha311`）**：39 个核心与回归测试文件 **`677 passed, 4 skipped, 0 failed`（`147.39 s`）** + `server_robust40.py warm-numba` 退出码 `0`（`warm-numba: Numba JIT cache ready`）；测试机 `alphatest` 已完成同步与重启，等待上游下一 `25m` 轮发布全量 Arrow 恢复 `ready` 后采集第二批加速实测。
+
+## 2026-11-25 生产端第二批：收齐即算 + 计算期并行落盘与线上 5h 深度剖析闭环（Phase 5 子项目 2B 深化二期，`D:/alpha` `f44d7ee..7a44299`，已部署测试机 `alphatest` 验收）
+
+基于第一批 4 核并行（`f06b8f1`）在测试机 `alphatest` 连续 5 小时（`03:45 → 08:48 CST`）与正式机 `alphaprod` 的线上对账、`09:05` / `09:25` 轮 1Hz 进程树 CPU/PSS/云盘 I/O 采样及 [实施计划](superpowers/plans/2026-11-25-producer-compute-io-overlap.md)，在不增加进程并发度、不给下游消费端交易期增加驻留内存或磁盘争用的前提下，以 RED→GREEN TDD 完成「WS WAL 收齐即算 + 计算期并行落盘 + 线上两大隐藏回退修复」，并按用户授权备份部署至测试机 `alphatest`（**正式机 `alphaprod` 未触碰**）：
+
+- **第一批（`f06b8f1`）测试机 5 小时线上对账与 1Hz 资源剖析事实**：
+  - **就绪提速与 100% 策略一致**：`alphatest` `25m` 轮 `.ready` 中位数由升级前 `+149.1 s` 骤降至 **`+74.0 s`**（反超正式机 Xeon `alphaprod` `+114.0 s` 达 **`39.5 s`**）；5 小时 0 K 线修订（正式机同期 `80%` 轮次 `replay`）；`08:25` 同切点活跃 7 个父策略 `157/157` 选币与 `538/538` 合约方向（52 多 / 68 空 / 418 平）**100.00% 一致**。
+  - **CPU / 内存 / 云盘瓶颈定位**：① 计算窗口 4 核 CPU 利用率已达 `340%~395%`，消费端 `alphatrade` `MODEL` 合并峰值整机最低 `MemAvailable = 2,442 MB`（`alpha` 4 个常驻计算子进程空闲保留 `1,506 MB` PSS 含 PyArrow 未释放内存池），确认**不宜再增加进程数**；② `Writer` 排空队列受腾讯云入门 CBS `~250 IOPS` 限制耗时 `14 s`；③ 现场查明两处严重隐性回退：`update_resample_candle_incremental` 因 `calc_resample` 常规返回 7 根重叠 1h K 线（`first_new <= last_old`）导致 **100% 币种退回全表双读且 `tail_out=None`**（使 `Preprocess` `Fast Path 1` 命中率 `0%`）；同时测试机 54% 老币 `batch.pkl` 起点（`2025-04-16 06:25`）早于 `1h_resample`（`17:25`）11 小时，导致老币在 `Fast Path 2` 前缀下标 0 校验失配而退回 14,106 行全表 pandas 富集。
+- **`D:/alpha` 分支 `feat/v202-migration-2b` 新增 4 个原子提交（`f44d7ee..7a44299`，累计超前 `main=b5eb945` 21 提交）**：
+  - `f44d7ee`（Task 1 · WAL 直通屏障与零 `glob` 就绪标）：`WsLocalCache` 新增 SQLite WAL 只读 URI（`?mode=ro`）批量状态与窗口查询；`wait_for_ready_barrier` 与 `_compute_missed_and_gaps` 在 `ws_cache` 已收齐闭合窗口且无 `.gap` 时免等 `Writer` 磁盘队列即刻放行（`Writer` 后台与下游计算并行刷 `5m`，消除 `~9~10 s` 屏障干等与 `swap` 假缺口 REST 抢跑）；`CandleFileManager.save_ready/save_ws_ready` 用进程内 `os.scandir` 索引替代每币 `glob`（消除每轮数百万次文件名正则扫描）。
+  - `29e50fc`（Task 2 · 重叠窗口 `O(1)` 合并与内存优先重采样）：修复 `update_resample_candle_incremental` 常规 7 根重叠窗口误退回全表问题（改为 `searchsorted` 前缀切片合并并 100% 返回 12 根 `tail_out`）；`resample` 支持在 `Writer` 滞后时自动叠加 `ws_cache` 最新闭合 5m 窗口（48h 缓存满窗时免读 `5m` `.pkl`），并提供 `defer_disk_write=True` 内存优先合成接口。
+  - `a633ad9`（Task 3 · 老币快路径对齐 + Batch 内异步写盘重叠 + PyArrow 内存池释放）：放宽 `gen_batch_data_incremental` `Fast Path 1/2` 对 `df_old` 拥有更早历史头（如早 11 小时）的 `searchsorted` 对齐校验使老币 100% 命中尾部富集快路径，消除 `funding_fee` `int64/float64` 兼容 `FutureWarning`；`_run_batch_worker_task` 通过 `defer_save=True` 在单后台写盘线程异步持久化无因子 `batch.pkl`，与主线程 `cffi` C 因子计算及 PyArrow IPC 序列化真并发重叠（返回前严格 `save_fut.result()` 校验落盘成败，保持契约闭环）；`_release_memory()` 新增 `pa.default_memory_pool().release_unused()`。
+  - `7a44299`（基准剖析加固）：`Writer._write_pkl` 改用 `<name>.<pid>.<tid>.tmp` 独立临时名并补充 Windows 并发读 `PermissionError` 退避重试；`_compute_first_resample` 接入 4 进程常驻计算池并行合成，并将非关键路径 `1h_resample/*.pkl` 批量落盘移至 `.ready` 发布后的 `finally` 收尾（罕见未命中 `Fast Path 1` 的币种携带 6 行 `df_res_raw` 在子进程内按需 `0 ms` 即时刷盘），彻底消除 `Preprocess` 期间的主进程 GIL 争用与云盘 IOPS 抢占。
+- **离线验证与合成基准对拍（Windows `alpha311`）**：
+  - `D:/alpha` 全量回归（含新增 [test_compute_io_overlap_phase2.py](../../alpha/tests/test_compute_io_overlap_phase2.py) 11 项专项测试）：**`421 passed, 0 failed`（退出码 `0`）**。
+  - `D:/alphaonline` 跨仓与消费端契约回归：**`84 passed, 4 skipped, 0 failed`（`41.51 s`，退出码 `0`）**。
+  - 真实老币头差 + 滞后 `Writer` 拓扑合成基准（240 序列 × 6,000 根 1h = 144 万行，8 个 Batch、3 组 6 列 C 因子）：在本地高速 NVMe 上较第一批 `f06b8f1`（`5.87 s`）进一步压降至 **`4.41 s`（再提速 `1.33x`，较旧 `2B` `16.10 s` 累计提速 `3.65x`）**，全量 `1h_resample`、Raw Batch、Arrow 快照与年度 Pivot **`check_exact=True` 100% 逐位一致**（在腾讯云 `250 IOPS / 70 MB/s` CBS 上预计可将测试机 `25m` `.ready` 由 `+74.0 s` 进一步压至 `~+35~42 s`）。
+- **测试机 `alphatest`（`43.173.122.28`）部署与首两轮自然周期（`11:15` / `11:25 CST`）实测验收**：
+  - **备份、同步与远端验证**：备份原 7 个核心 `.py` 文件至 `/home/ubuntu/alpha/test/release-compute-io-overlap-20261125/backup/`，同步 `f44d7ee..7a44299` 共 8 个文件；Ubuntu `alpha311` 远端隔离套件 **`55 passed in 13.50 s`（0 失败）**；`10:57:53 CST` 在轮间空闲窗平滑重启 PM2 `realtime_data`（新 PID **`1066920`**，`spot 全量自愈=0/520`、`swap 全量自愈=0/767`）。
+  - **WAL 直通屏障与零假缺口立即兑现**：
+    - `11:15 CST`（`15m`）：`barrier[spot]` **`1.05 s`**、`barrier[swap]` **`1.79 s`**（对比 `10:15` 的 `20.36 s` **净省 `18.57 s`**），`REST 兜底 missed: spot=0 swap=0`（对比 `10:15` `swap=170` **彻底归零**）。
+    - `11:25 CST`（`25m` 主交易偏移）：`barrier[spot]` **`1.08 s`**（对比 `10:25` `8.91 s`）、`barrier[swap]` **`1.99 s`**（对比 `10:25` `16.34 s` **净省 `14.35 s`**），`missed: spot=0 swap=0`（对比 `10:25` `swap=82` **彻底归零**）。
+  - **首轮冷缓存预热与消费端闭环**：因重启后各 offset 首轮需建立 `_RESAMPLE_BOUNDS_CACHE`（`后台待刷盘=0` 同步落盘预热）且启动阶段 `init_history` 对近 7h 做了 1 次 REST 校准（`390` 币锚点变更按设计自动回退磁盘重算），`11:25` 冷首轮 `spot_dict.ready` 仍从 `10:25` 的 `+84.0 s` 提前至 **`+60.81 s`（`-23.2 s`）**，`swap_dict.ready` 为 **`+82.76 s`**（`market_dict=51.3 s`, `publish=3.1 s`, `pivot=2.9 s`）；下游 `alphatrade-dryrun`（`25m-eart1106`）`input_read_s=4.23 s`、`status="ok"`、`committed=true` 零报错收尾，收尾后整机 `MemAvailable = 5,107 MB`（PyArrow `release_unused()` 生效，空闲子进程最低降至 `30 MB` RSS）。自下一整点（`12:15` / `12:25 CST`）起 `_RESAMPLE_BOUNDS_CACHE` 与纯 WS 锚点全部转入暖态（`后台待刷盘=767` + `Fast Path 1` 100% 命中），将完整释放内存优先重采样与老币快路径收益。
+- **二期线上对账审查与 P0 + P1 热修落地及测试机实测验收（`D:/alpha` `18dadf7..0d64e9d`，已部署 `alphatest` 验收）**：
+  - 审查 [2026-11-25-prod-vs-test-comparison.md](2026-11-25-prod-vs-test-comparison.md) 及 `12:25`/`13:25`/`14:25 CST` 连续 3 轮暖态数据（3/3 轮 `incremental` 0 修订、`538/538` 方向零差），定位全部 4 项代码/配置遗漏，按 TDD 完成 P0（`18dadf7`）与 P1（`0d64e9d`）落地，`D:/alpha` 全仓回归 **`426 passed, 0 failed`**，并备份部署至测试机 `alphatest`（备份路径 `/home/ubuntu/alpha/test/release-p0p1-20261125/backup/`，远端回归 **`60 passed in 13.58 s`**，新 PID **`1358619`**）：
+    1. **P0-1 · 修复跨进程 `batch*.ready` 文件泄漏（`18dadf7`）**：`CandleFileReader` 新增 `__getstate__` 重置反序列化后的 `_ready_indexed` 并引入 `2.0 s` 跨周期目录索引刷新 TTL。线上 `20:25`（`25m`）与 `20:45`（`45m`）轮均在单轮内将历史残留的 `73+` 个 `.ready` 文件一次性自动清扫收敛为标准的 **`14` 个**，零泄漏。
+    2. **P0-2 · 修复 `ws_cache` 16 次并发全表扫描瓶颈（`18dadf7`）**：`WsLocalCache._init_schema` 在不改变 `_SCHEMA_VERSION=1`（保留既有 48h 数据）前提下新增覆盖索引 `idx_kline_tt_time(trade_type, begin_time_ms, symbol)`，`read_ws_cache_market_windows` 增加 `WHERE symbol IN (...)` PK 范围查找。线上 `20:25` 轮 `barrier[spot]=0.13 s`、`barrier[swap]=2.37 s`（`missed: spot=0 swap=0`），`Resample` 内存合成耗时降至 **`5 s`**，全链路 `spot_dict.ready = +45.72 s`、**`swap_dict.ready = +62.96 s`**（较二期冷首轮 `+82.76 s` 缩短 **`19.8 s`**，较正式机 `+114 s` 快 **`51 s`**）。
+    3. **P1-1 · 根治生产端重启后覆盖近端 WS 闭合 K 线触发 7h `replay`（`0d64e9d`）**：`init_history` 阶段 1 前执行 `_sync_ws_authority_to_tsmanager` 将连续无缺口 WS 闭合 K 线同步入 `TSManager`（缺口后的孤岛 WS bar 留待阶段 2 补洞后再恢复），`RecentDownloader` 改为开区间 `last_begin_time + 5m` 且预过滤已齐币种（零多余 HTTP 请求）；`resample_history` 对健康币种仅增量重采样 `>= last_old_ts` 尾部并预热 `_RESAMPLE_BOUNDS_CACHE`；`run_startup_catchup` 感知 WS 权威覆盖并仅对缺口币按需 `limit=5` 补拉。线上 `20:11 CST` 重启实测：`spot=0/525`、`swap=0/767` **阶段 2 无需补拉**，首轮即命中暖态 `后台待刷盘=520/767`，且紧接的 `20:25 CST` 主交易轮 `alphatrade-dryrun`（`25m-eart1106`, `stamp=1795609500`）首次在生产端重启后直接命中 **`mode="incremental"`**（**`0` `changed_series`**、`committed=true`、`status="ok"`、`prepare_s=4.89 s`、`total_s=107.57 s`），彻底消除重启 7h 回放。
+    4. **P1-2 · 对齐测试机 `publish_kline_num = 5000`**：`/home/ubuntu/alpha/config.json` 原位更新 `publish_kline_num: null -> 5000`，线上 `20:45 CST`（非交易偏移 `45m`）`.arrow` 产物由全历史 `3.31 GB` 降至 **`580 MB + 868 MB = 1.45 GB`（`-56%`）**，`45m` `swap_dict.ready` 从上午 `+112~122 s` 骤降至 **`+64.41 s`**（节省约 **`50 s`** 云盘写带宽争用）。
+- **2026-11-26 跨机逐柱对账热修（`D:/alpha` `15205e7`，已部署测试机 `alphatest` 验收）**：
+  - 9 小时跨机逐柱对账发现：`2026-11-25 20:11` 重启跨 `20:15` 闭合点时，`run_startup_catchup` 虽已用 REST 将缺失的 `12:10 UTC` 5m K 线完整写入 `flat_pkl` 与 `TSManager`，但 `core/pipeline/resample.py::_load_closed_base_window` 仅校验 `len(ws_closed) >= once_update_candles` 且无 `.gap` 即跳过 `flat_pkl` 返回 `ws_cache`（48h SQLite 不含 REST 补拉行），导致重启跨根的 1h 柱子漏算 1 根 5m 成交量。
+  - **修复落地（`15205e7`）**：新增 `_is_contiguous_closed_window` 严格校验 `ws_closed` / `flat_pkl` 末尾 `once_update_candles` 根时间网格等步长连续且末根对齐 `run_time - base_delta`，存在任何内部断档时自动回落与 `flat_pkl` / `TSManager` 合并补洞（WS 权威仍保持最高优先级；真连续时维持零读盘快路径）；本地 `81 passed`，测试机备份至 `/home/ubuntu/alpha/test/release-ws-contiguity-20261126/backup/` 并通过远端回归 **`61 passed in 15.94 s`**。
+  - **测试机自愈与实测验收（新 PID `1795238`）**：在 `09:45` 收尾后短暂停机用本地 `TSManager` 原子修补 4 个 offset（`5m/15m/25m/45m`）受 `12:10 UTC` 影响的单根 `1h_resample` 与 `batch*.pkl`（`swap 25m` 精确修补 `748` 币、`BTCUSDT` 成交量回正至 `13831.698`），随后于 `09:50:25` 拉起新进程（恰好再次跨越 `09:50/09:55` 闭合点实战检验修复）。`10:05 CST`（`5m`）轮实测：`missed=0/0`、`spot +45 s / swap +64 s`、`.ready = 14`；跨机 Arrow 对账确认自愈柱 `2026-11-25 12:05 UTC`（Spot `525/525` & Swap `767/767`）与本次跨重启新柱 `2026-11-26 01:05 UTC`（Spot `525/525` 完全一致、Swap `BTCUSDT` `6139.467 == 6139.467` 零漏柱）全部验收通过。
+- **未决事项**：测试机 `alphatest` 持续自然轮运行观察（注：下个 `10:25 CST` 主轮 `alphatrade-dryrun` 将感知昨日 `11:25` 单柱自愈执行 1 次精准回放对齐正式机，随后恢复 0 修订 `incremental`）；正式机 `alphaprod` 维持未改动，待用户后续决策再评估推广。
+
+## 2026-11-25 生产端全链路 4 核并行流水线与尾部增量加速（Phase 5 子项目 2B 增量深化，`D:/alpha` `3e8972b..f06b8f1`，已部署测试机 `alphatest` 验收）
+
+基于过去 25 小时（`2026-11-23 22:25 → 2026-11-24 22:25 CST`）测试机 `alphatest`（WS `2B`）与正式机 `alphaprod`（纯 REST `b5eb945`）的逐轮对账及 [实施计划](superpowers/plans/2026-11-24-producer-4core-parallel-pipeline.md)，解除原过度保守的 `< 2.8 GiB` 单核串行限制（实测 `XX:25:00 → .ready` 窗口内消费端 `alphatrade` `0%` CPU 空等、整机 `~6.3 GiB` 可用内存由生产端独占），在严格保持 7 条跨项目契约与产出 `check_exact=True` 逐位一致的前提下，以 RED→GREEN TDD 完成 `D:/alpha` 第一批全链路 4 核并行改造，并按用户授权部署至测试机 `alphatest`（**正式机未触碰**）：
+
+- **25 小时双机实证基线**：
+  - **修订面与存储**：测试机 WS 稳态 **24/24 轮 `incremental`（0 修订）**、5m 存储从 `12.1 GiB` 降至 `1.0 GiB`（`-91.7%`）；正式机纯 REST（`+3.0s` 延后 + `99` 根覆盖写）因约 `1%` 合约 REST `/klines` 在 `+9s` 才定型，触发 **137/148 轮（`92.6%`）`replay`**。
+  - **策略对齐度（`22:25 CST`）**：`position_results` 538 币种方向（51 多 / 66 空）及 **13/14 子策略（含 `S13` 资金费率）6 位小数完全一致**；唯一差异 `S5-动量实盘多头`（`use_custom_func=False`）源于两机历史起点差异（正式机 `2025-03-08` `15,033` 根 vs 测试机 `2025-04-16` `14,096` 根影响递归 `动量210401_双项异常隔离V2_12600`），与实盘持仓无关。
+  - **测试机上游就绪慢（`+137~146 s` vs 正式机 `+105~113 s`）根因**：① `num_writers=2` + 先写月分区后写 `.ws_ready` + `ws_wait_sec=10s` 导致 100% 轮次误触发假缺口 REST 双写；② `resample` 用双线程读 7,000 行月分区受 GIL 串行（`32.7 s`）；③ `preprocess` 强制 `spot → swap` 串行（`+14~19 s`），且单核 Python 耗时占 `swap` 88%（全表 1.4 万行 pandas 富集 `15.22 s`、`3,068` 次 `.loc` 更新 Pivot `4.45 s`、单线程 Arrow 转换 `4.17 s`）。
+- **`D:/alpha` 分支 `feat/v202-migration-2b` 新增 4 个原子提交（`3e8972b..f06b8f1`，累计超前 `main=b5eb945` 17 提交）**：
+  - `3e8972b`（Task 1 · 采集落盘与兜底）：默认 `num_writers=4`、`ws_wait_sec=14.0`（支持 `config.json` 覆盖）；`WsRunner → Writer` 改传原生轻量 `kline` 字典（消除每轮 `1,287` 次小 `DataFrame` pickle 开销），`Writer` 在 `flat_pkl` 原子落盘与 `.gap` 更新后**立即写 `.ws_ready`**（慢速 `TSManager` 月分区写移出屏障关键路径）；`update_cycle` 增加 `cancel` 事件，双市场屏障 0 `skipped` 且无 `.gap` 时立即取消退出 REST 兜底线程，真触发兜底时按是否有 `.gap` 分级请求 `limit=99` vs `limit=5`。
+  - `33d0854`（Task 2 · 重采样与常驻计算池）：`RuntimeSupervisor.get_compute_pool()` 提供跨周期常驻 4 进程 `spawn` 计算池（含异常 `_broken` 自动重建与 `shutdown()` 回收）；`resample._load_closed_base_window` 优先读取 240 行轻量 `flat_pkl`（闭合行数不足 `once_update_candles` 时自动回退 `TSManager` 月分区保持 100% 等价），支持跨进程分片并发重采样及 `return_tail_bars=12` 内存尾部直传。
+  - `1ea9b30`（Task 3 · Pivot 矩阵向量化）：重构 `preprocess.update_pivot_rows`，用单次去重时间索引 `searchsorted` + 二维 `float64` 矩阵批量赋值取代每轮 `3,068` 次 pandas `.loc` 循环（单测 500 币 × 5,000 行微基准较旧 `.loc` Oracle 提速 `>30x`，覆盖停牌跳空、新币扩列、下架保列与 `funding_rate` 补 0）。
+  - `f06b8f1`（Task 4 · 尾部增量富集 + 4 进程 Batch 并行 + 子进程 Arrow IPC）：`gen_batch_data_incremental` 新增前缀精确校验的尾部增量富集快路径（内存 `resample_tail_hints` 锚点校验免读盘 + 磁盘前缀校验免全表重算，历史修订/截断/配对变更自动回退全表路径）与 `apply_symbol_match` 无变更快路径；`preprocess_offset_data` 恢复 `swap || spot` 并发调度（`spot` 收齐先发 `.ready`），8 个 Batch 在常驻 4 进程池内一站式完成「增量合并 → 落盘无因子 Raw Batch → 全历史真多核 C 因子计算 → 当场裁切 `.tail(publish_kline_num)` 序列化为 Arrow IPC `RecordBatch` 字节流并释放大表」，主协调线程通过 `publish_arrow_ipc_batches` 零重算组装原子 `.arrow` 快照。
+- **离线验证与测速对拍（Windows `alpha311`）**：
+  - `D:/alpha` 全量回归（含新增 `tests/test_parallel_pipeline_phase1.py` 13 项 Oracle/异常隔离测试及 `test_2b_cross_repo_contract.py`）：**`410 passed, 0 failed, 3 warnings`（`69.01 s`，退出码 `0`）**。
+  - `D:/alphaonline` 跨仓与消费端契约回归（`test_2b_*` / `test_arrow_*` / `test_full_arrow_initialization` / `test_main_chain_parity` / `test_phase5_optimizations` / `test_precompute_contract`）：**`84 passed, 4 skipped, 0 failed`（`42.19 s`，退出码 `0`）**。
+  - 零干扰合成基准对拍（240 序列 × 6,000 根 1h = 144 万行，8 个 Batch、3 组 6 列 C 因子、1000 行 Arrow 发布 + 2026 年度 Pivot 更新）：旧 `2B` 拓扑（`f97005a`）`resample 4.10 s + preprocess 12.00 s = 16.10 s` → 新 4 核并行流水线（`f06b8f1`）**`resample 1.45 s`（`2.83x`）+ `preprocess 3.52 s`（`3.41x`）= `4.97 s`（总提速 `3.24x`）**，全量 Raw Batch、Arrow 快照与年度 Pivot **`check_exact=True` 100% 逐位一致**。
+- **测试机 `alphatest`（`43.173.122.28`）部署与首轮线上实测验收（`2026-11-25 00:28–00:50 CST`）**：
+  - **备份与同步**：备份原 12 个业务/配置文件至 `/home/ubuntu/alpha/test/release-parallel-4core-20261125/backup/`，在 `00:25` 轮发布并待 `alphatrade-dryrun` 计算收尾后同步 13 个 `.py` 文件，原位补丁更新 `config.py` 与 `config.json`（`num_writers: 2 → 4`, `ws_wait_sec: 14.0`，完整保留本地密钥）；Ubuntu `alpha311` 远端回归 **`39 passed in 12.20 s`**；`00:32:06 CST` 平滑重启 PM2 `realtime_data`（新 PID **`734689`**，保留全部 `14,681` 根历史 K 线、`全量自愈=0`）。
+  - **首轮线上对比（`00:25` 升级前 `25m` vs `00:45` 升级后 `45m`）**：
+    - `Resample`（520 spot + 767 swap）：`~32.7 s` → **`~10.0 s`（`-69%`，`spot` 仅 `~3 s`）**。
+    - `Pivot`（`swap 2026`）：`7.9 s` → **`3.7 s`（`-53%`）**。
+    - 全链路 `swap_dict.ready`：`00:25`（`25m` 仅写 `5,000` 行 Arrow 共 `1.45 GB`）为 **`+149.06 s`** → `00:45`（`45m` 无消费者需求注册写全历史 `14,681` 行 Arrow 共 **`3.31 GB`**，数据量 `2.3x` 且含首次计算池冷启动）仍缩短至 **`+122.47 s`（净省 `26.6 s`）**，整机 `Mem available = 5.3 GiB`、0 报错。
+    - **线上新发现的云盘 IOPS / 写带宽特征（`00:50` 稳态剖析）**：① `00:50` 纯 WS 轮 `520/520` spot（`max +18.57 s`）与 `767/767` swap（`max +19.39 s`）100% 到达，因单个 Writer 处理完第 `i` 个币的 `.ws_ready` 后仍同步执行 `_update_tsmanager` 月分区 `fsync` 才取第 `i+1` 个币，受腾讯云入门 CBS `~250 IOPS` 上限约束（若后续将 `_update_tsmanager` 延后至队列突发排空后批量执行，或调 `ws_wait_sec=18~20s`，即可将 `swap` 假缺口彻底归零并将屏障压缩至 `+4~5 s`）；② 单 Swap Batch 纯内存 CPU（含 3 组 12 列 C 因子 + Arrow 序列化）仅 **`6.33 s`**，当前 `preprocess` 剩余耗时主体为腾讯云盘 `2.05 GB` Raw Batch PKL + `.arrow` 的同步 `fsync` 写带宽（`~70 MB/s`）。
+- **未决事项**：持续观察 `01:25 CST`（`25m` 偏移，`5,000` 行 `1.45 GB` Arrow）稳态就绪时点与 `alphatrade-dryrun` 自然轮衔接；正式机 `alphaprod` 维持未改动，待测试机多轮验收确认后再行评估。
+
+## 2026-11-23 Phase 5 子项目 2B：生产端 `v2.0.2` 底座升级 + 5m/1h 存储解耦 + 消费端平滑衔接（阶段 2B-1 & 2B-2 离线落地，待授权启动 2B-3 测试机验收）
+
+基于 [设计文档](superpowers/specs/2026-11-23-subproject-2b-v202-migration-design.md) 与 [实施计划](superpowers/plans/2026-11-23-subproject-2b-v202-migration.md)，在两仓隔离分支以严格 RED→GREEN TDD 完成阶段 **2B-1（拆暗雷 + 5m/1h 解耦）** 与 **2B-2（本地定制平移 + Pivot 保列 + 消费端平滑衔接 + 跨仓离线契约验证）**，**尚未合入 `main`、未部署/重启任何测试机或正式机**：
+
+- **`D:/alpha` 分支 `feat/v202-migration-2b`（基于 `b5eb945`，13 提交 `f3d70ff..f97005a`）**：
+  - `f3d70ff`：建立 `v2.0.2` 目录骨架、薄转发 shim、2B 配置校验与 `BmacHandle` 扩展（`min_history_start_date='2025-03-25'`、`history_trim_date=None`、`base_5m_retention_days=30`、`ws_flat_pkl_bars=240`、`num_writers=2`）。
+  - `f5e4cd2` + `65f78ae`：拆除暗雷一（`Writer` `flat pkl` 独立裁剪为 240 根、`TSManager` 30 天月分区裁剪、非破坏性 `init_dirs()` 与显式 `apply_explicit_history_trim()`，且先写无裁剪优先级合并行至 `TSManager` 再截断 `flat pkl`）。
+  - `ecade69` + `ffd9db9`：拆除暗雷二（`ws_runner` 收拢至单市场 1 进程多 `asyncio` 协程、`num_writers=2`、SQLite 48h 清理、单分片建连失败隔离）。
+  - `423bb49` + `e39eed9`：5m/1h 存储解耦与缺失 offset 自愈（保留健康 offset 历史头）、修复 `fill_gaps` `trade_num` 整型 dtype、移除 `update_resample_from_base` 8 进程 spawn。
+  - `1fe9378`：平移 `funding` 限流与 24h 回补、`coin_cap` 代理/类型、`data_api` 与 `backfill`。
+  - `cdc9c73` + `41cca61`：平移 `preprocess`/Arrow/C 扩展因子、写入可选 Arrow `history_trim_date` metadata、年度 Pivot append-only 保列合并、通过 `spot → swap` 串行及释放 `batch_market_dict` 引用压低预处理峰值内存。
+  - `ddd81eb`：接入非阻塞 WS 周期、竞态安全 barrier 提前退出与健壮 `core.app` 调度器。
+  - `7abf234` + `f97005a`：新增跨仓离线端到端契约测试 `tests/test_2b_cross_repo_contract.py`（重启零重建链路 + 计划内 `2025-06-01` 磁盘瘦身链路）并加入 `tools/deploy_alpha.sh::verify()`；同时修复 `core/arrow_demand.py` 与 `core/arrow_publish.py` 转发 shim 在跨仓 `spec_from_file_location` 加载时的回退路径。
+- **`D:/alphaonline` 分支 `feat/phase5-2b-consumer-hardening`（基于 `2001075`，3 提交 `35a8cb1..6cd263b`）**：
+  - `35a8cb1`：`tools/robust40/handoff.py` 将零持仓放宽与单市场熔断扩展至 `pivot` `removed_columns`（含 canonical 别名匹配与字段去重）。
+  - `20855e2`：`tools/robust40/server.py` 与 `server_robust40.py` 新增 PyArrow 扫描最早 K 线（兼容 `s/ms/us/ns` 与 naive/UTC）与滚动 S3 初始化起点解析（满足 `min_kline_num + n`、UTC `00:{minute}` 网格对齐与 `≥ 365` 天守卫）。
+  - `6cd263b`：`core/utils/arrow_reader.py`、`server.py` 与 `server_robust40.py` 检测上游 Arrow `history_trim_date`（`spot`/`swap` 不一致抛错跳过、推进触发退出码 `75` 后台重建、回退或 `None` 零重建）并持久化至 `warmup.pkl`。
+  - **边界核验**：`git -C D:/alphaonline diff main -- positions/ModelRobust40Strategy.py accounts/ core/backtest.py core/equity.py factors/` **为空**（核心策略、账户配置与因子数学公式零改动）。
+- **离线验证结果（Windows `alpha311`）**：
+  - `D:/alpha` 全量回归（`tests/test_*.py`，含跨仓端到端契约测试）：**`397 passed, 0 failed, 3 warnings`（`50.88 s`，退出码 `0`）**。
+  - `D:/alphaonline` 2B + 消费端核心回归（`test_2b_*` / `test_server_*` / `test_removed_series_governance` / `test_rebuild_handoff` / `test_universe_expansion_revision` / `test_arrow_*` / `test_full_arrow_initialization` / `test_precompute_contract` / `test_phase5_optimizations`）：**`192 passed, 0 failed, 2 skipped`（`56.63 s`，退出码 `0`）**；专项复跑跨仓 shim 关联 4 文件（`test_arrow_demand` / `test_full_arrow_initialization` / `test_main_chain_parity` / `test_precompute_contract`）**`33 passed, 0 failed`**（修复 `f97005a` 前的 10 项 `ModuleNotFoundError: core.strategy` 全部转绿）。
+  - `D:/alphaonline` 全仓基线跑测（修复 shim 前 `1711 passed, 28 failed, 80 skipped`；扣除已修复的 10 项跨仓 shim 失败后，剩余 18 项均为 `main` 既有无关失败：`test_low_memory_initialization` 6 项 `core/backtest.py` `NameError: multiprocessing`、`test_initialization_pipeline` 7 项 + `test_initialized_replay_window` 1 项 `core/equity.py` `SimpleNamespace.name`、`test_corrected_factors` 1 项、`test_model_legacy_multi_params` 3 项，对应文件均未被本分支修改）。
+- **未决事项（阶段 2B-3 门禁，需明确授权）**：待用户授权后方启动测试机 `alphatest` 部署与 24h 自然轮验收（6 项放行门禁见 [规划文档](2026-11-23-phase5-and-v202-migration-plan.md) §阶段 2B-3）。
+
+## 2026-11-23 Phase 4（`alphaonline 06c8b15`）正式生产发布与首轮自然实盘验收（+ `alpha2` 代码同步至 `b5eb945`）
+
+经测试机 `alphatest` 23 轮自然轮与 REST 延后 `3.0 s` 实测（`changed_series` 由 `63–318` 骤降 **97%** 至 `6` / 4 个合约币尾部）后，按用户授权将精确的 Phase 4（`alphaonline 06c8b15`，严格未夹带 `feat/phase5-2a-low-concurrency` 上的未验收 Phase 5 提交 `52e5c86..c27daa9`）与 `alpha`（`7c10b63` P4-4 + `b5eb945` REST 延后 `3.0 s`）发布至正式机 `alphaprod`（`43.167.235.164`）：
+
+- **发布与隔离验证事实**：
+  - `alphatrade`：备份至 `/home/ubuntu/alphatrade/test/release-phase4-20261123/backup/`，通过 `/home/ubuntu/repos/alphatrade.git` fast-forward `095612f → 06c8b15`（保留全部机器配置，**未重启 `startup.py` PID `464274`**）；官方隔离验证 `tools/run_deployment_tests.py tests/test_p4_optimizations.py` **9/9 通过**（日志 `/home/ubuntu/alphatrade/test/logs/verify-csm5yd72.log`，自动清理完成）；6/6 实盘账户快照均为 `complete=True`，根分区 `86%`（余 `25 GiB`）。
+  - `alpha2`：备份至 `/home/ubuntu/alpha2/test/release-phase4-20261123/backup/`，通过 `/home/ubuntu/repos/alpha.git` fast-forward `41686c3 → b5eb945`；经用户授权于 `13:03 CST` 平滑重启 `alpha2` 后现场捕捉到 `ANTHROPICUSDT` 从 2026 Pivot 移除触发全量初始化，并暴露出 `kline_count_1h=14060` 随日期推进已晚于 S3 固定起点 `2025-03-31`（缺 `393.0 H`）；经用户授权于 `13:34 CST` 将正式机 `/home/ubuntu/alpha2/config.json` 的 `kline_count_1h_spot` / `kline_count_1h_swap` 调至 **`15000`**（备份至 `config.json.bak`）并重启 `alpha2`（新 PID **`3809122`**，`15000 15000 3.0` 校验通过，已进入历史补齐；并行旧实例 `alpha` PID `3982664` 与 `alphatradetest` PID `3983440` 全程未触碰）。
+- **正式机首轮自然实盘验收（`55m_o.rgonheart1104`，`12:57 CST`，`cutoff=2026-11-23 03:55:00`，`status="ok"`，`committed=true`）**：
+  - `FACTOR_BLOCKS_PROFILE`（369 万行）：**`38.967 s`**（`swap_out_pages=0`，突破 40 秒大关，对比 Phase 0–3 稳态 `40.2–42.4 s`）
+  - `initialization.sections`：**`15.055 s`**（对比 Phase 0–3 稳态 `20.8–22.0 s`，净省 `~6–7 s`）
+  - `MODEL` 仓管：精准命中 **`复用Step 6预加载市场Pivot（offset=55m）`**（整理 `1.184 s`）；`merge_context` 降至 **`1.104 s`**（原 `4.1–4.7 s`，`-75%`）；首轮因 `ModelRobust40Strategy.py` 改动触发一次性 `LiveRebRobust40` Numba 缓存重建（`+~23 s`，现已落盘缓存），扣除一次性重编译后稳态 `account_calculation_s` 约 **`~93 s`**（对比上线前稳态 `107.1–108.5 s`）。
+- **未决事项**：`alpha2` 代码已同步至 `b5eb945` 但进程尚未重启（下一次重启后生效 `7c10b63` + `b5eb945`）；下一轮 `5m-onheart1104`（`13:05 CST`）将直接命中已落盘的 `LiveRebRobust40` Numba 缓存，展现正式机稳态耗时。
+
+## 2026-11-23 Phase 5 子项目 2A：交易端低并发与热路径优化落地、部署测试机及首轮自然轮验收（分支 `feat/phase5-2a-low-concurrency`，`52e5c86..2001075`）
+
+基于 [2026-11-23 Phase 5 低并发优化与生产端 v2.0.2 底座升级规划](2026-11-23-phase5-and-v202-migration-plan.md) §子项目 2A 与人工确认的 [设计文档](superpowers/specs/2026-11-23-phase5-2a-low-concurrency-design.md)（方案 1 档 + `C1-A` + `D1-A`，暂缓 `P5-B1` 硬链接 CoW），在隔离分支 `feat/phase5-2a-low-concurrency`（基于 `main=06c8b15`，保留分支暂不合入 `main`，不动生产端 `D:/alpha` 与 7 条跨项目契约）以严格 RED→GREEN TDD + 独立 Python Oracle 完成优化实施、独立终审修复、测试机 `alphatest` 部署与首轮自然轮（`14:25 CST`）验收：
+
+- **设计阶段源码核查修正的 2 处原规划偏差**：
+  1. **`C1-A`（Polars 全局 Rayon 线程池）**：`core/backtest.py:395` 原将 `sections` 的 `_polars_threads` 限为 `min(2, budget)`，且 Polars 1.36 所有 Python 线程共用单全局 Rayon 池（本地实测 `threads=2` 下 3 线程仅 `1.08x`，放宽至 `4` 相对 `threads=2` 串行达 `1.52x`）；因此同步放宽实盘 `compute_gate is None` 时的 `_polars_threads=budget`（后台初始化 `compute_gate` 非空仍维持 `min(2, budget)`）。
+  2. **`D1-A`（仓位段真热点定位）**：`ModelRobust40Strategy.py:1483` 禁止 `symbol_ratio_limit`，`apply_position_limits` / `redistribute_excess_weight` 在 MODEL 实盘账户上不可达；原日志 `~5.9–6.7 s` 主体为 `agg_pos_ratio`，聚焦重写 `agg_pos_ratio` 而不动不可达代码与 `ModelRobust40Strategy.py`（避免触发线上 ~29 s Numba 重编译）。
+- **原子提交清单（`D:/alphaonline` 分支 `feat/phase5-2a-low-concurrency`）**：
+  - `52e5c86` + `0e9b8bd` + `2001075`（`P5-D1`）：`core/model/backtest_config.py` 新增 `_agg_side_ratios` 列连续 `(n_cols, n_rows)` `float64` 单块累加，精确保留 pandas `DataFrame.add(..., fill_value=0)` 的列/行排序、NaN 覆盖、0 列侧缺索引 `KeyError` 及 `columns.name='symbol'` 属性（`2001075` 由测试机真实快照对拍发现并经 TDD 修复）。
+  - `4c532bb`（`P5-B2`，**已随 `P5-B1` 推后拆分为独立需求，本轮不再关注**）：`tools/robust40/handoff.py::restore_snapshot` 改为 `ThreadPoolExecutor(max_workers=min(4, len(children)))` 并行恢复 14 个子策略目录；实测正确无损但无净加速（见下），分支内暂保留，合主干前可按需决定保留或单独回退。
+  - `656785c`（`P5-A1`）：`tools/robust40/handoff.py::read_inputs` 常规 Arrow 快路改为 `spot` / `swap` / `pivot` 三路 `ThreadPoolExecutor(max_workers=3)` 并行并由主线程汇总 `telemetry.add` 与 `failed_phase`（避免 `ContextVar` 跨线程丢失）；`read_arrow_tail` 在循环外读取文件级 `TimestampType.unit` 做精确整型边界缩放 + 零拷贝 `cast(pa.int64())` 二分，保留原生 `datetime64[{unit}]` 并零开销免疫子项目 2B（`v2.0.2` WS `ms` 精度时间列），同时修复空值/非时间列回退的 `zero_copy_only=False`。
+  - `70b6124`（`P5-C1`）：`core/utils/section_state.py` 拆分纯只读 `compute_section_blocks` / `compute_section_blocks_group` 与主线程 `publish_section_outputs`；`core/select_coin.py::_calc_section_blocks` 在 `compute_gate is None` 时以最多 3 线程并行计算 `signal_block` 截面族并在主线程按原声明顺序提交与原子落盘（异常时释放已完成 Polars mmap 句柄防止 Windows 目录锁，且不留半写入列或 checkpoint）；`core/backtest.py` 在 `compute_gate is None` 时放宽 `sections` 的 `_polars_threads=budget`，同步更新 `tests/test_shared_compute_handoff.py`。
+  - `c27daa9`：提交 [设计文档](superpowers/specs/2026-11-23-phase5-2a-low-concurrency-design.md) 与 [实施计划](superpowers/plans/2026-11-23-phase5-2a-low-concurrency.md)。
+- **本地验证、独立终审与部署前只读对拍**：
+  - 新增 `tests/test_phase5_optimizations.py`（20 项 TDD + 独立 Python Oracle / 并发 Barrier / 异常原子性 / 多精度时区测试）；独立高级审查子代理（Pro 模型）终审 0 Critical、1 Important（已以 `0e9b8bd` 修复）；Windows `alpha311` 16 文件回归 **`249 passed, 0 failed`（`74.36 s`）**；14×14050×400 本地合成基准 `agg_pos_ratio` **`5.349 s → 1.171 s`（`4.57x`，`exact=True`）**。
+  - 测试机 `alphatest`（`43.173.122.28`）：`13:42 CST` 空闲窗口备份 6 份原文件至 `/home/ubuntu/alphatrade/test/release-phase5-2a-20261123/backup/`（逐文件字节数与 `06c8b15` 0 差异），同步 5 份业务代码与 2 份测试文件，**未重启 `alphatrade-dryrun` PM2**（PID `1914052` 保持在线，`14:25 CST` 新 worker 子进程自然生效）。Ubuntu `upgrade233/alpha311` 16 文件回归 **`248 passed, 1 failed`（`76.30 s`）**（唯一失败为测试机缺少 `examples/model_robust40/MODEL_ROBUST40_V1_40m.py` 夹具所致，与本次改动无关；`test_phase5_optimizations.py` **20/20 全通过**，`5.04 s`）。
+  - 真实快照 & 实盘行情只读对拍（`25m-eart1106`，`cutoff=2026-11-23 04:25:00 UTC`）：`P5-D1` `1.907 s → 0.793 s`（`2.40x`，`check_exact=True` 含 `columns.name='symbol'`）；`P5-A1` **1,294/1,294 帧 `check_exact=True`**、`first_revision is None`、3 项遥测键齐全（暖 ABBA `2.355 s → 1.961 s`）。
+- **测试机首轮自然轮实测验收（`2026-11-23 14:25 CST` / `05:25 UTC`，`25m-eart1106`，`mode=replay`、`replay_hours=2.0`、`changed_series=13`）**：
+  - 对比当日升级前 14 轮（`00:25–13:25`，均走 `replay`）中位数及上一轮 `13:25`，**`P5-A1` / `P5-C1` / `P5-D1` 与端到端总耗时全部刷新当日最低**：
+    - **`input_read_s`（`P5-A1`）**：`8.27 s`（范围 `7.07–19.09 s`，`13:25` `7.68 s`）→ **`6.12 s`**（**`-2.15 s / -26.0%`**；三路分耗 `spot 6.12 / swap 2.39 / pivot 1.62`，串行总和 `10.13 s`，并发重叠净省 **`4.00 s`**）。
+    - **`initialization.sections`（`P5-C1`）**：`14.51 s`（范围 `12.75–18.16 s`，`13:25` `15.06 s`）→ **`9.95 s`**（**`-4.56 s / -31.4%`**，较 `13:25` 降 **`5.11 s`**）。
+    - **`完成仓位限制`（`P5-D1`，含 `agg_pos_ratio`）**：`6.11 s`（范围 `4.07–6.85 s`，`13:25` `6.33 s`）→ **`3.16 s`**（**`-2.95 s / -48.3%`**；扣除 `calc_ratios` `0.79 s` 后净耗 `5.29 s → 2.37 s`）。
+    - **`restore_s`（`P5-B2`）**：`7.83 s`（范围 `7.48–9.20 s`，`13:25` `7.63 s`）→ **`8.43 s`**（未见加速；现场拆解根因：`model/state.pkl` `449.2 MiB` 与 `sections/*.pkl` `130.7 MiB` 仍在主线程串行读写，且 14 子目录 58 个 `.pkl` `408.6 MiB` 受 Python GIL 与云盘写入带宽竞争限制）。
+    - **`account_calculation_s` / `total_s`**：`account_calculation_s` `97.84 s`（`13:25` `99.60 s`）→ **`86.58 s`**（**`-11.26 s / -11.5%`**）；`total_s` `130.22 s`（`13:25` `130.31 s`）→ **`116.10 s`**（**`-14.12 s / -10.8%`**，较 `13:25` 降 **`14.21 s`**）。
+  - **稳定性与产物核验**：PM2 `alphatrade-dryrun` `unstable restarts=0`、`status="ok"`、`committed=true`、`swap_out_pages=0`、`SCRATCH_CLEANUP 0.0017 s` 无残留、主机 `Mem available 6.4/7.5 GiB`；`validate_snapshot` 现场复验 **PASS**（`0.356 s`），`snapshot_time.txt`、`warmup.pkl`、`model/state.pkl`、`sections/*.pkl` 及 14 个子策略 `lots_state*.pkl` 均严格对齐 `2026-11-23 05:25:00+00:00`；`data/runtime/df_{spot,swap}_ratio.pkl` 均保留 `columns.name='symbol'`；`position_results/2026-11-23_14.pkl`（`538×6`、`119` 非零、`target_lots` 全部有限）与 `select_coin/2026-11-23_14.pkl`（`3568×15`）完好。
+- **范围收口裁决与未决事项**：
+  1. **范围收口（用户确认）**：**`P5-B1` 与 `P5-B2`（replay `copy_s` / `restore_s` 优化）整体推后并拆分为独立需求（[roadmap-and-backlog.md](kb/roadmap-and-backlog.md) `O8`），本轮 Phase 5（2A）不再继续关注**，核心交付收口为已验证生效的 **`P5-A1` + `P5-C1` + `P5-D1`**。
+  2. **待办**：已按用户指示将 `feat/phase5-2a-low-concurrency` fast-forward 合入本地 `main`（`06c8b15..2001075`，**未推送远端、未发正式机**）；待后续测试机多轮稳定并经明确授权后再评估正式机发布。
+
+## 2026-11-23 项目 1 启动：`alpha` REST 采集延后 3.0s 过渡实验已落地并部署测试机（`b5eb945` + `7c10b63`）
+
+基于 [2026-11-23 Phase 5 低并发优化与生产端 v2.0.2 底座升级规划](2026-11-23-phase5-and-v202-migration-plan.md) §项目 1，先在现行 `D:/alpha`（1.1.12）落地零架构风险止血改动，解决 `XX:25:00.000` 准点 REST 抓取拉到未定稿 5m K 线导致下游交易端每小时触发 2h 伪修订 `replay`（`+15.5 s`）的问题：
+
+- **代码改动（`D:/alpha` 提交 `b5eb945`）**：
+  - `config.py`：新增 `rest_fetch_delay_seconds = 3.0`（支持 `config.json` 机器级覆盖，校验必须为非负数值，`0` 可恢复准点抓取）。
+  - `realtime_data.py`：新增 `_fetch_wake_time(run_time)`，仅将 `update_all()` 中采集 worker 预热与主进程唤醒时刻延后至 `run_time + timedelta(seconds=delay)`；逻辑 `run_time`、闭合边界（`< run_time`）、`.ready`/Arrow/Pivot 命名与契约 100% 不变。
+- **验证与测试机部署**：
+  - TDD 先 RED（5 项新增断言失败）后 GREEN：Windows `alpha311` 跑 `test_dispatch_prewarm`、`test_realtime_recovery`、`test_deployment_config`、`test_module10_preprocess_pipeline`、`test_price_revision_publication` **45/45 通过**（`4.27 s`）。
+  - 测试机 `alphatest`（`43.173.122.28`）：备份原文件至 `/home/ubuntu/alpha/test/release-rest-delay-20261123/backup/`，同步 `realtime_data.py` + `core/preprocess.py`（含 P4-4 `7c10b63`）并在 `config.py` 补齐 `rest_fetch_delay_seconds = 3.0`（保留测试机全部既有配置）；Ubuntu pytest 同组 **16/16 通过**（`2.31 s`）。
+  - 于 `10:44 CST` 平滑重启测试机 `realtime_data`（新 PID `3518369`，`alphatrade-dryrun` PID `1914052` 未变），增量初始化启动正常（767/767 增量、0 全量、市值 0.13 min、0 报错）。
+- **未决事项**：待测试机自然轮（`11:25 CST` 起连续多轮 `25m-eart1106`）验证 `mode=replay` 占比归零与产出一对一对拍通过后，再经用户明确授权执行正式机 `alphaprod` 发布（连同 Phase 4 `alphaonline 06c8b15` + `alpha 7c10b63` + `b5eb945`）。
+
+## 2026-11-22 Phase 4（`06c8b15` / `alpha 7c10b63`）测试机 23 轮自然运行验收与生产一致性对拍
+
+测试机 `alphatest`（`43.173.122.28`，部署 `alphaonline 06c8b15`，备份位于 `/home/ubuntu/alphatrade/test/release-phase4-20261120/backup/`）连续完成 **23 轮自然 `dry_run`**（`2026-11-21 18:25` 至 `2026-11-22 13:25 UTC`，含 21 轮普通续算/重放 + 2 轮跨日 `scoring_calls=1`），**23/23 全部 `status="ok"`、`committed=true`、0 报错**，100% 命中 `MODEL仓管：复用Step 6预加载市场Pivot`：
+
+- **测试机自然轮实测遥测对比（部署前基线 4 轮 vs Phase 4 21 轮普通轮中位数）**：
+  - `FACTOR_BLOCKS`：`47.97–51.05 s` → **`41.89 s`**（范围 `40.98–51.76 s`，净省 `~7–9 s`）
+  - `Step 6`（14 子策略模拟）：`8.94–11.16 s` → **`8.58 s`**（范围 `7.84–9.79 s`，`STEP6_MARKET_PRELOAD` 中位 `3.23 s`）
+  - `MODEL merge_context`（状态读取+重叠核对+增量合并）：`3.40–3.77 s` → **`1.08 s`**（范围 `0.85–1.32 s`，`-70%`）
+  - `MODEL` 仓管全流程累计：`~14.8–16.5 s` → **`7.10 s`**（范围 `6.58–7.79 s`，`-55%`；跨日评分 2 轮为 `22.49–23.40 s`）
+  - `account_calculation_s`（主交易计算总计）：`115.72–121.24 s` → **`94.78 s`**（范围 `88.75–102.21 s`，净省 **`~22–25 s` / `-19%～-21%`**；跨日 2 轮 `118.48–119.80 s`）
+  - `total_s`（控制器端到端）：`144.27–154.09 s` → **`128.09 s`**（范围 `122.63–133.48 s`，净省 **`~20–26 s`**；跨日 2 轮 `151.27–151.44 s`）
+- **同时间点与正式机 `alphaprod`（`940c487`）产出一对一对拍（只读，`25m-eart1106_MODEL_ROBUST40_V1_25m`，切点 `2026-11-22 13:25:00`）**：
+  - 子策略最新持仓周期选币结果 `最新持仓周期选币结果.pkl` **逐字完全一致**：
+    - `S1-大学生实盘多头_后置过滤`：`n=17, w_sum=0.030797`，17 标的完全一致
+    - `S3-GA实盘多头0317`（WP2 重点重构目标）：`n=21, w_sum=0.512195`，21 标的完全一致
+    - `S12-回撤阈值空头`：`n=10, w_sum=-0.113636`，10 标的完全一致
+    - `S14-四饼`（`11:25`）：`n=4, w_sum=0.125000`，4 标的完全一致
+  - `仓位比例-原始.csv` 最近 3 小时各子策略权重高度一致（因测试机起步日期晚 20 天 `13022 vs 13502` 行，复利曲线天然相差 `0.00004–0.0008`）。
+- **测试机 Ubuntu 14 文件回归套件**：`163 passed, 1 failed`（唯一失败为既有 Phase 1 `test_corrected_factors.py::test_111_preserves_math_on_isolated_input` 的 `check_exact=True` ULP 差异，与 Phase 4 无关；`test_p4_optimizations.py` 9/9 全通过）。
+- **未决事项**：正式机 `alphaprod`（`43.167.235.164`）尚未部署，待用户明确授权后在空闲窗口推送 `alphaonline`（`06c8b15` 及文档提交）与可选 `alpha`（`7c10b63`）并预热 Numba。
+
+## 2026-11-21 测试机代理改为 `AUTO` fallback 三节点组（江苏联通转日本BGP 优先）
+
+起因：`11:12:35` 生产端首次初始化再次报 `ClientConnectorError`（资金费下载完成后立即拉起初始化），虽经 1 分钟重试于 `11:13:37` 恢复，但暴露单节点配置的固有短板——节点侧存在周期性 1–2 s 拒收/重置窗口，一旦超过重试预算即硬失败。经用户确认采用 **方案 A：mihomo 侧 fallback 组自动故障切换**（不改上游代码），优先级为 P1 江苏联通转日本BGP → P2 日本NTT → P3 香港BGP。
+
+- **故障定性（只读诊断）**：`ICMP 120 包 0% 丢包 / 100.5 ms（mdev 0.037）`、顺序 TCP 拨号 65102 `60/60`、分级并发 10/20/40/80 全通过、经代理取数 5/5 → 排除线路、并发与节点不可达；mihomo 自 10:35 重启后 9 条告警**全部**为 `dial tcp 216.247.110.57:65102: i/o timeout`，且成对出现在 `10:36:59`、`10:42:04`、`10:42:29`、`10:52:09`、`10:52:34`，约每 5–10 分钟一次；`11:12:35` 那次未留 dial 日志，属隧道建立后被重置（`ConnectionResetError`）。全天错误按小时：`02–08` 点每小时 31–39 条（同一次失败产生 5 条重试日志，约每 10 分钟一次抖动），`09/10/11` 点降为 3/4/1 条。
+- **暴露的放大器**：`core/utils/network.py::async_retry_getter` 的重试预算仅 **约 15 s**（5 次、间隔 1→2→4→8 s），抖动窗口超过即抛 `剩余 0 次重试机会`（`10:25` 那次即如此）；`11:12` 靠"首次初始化失败后 1 分钟重试"兜住。
+- **配置变更**：`/home/ubuntu/.config/alpha-proxy/config.yaml` 由"单节点 + `MATCH,<节点名>`"改为 `proxy-groups` 的 `AUTO`（`type: fallback`）三成员组，`rules: ["MATCH,AUTO"]`；健康检查 `url=https://www.gstatic.com/generate_204`、`interval=10`、`timeout=2000`、`max-failed-times=1`、`lazy=false`。三个成员出口 IP（`212.87.193.53` / `216.247.110.57` / `45.207.152.141`）**全部在交易白名单内**，跨节点切换不会导致签名请求被拒。备份 `config.yaml.bak-20261121-112326-fallback`。
+- **协议细节**：P1 为 trojan（原域名 `jmcuabgaa.arvexloria.site` 已 NXDOMAIN，`server` 直接写 IP `212.87.193.53`，保留 `sni=dl.jscujpbgp.cc.tjcct.xyz` 与 `skip-cert-verify: true`）；P2/P3 为 anytls（`ascjp.ntt1.ccddn4.icu:65102`、`hk-bgp1.ccdnadns.cc:65231`）。
+- **验证**：`mihomo -t` 通过；重启后 `active`，出口 `212.87.193.53`；币安现货/合约各 **10/10 = 200**（约 `0.42 s`）；`iptables -I OUTPUT -d <IP> -j DROP` 注入故障实测——DROP P1 → **约 10 s** 切至 `216.247.110.57`；DROP P1+P2 → **约 16 s** 切至 `45.207.152.141`；撤销后 **约 10 s** 回切 P1；每次撤销均以 `iptables -C` 复查已清除。生产端在 3 次重启期间 **0 错误**，`11:26–11:27` 完成 spot/swap 预处理与 Pivot，`25m` 于 `11:27:12` 恢复正常发布。
+- **重要发现**：mihomo `fallback` 组**不做请求内重试**——P1 拨号失败时直接返回错误，仅在下一次健康检查判死后让**后续**请求走备用节点。故 `interval` 必须显著小于生产端重试预算（现 10 s vs 15 s）；若日后仍需覆盖更长抖动，应同步放宽 `async_retry_getter`（属上游生产者改动，需单独授权与验证）。
+- **文档**：[kb/network-and-proxy.md](kb/network-and-proxy.md) 重写 §2 对照表（标注 P1/P2/P3 角色）、新增「自动故障切换组」小节（组定义、切换时序、请求内不重试的警告）、§3 补 3 条坑（不请求内重试、15 s 重试预算、无 `external-controller` 需靠出口 IP 反查）、§4 SOP 改为查组结构 + 出口 IP 反查表 + 优先级调整脚本 + 可重复的故障注入验证、§6 拆为 6.1/6.2 两次事故记录；同步更新 [README.md](README.md) §2、[kb/environments.md](kb/environments.md) 两处、[2026-11-03-test-server-proxy.md](2026-11-03-test-server-proxy.md) 顶部指引。
+- **未决事项**：本次仅改测试机，正式机 `alphaprod` 未动，未提交 Git；`5m/15m/45m` 尚无新 `.ready`（仅 `25m` 恢复），需等重建完成后再做 Phase 4 自然轮验收。
+
+## 2026-11-21 代理节点 65202 切换尝试与回滚 + 币安 IP 白名单核对与文档沉淀
+
+起因：测试机 09:xx 起币安取数间歇失败（`fapi.binance.com` 经代理 TLS reset / dial timeout），上游生产者卡在历史重建。用户要求核对订阅中 5 个 IP 对应节点，并将结论固化到文档，供后续网络排障跳过"IP ↔ 节点"匹配直接测试连接。
+
+- **订阅节点 ↔ 出口 IP 核对（只读）**：订阅 profile 中 41 个 `server` 全为域名；在测试机用 8.8.8.8 / 1.1.1.1 / 223.5.5.5 / 119.29.29.29 + 阿里 DoH 解析，得 `216.247.110.57 → ascjp.ntt1.ccddn4.icu`、`45.207.152.141 → hk-bgp1.ccdnadns.cc`；其余 3 个 IP（`188.253.120.76` / `27.122.59.81` / `212.87.193.53`）用全量 83 个节点端口并发探测回查，开放端口全部命中联通/专线族节点定义，确认其为该族**共用落地前端**（非一 IP 一节点）。
+- **关键根因**：`*.arvexloria.site`（64 个联通/专线节点所用域名）CNAME → `*.ccatnet.com`，权威 NS `vip7.alidns.com` 返回 **NXDOMAIN**，公共 DNS 与 DoH 全部无 A 记录 → 按域名配置必然连接失败；改写为 IP 并保留 `skip-cert-verify: true` 后实测 8/8 成功。
+- **出口 IP 机制**：交易/账户签名请求按**出口 IP 白名单**（`188.253.120.76` / `45.207.152.141` / `216.247.110.57` / `27.122.59.81` / `212.87.193.53`）校验；公共接口 `/ping`、`/klines` 不校验，故 200 不能证明可用于交易。实测 7 个候选节点出口命中白名单，唯 **日本BGP2 出口 `212.87.193.62` 不在白名单**——虽延迟最优（合约 257 ms）但禁止用于交易。
+- **节点切换（含同日回滚）**：`/home/ubuntu/.config/alpha-proxy/config.yaml` 于 09:51 由 日本NTT(65102) 改为 日本NTT2(65202)（同机同密码同 SNI，仅改 `name`/`port` 与 `MATCH` 规则）；**10:25–10:26 生产端连续报 `ClientConnectorError(...ConnectionResetError())`，mihomo 日志显示 `failed to create session: dial tcp 216.247.110.57:65202: i/o timeout`，10:33 回滚至 65102**。备份 `config.yaml.bak-20261121-ntt2` / `config.yaml.bak-20261121-ntt2-broken`。
+- **根因判定（长样本 TCP 分层拨号）**：同一 IP 两端口各 40 次 `socket.connect`（间隔 0.4 s）：`65102` **40/40**（RTT 100–102 ms）、`65202` **26/40（65%）**且出现 2137 ms 离群；另测 香港BGP `40/40`（143–158 ms）、江苏联通转日本BGP `40/40`（101–103 ms）。**说明端口级稳定性与"同一台机"无关，且先前用 8 轮 K 线短样本得出的"NTT2 更优"属时间窗偏差**。并发不是因素：并发 1/4 也失败、并发 32 却全成功。
+- **验证**：回滚后 `mihomo -t` 通过、服务 active；经 7897 连续 20 次合约取数 **20/20**，`ss` 确认建连 `→ 216.247.110.57:65102`；生产端自行重试恢复（10:32 资金费推进 280/767）。
+- **文档**：新增 [kb/network-and-proxy.md](kb/network-and-proxy.md)（节点 ↔ 出口 IP 对照表、分层排障 SOP、已知坑、切换与回滚脚本、本次事故记录）；同步更新 [README.md](README.md) §2、[kb/environments.md](kb/environments.md) 代理行与索引，并在 [2026-11-03-test-server-proxy.md](2026-11-03-test-server-proxy.md) 顶部加更新指引。
+- **未决事项**：`realtime_data` 的历史 K 线全量重建仍在进行（10:32 资金费下载推进至 280/767），`5m/25m/45m` 尚无新 `.ready`；本次未改动正式机 `alphaprod`，未提交 Git。旧 65202 端口为何比 65102 差（服务商限速/链路策略）未查明，判断为节点侧问题，保留 65227（江苏联通转日本BGP）作为首选备用。
+
 ## 2026-11-20 Phase 4（第一阶段）全链路性能优化与因子可读性强化（本地已实现并离线验收，未部署）
 
 基于正式机 `alphaprod`（`43.167.235.164`）在 Phase 0–3 上线后的 10 轮稳态遥测（`04:15–05:55 UTC`，`account_calculation_s = 107.1–108.5 s`，其中 `FACTOR_BLOCKS 40.2–42.4 s`、`sections 20.8–22.0 s`、`Step 6 11.0–13.5 s`、`MODEL 14.8–16.5 s`），按 TDD + 独立 Python Oracle 对拍流程在本地完成 Phase 4（WP1 / WP2 / WP3 / P4-4）代码落地，并同步强化所有涉及改动的因子与截面模块可读性（补充完整中文数学公式、边界/NaN 规则、语义化变量名与分步注释）：
@@ -139,11 +399,11 @@
 
 版本标识2.3.3/20261030。共享alpha311仍为旧依赖，仅test目录隔离验证新依赖；部署须在目标独立环境正常安装，不能使用--no-deps。未改活动账户、alpha源码或生产服务，未重启/下单；Ubuntu新依赖、真实接口及整轮性能未验证。用户已有发布记录保留，不能将本地分支功能记为生产已上线。
 
-## 2026-11-05 S3后上市币覆盖热修复
-
-GUNUSDT刚达到14000根时被旧max起点校验误当全市场历史不足，导致5/25/45反复初始化失败、15/35/55等待槽位。修复仅validate_initial_history的max→min，与原S3全市场时间检查一致，保持真实不足与4050拒绝、不改账户日期或数学。TDD12失败13通过后，相关79通过，独立25通过。源自已部署main，不混入下一版改造；见[热修复记录](2026-11-05-s3-listing-coverage-hotfix.md)。
-
-
+## 2026-11-05 S3后上市币覆盖热修复
+
+GUNUSDT刚达到14000根时被旧max起点校验误当全市场历史不足，导致5/25/45反复初始化失败、15/35/55等待槽位。修复仅validate_initial_history的max→min，与原S3全市场时间检查一致，保持真实不足与4050拒绝、不改账户日期或数学。TDD12失败13通过后，相关79通过，独立25通过。源自已部署main，不混入下一版改造；见[热修复记录](2026-11-05-s3-listing-coverage-hotfix.md)。
+
+
 ## 2026-11-06 正式机反向因子对照与发布复核
 
 用户授权后在正式test目录运行实际旧/新源码、同轮冻结输入、相同4worker的完整因子实验。两组各87份块、3,681,975行逐文件完全一致；正式FACTOR_BLOCKS为103.420/108.287秒，测试106.603/124.472秒，进程树CPU分别约255.49/256.87与253.85/252.35核秒。期间业务并发及换页显著，未证明严格墙钟等价或固定20秒机器收益；结合此前测试机互换结果，没有稳定20秒代码回归证据。完整计时包含启动/写块/退出，准备与比较/释放另记。

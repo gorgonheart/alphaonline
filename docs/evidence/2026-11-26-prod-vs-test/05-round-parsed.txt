@@ -1,0 +1,40 @@
+total end rounds: 17
+
+=== test rounds: 7
+cutoffs: 2026-11-26 00:25:00, 2026-11-26 01:25:00, 2026-11-26 05:25:00, 2026-11-26 06:25:00, 2026-11-26 07:25:00, 2026-11-26 08:25:00, 2026-11-26 09:25:00
+modes: {'incremental': 6, 'replay': 1}
+status: {'ok': 7}
+changed_series: ['', 1268, '', '', '', '', '']
+total_s                  n=7 median=104.785 min=88.205 max=163.911
+prepare_s                n=7 median=6.567 min=2.743 max=28.163
+account_calculation_s    n=7 median=95.951 min=83.160 max=137.686
+input_read_s             n=7 median=4.861 min=1.390 max=5.162
+
+=== prod rounds: 10
+cutoffs: 2026-11-26 00:25:00, 2026-11-26 01:25:00, 2026-11-26 02:25:00, 2026-11-26 03:25:00, 2026-11-26 04:25:00, 2026-11-26 05:25:00, 2026-11-26 06:25:00, 2026-11-26 07:25:00, 2026-11-26 08:25:00, 2026-11-26 09:25:00
+modes: {'replay': 10}
+status: {'ok': 10}
+changed_series: [45, 5, 46, 22, 22, 13, 37, 21, 13, 34]
+total_s                  n=10 median=133.538 min=129.243 max=153.282
+prepare_s                n=10 median=23.743 min=22.926 max=29.636
+account_calculation_s    n=10 median=88.582 min=87.351 max=103.745
+input_read_s             n=10 median=7.555 min=6.393 max=12.171
+
+=== per-round table ===
+prod  2026-11-26 00:25:00                    replay       True       cs=45    total=153.282    prep=29.636    calc=103.745    read=11.826   status=ok
+test  2026-11-26 00:25:00                    incremental  True       cs=      total=154.048    prep=6.703     calc=137.686    read=4.861    status=ok
+prod  2026-11-26 01:25:00                    replay       True       cs=5     total=146.776    prep=29.44     calc=99.332     read=11.239   status=ok
+test  2026-11-26 01:25:00                    replay       True       cs=1268  total=163.911    prep=28.163    calc=129.729    read=4.994    status=ok
+prod  2026-11-26 02:25:00                    replay       True       cs=46    total=130.61     prep=23.53     calc=88.554     read=7.392    status=ok
+prod  2026-11-26 03:25:00                    replay       True       cs=22    total=136.466    prep=28.892    calc=87.351     read=11.102   status=ok
+prod  2026-11-26 04:25:00                    replay       True       cs=22    total=129.501    prep=23.342    calc=87.582     read=7.205    status=ok
+prod  2026-11-26 05:25:00                    replay       True       cs=13    total=129.588    prep=23.866    calc=87.881     read=6.393    status=ok
+test  2026-11-26 05:25:00                    incremental  True       cs=      total=119.164    prep=6.567     calc=109.0      read=5.015    status=ok
+prod  2026-11-26 06:25:00                    replay       True       cs=37    total=136.605    prep=23.62     calc=93.146     read=7.718    status=ok
+test  2026-11-26 06:25:00                    incremental  True       cs=      total=101.043    prep=8.32      calc=90.146     read=1.39     status=ok
+prod  2026-11-26 07:25:00                    replay       True       cs=21    total=129.972    prep=23.08     calc=88.611     read=7.208    status=ok
+test  2026-11-26 07:25:00                    incremental  True       cs=      total=104.785    prep=6.515     calc=95.951     read=5.162    status=ok
+prod  2026-11-26 08:25:00                    replay       True       cs=13    total=141.295    prep=28.563    calc=88.963     read=12.171   status=ok
+test  2026-11-26 08:25:00                    incremental  True       cs=      total=94.204     prep=5.955     calc=85.93      read=4.708    status=ok
+prod  2026-11-26 09:25:00                    replay       True       cs=34    total=129.243    prep=22.926    calc=87.95      read=6.794    status=ok
+test  2026-11-26 09:25:00                    incremental  True       cs=      total=88.205     prep=2.743     calc=83.16      read=1.51     status=ok

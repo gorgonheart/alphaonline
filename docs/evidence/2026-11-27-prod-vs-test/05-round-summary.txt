@@ -1,0 +1,48 @@
+=== 轮次计数 ===
+prod rounds=65 accounts=6
+test rounds=11 accounts=1
+
+=== prod 按账户/模式 (median total_s, n) ===
+  15m-nheart1104         replay       n=11 median=123.47 min=118.88 max=133.76
+  25m-eart1106           replay       n=11 median=129.55 min=125.84 max=140.99
+  35m_t1104              replay       n=10 median=129.55 min=126.78 max=134.06
+  35m_t1104              waiting_data_timeout n= 1 median=  0.00 min=  0.00 max=  0.00
+  45m_gonheart1104       incremental  n= 1 median=102.16 min=102.16 max=102.16
+  45m_gonheart1104       replay       n=10 median=130.29 min=128.29 max=134.32
+  55m_o.rgonheart1104    replay       n=10 median=131.44 min=127.54 max=137.42
+  5m-onheart1104         replay       n=11 median=130.88 min=124.39 max=139.20
+
+=== prod 增量 vs 回放 (全部账户) ===
+  incremental  n= 1 median=102.16  mean=102.16  prep_med=4.51 read_med=1.18 calc_med=85.23
+  replay       n=63 median=129.67  mean=129.55  prep_med=24.02 read_med=6.54 calc_med=113.65
+
+=== prod 09:30 重启前/后 (同 6 账户) ===
+  重启前 00:08-09:28        n=57 median=130.28 calc_med=113.81 prep_med=24.54 read_med=7.50
+  重启后 09:36-now          n= 8 median=125.65 calc_med=110.29 prep_med=16.13 read_med=1.19
+
+=== test 25m 全部轮次 ===
+  n=11 median=92.72 min=87.81 max=112.82 calc_med=90.89 prep_med=2.70
+
+=== 同切点 25m 对比 (cutoff 相同) ===
+  cutoff               mode(prod)    t_total  p_total   t_calc   p_calc
+  2026-11-26 18:25:00  replay         105.26   130.86   103.41   115.86
+  2026-11-26 19:25:00  replay          94.20   131.47    92.27   116.46
+  2026-11-26 20:25:00  replay          88.29   127.27    86.43   112.24
+  2026-11-26 21:25:00  replay          87.81   132.55    85.98   115.35
+  2026-11-26 22:25:00  replay          92.72   129.55    90.89   114.50
+  2026-11-26 23:25:00  replay         104.94   125.84   103.08   110.96
+  2026-11-27 00:25:00  replay         112.82   140.99   110.93   125.99
+  2026-11-27 01:25:00  replay          94.77   128.22    92.92   113.20
+
+=== 每小时有轮次覆盖的墙钟秒数 (prod, 估算 duty cycle) ===
+  00时:  777.9 s / 3600 s =  21.6%
+  01时:  765.8 s / 3600 s =  21.3%
+  02时:  772.3 s / 3600 s =  21.5%
+  03时:  786.3 s / 3600 s =  21.8%
+  04时:  789.4 s / 3600 s =  21.9%
+  05时:  780.2 s / 3600 s =  21.7%
+  06时:  777.7 s / 3600 s =  21.6%
+  07时:  767.0 s / 3600 s =  21.3%
+  08时:  772.8 s / 3600 s =  21.5%
+  09时:  673.8 s / 3600 s =  18.7%
+  10时:  600.6 s / 3600 s =  16.7%

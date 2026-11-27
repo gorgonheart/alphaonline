@@ -1,0 +1,86 @@
+=== 2026-11-26 product comparison (test vs prod, same account 25m-eart1106) ===
+
+--- 2026-11-26_17 ---
+select_coin shape      test=[3478, 15] prod=[3481, 15]
+group_count            test=269 prod=270
+cap_weight_total       test=1161.12500000 prod=1161.87500000 diff=-0.75000000
+long/short/trade rows  test=579/2899/3478 prod=582/2899/3481
+groups only_test=0 only_prod=1
+  ONLY_PROD KERNELUSDT|#3.线上实盘多头|1|1|0 n=3 w=0.75000000
+groups differing rows/weight=2
+  DIFF COOKIEUSDT|#0.Strategy_大学生|1|1|0 test=[5, 5.0] prod=[4, 4.0]
+  DIFF STOUSDT|#0.Strategy_大学生|1|1|0 test=[3, 3.0] prod=[4, 4.0]
+parent keys test=10 prod=10 differing=1
+  PARENT_DIFF S5-动量实盘多头 test=[85, 21.25] prod=[88, 22.0]
+position_results shape test=[538, 6] prod=[538, 6]
+nonzero/long/short/flat test=126/54/72/412 prod=127/55/72/411
+abs_target_lots_sum   test=3126087.000000 prod=4035725.000000 diff=-909638.000000
+direction mismatches  1 / 535 symbols
+  DIR KERNELUSDT test=0 prod=1
+price mismatches      398 / 535 (tol 1e-12)
+  PRICE ATMUSDT test=0.841000000000 prod=0.843000000000 diff=-2.000e-03
+  PRICE BTCUSDT test=60760.199999999997 prod=60750.500000000000 diff=+9.700e+00
+  PRICE ETHUSDT test=1698.750000000000 prod=1698.030000000000 diff=+7.200e-01
+  PRICE GLMRUSDT test=0.006128000000 prod=0.006135000000 diff=-7.000e-06
+  PRICE JUVUSDT test=0.231000000000 prod=0.229000000000 diff=+2.000e-03
+  PRICE MITOUSDT test=0.004650000000 prod=0.004620000000 diff=+3.000e-05
+  PRICE PORTOUSDT test=0.325000000000 prod=0.324000000000 diff=+1.000e-03
+  PRICE QIUSDT test=0.001545000000 prod=0.001550000000 diff=-5.000e-06
+  PRICE SCUSDT test=0.000602000000 prod=0.000605000000 diff=-3.000e-06
+  PRICE SOLUSDT test=70.920000000000 prod=70.910000000000 diff=+1.000e-02
+
+--- 2026-11-26_18 ---
+select_coin shape      test=[3490, 15] prod=[3492, 15]
+group_count            test=269 prod=269
+cap_weight_total       test=1164.79166667 prod=1165.29166667 diff=-0.50000000
+long/short/trade rows  test=578/2912/3490 prod=580/2912/3492
+groups only_test=1 only_prod=1
+  ONLY_TEST MOVEUSDT|#3.线上实盘多头|1|1|0 n=1 w=0.25000000
+  ONLY_PROD KERNELUSDT|#3.线上实盘多头|1|1|0 n=3 w=0.75000000
+groups differing rows/weight=2
+  DIFF COOKIEUSDT|#0.Strategy_大学生|1|1|0 test=[4, 4.0] prod=[3, 3.0]
+  DIFF STOUSDT|#0.Strategy_大学生|1|1|0 test=[3, 3.0] prod=[4, 4.0]
+parent keys test=11 prod=11 differing=1
+  PARENT_DIFF S5-动量实盘多头 test=[81, 20.25] prod=[83, 20.75]
+position_results shape test=[538, 6] prod=[538, 6]
+nonzero/long/short/flat test=127/55/72/411 prod=127/55/72/411
+abs_target_lots_sum   test=3145344.000000 prod=4036778.000000 diff=-891434.000000
+direction mismatches  2 / 535 symbols
+  DIR KERNELUSDT test=0 prod=1
+  DIR MOVEUSDT test=1 prod=0
+price mismatches      414 / 535 (tol 1e-12)
+  PRICE ACMUSDT test=0.207000000000 prod=0.208000000000 diff=-1.000e-03
+  PRICE ADXUSDT test=0.042500000000 prod=0.042600000000 diff=-1.000e-04
+  PRICE AUDIOUSDT test=0.010630000000 prod=0.010650000000 diff=-2.000e-05
+  PRICE BTCUSDT test=60816.099999999999 prod=60793.000000000000 diff=+2.310e+01
+  PRICE ETHUSDT test=1701.260000000000 prod=1701.140000000000 diff=+1.200e-01
+  PRICE GLMRUSDT test=0.006110000000 prod=0.006104000000 diff=+6.000e-06
+  PRICE JUVUSDT test=0.229000000000 prod=0.231000000000 diff=-2.000e-03
+  PRICE MITOUSDT test=0.004560000000 prod=0.004540000000 diff=+2.000e-05
+  PRICE PSGUSDT test=0.310000000000 prod=0.309000000000 diff=+1.000e-03
+  PRICE RADUSDT test=0.208000000000 prod=0.206000000000 diff=+2.000e-03
+
+--- 2026-11-26_18 row-level (latest tag) ---
+rows test=3490 prod=3492
+row keys only_test=2 only_prod=4
+  ROW_ONLY_TEST COOKIEUSDT|#0.Strategy_大学生|1|0|14 cap=1.0 dir=1 trade=1
+  ROW_ONLY_TEST MOVEUSDT|#3.线上实盘多头|1|0|2 cap=0.25 dir=1 trade=1
+  ROW_ONLY_PROD KERNELUSDT|#3.线上实盘多头|1|0|1 cap=0.25 dir=1 trade=1
+  ROW_ONLY_PROD KERNELUSDT|#3.线上实盘多头|1|0|2 cap=0.25 dir=1 trade=1
+  ROW_ONLY_PROD KERNELUSDT|#3.线上实盘多头|1|0|3 cap=0.25 dir=1 trade=1
+  ROW_ONLY_PROD STOUSDT|#0.Strategy_大学生|1|0|14 cap=1.0 dir=1 trade=1
+max |delta| close                = 2.400e-03 at PIEVERSEUSDT|#3.线上实盘多头|1|0|2
+max |delta| next_close           = 2.400e-03 at PIEVERSEUSDT|#0.线上实盘多头|1|0|1
+max |delta| target_alloc_ratio   = 1.758e-04 at MANTRAUSDT|#0.Strategy_截面因子|-1|0|4
+max |delta| cap_weight           = 0.000e+00 at 
+rows with |delta|>1e-9 in close/next_close/cap_weight/target_alloc_ratio: 3463 / 3463
+  SIG XTZUSDT|#0.Funding0021NegativeDomain|-1|0|14 test(cap=0.25 alloc=-6.94986e-05 close=0.206) prod(cap=0.25 alloc=-7.0019e-05 close=0.206)
+  SIG ATOMUSDT|#0.Funding0021NegativeDomain|-1|0|12 test(cap=0.25 alloc=-6.94986e-05 close=1.219) prod(cap=0.25 alloc=-7.0019e-05 close=1.219)
+  SIG XTZUSDT|#2.Funding0021NegativeDomain|-1|0|21 test(cap=0.25 alloc=-6.15559e-05 close=0.2159) prod(cap=0.25 alloc=-6.20169e-05 close=0.2159)
+  SIG OGNUSDT|#3.Funding0021NegativeDomain|-1|0|4 test(cap=0.25 alloc=-5.9846e-05 close=0.01923) prod(cap=0.25 alloc=-6.02942e-05 close=0.01923)
+  SIG POLUSDT|#0.Funding0021NegativeDomain|-1|0|18 test(cap=0.25 alloc=-6.52866e-05 close=0.07579) prod(cap=0.25 alloc=-6.57755e-05 close=0.07579)
+  SIG PHAUSDT|#0.Funding0021NegativeDomain|-1|0|3 test(cap=0.25 alloc=-6.15559e-05 close=0.03016) prod(cap=0.25 alloc=-6.20169e-05 close=0.03016)
+  SIG XTZUSDT|#2.Funding0021NegativeDomain|-1|0|8 test(cap=0.25 alloc=-6.15559e-05 close=0.2163) prod(cap=0.25 alloc=-6.20169e-05 close=0.2163)
+  SIG VVVUSDT|#0.线上实盘多头|1|0|3 test(cap=0.25 alloc=0.0042192467 close=27.421) prod(cap=0.25 alloc=0.0042057782 close=27.421)
+  SIG 1000BONKUSDT|#1.Funding0021NegativeDomain|-1|0|2 test(cap=0.25 alloc=-6.94986e-05 close=0.002204) prod(cap=0.25 alloc=-7.0019e-05 close=0.002204)
+  SIG GRAMUSDT|#1.动量空头|-1|0|7 test(cap=0.25 alloc=-0.0010739831 close=0.969) prod(cap=0.25 alloc=-0.0010809829 close=0.969)

@@ -1,0 +1,930 @@
+##### /home/ubuntu/.pm2/logs/alpha2-out__2026-11-26_00-00-00.log
+##### /home/ubuntu/.pm2/logs/alpha2-out.log
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=21.8秒, 当前时间=2026-11-26 00:05:24+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=26.2秒, 当前时间=2026-11-26 00:05:29+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 00:06:08+0800, 耗时 38.6 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 00:06:21+0800, 耗时 5.3 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.6s publish=8.1s pivot=5.3s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 00:06:30+0800, 耗时 61.1 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 00:06:43+0800, 耗时 7.1 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=61.1s publish=5.3s pivot=7.1s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=21.0秒, 当前时间=2026-11-26 00:15:24+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=25.3秒, 当前时间=2026-11-26 00:15:28+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 00:16:09+0800, 耗时 39.3 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 00:16:27+0800, 耗时 8.4 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=39.3s publish=9.6s pivot=8.4s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 00:16:36+0800, 耗时 65.9 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 00:16:56+0800, 耗时 9.0 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=65.9s publish=11.5s pivot=9.0s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.8秒, 当前时间=2026-11-26 00:25:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.2秒, 当前时间=2026-11-26 00:25:28+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 00:26:09+0800, 耗时 39.7 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 00:26:24+0800, 耗时 5.6 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=39.7s publish=9.1s pivot=5.6s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 00:26:32+0800, 耗时 62.7 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 00:26:44+0800, 耗时 7.0 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=62.7s publish=5.3s pivot=7.0s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.7秒, 当前时间=2026-11-26 00:35:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.1秒, 当前时间=2026-11-26 00:35:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 00:36:07+0800, 耗时 38.3 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 00:36:24+0800, 耗时 7.4 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.3s publish=9.7s pivot=7.4s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 00:36:33+0800, 耗时 64.1 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 00:36:53+0800, 耗时 8.8 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=64.1s publish=11.4s pivot=8.8s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.9秒, 当前时间=2026-11-26 00:45:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=23.9秒, 当前时间=2026-11-26 00:45:26+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 00:46:07+0800, 耗时 38.8 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 00:46:22+0800, 耗时 6.3 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.8s publish=8.9s pivot=6.3s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 00:46:30+0800, 耗时 62.2 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 00:46:42+0800, 耗时 6.7 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=62.2s publish=5.3s pivot=6.7s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.8秒, 当前时间=2026-11-26 00:55:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=23.9秒, 当前时间=2026-11-26 00:55:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 00:56:06+0800, 耗时 38.0 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 00:56:20+0800, 耗时 5.4 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.0s publish=8.5s pivot=5.4s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 00:56:29+0800, 耗时 60.8 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 00:56:42+0800, 耗时 6.9 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=60.8s publish=6.0s pivot=6.9s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.9秒, 当前时间=2026-11-26 01:05:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.1秒, 当前时间=2026-11-26 01:05:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 01:06:06+0800, 耗时 38.9 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 01:06:19+0800, 耗时 5.4 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.9s publish=8.1s pivot=5.4s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 01:06:28+0800, 耗时 61.0 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 01:06:40+0800, 耗时 7.0 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=61.0s publish=5.2s pivot=7.0s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.4秒, 当前时间=2026-11-26 01:15:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.2秒, 当前时间=2026-11-26 01:15:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 01:16:07+0800, 耗时 38.9 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 01:16:20+0800, 耗时 5.6 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.9s publish=8.0s pivot=5.6s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 01:16:29+0800, 耗时 60.6 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 01:16:41+0800, 耗时 6.8 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=60.6s publish=5.9s pivot=6.8s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.6秒, 当前时间=2026-11-26 01:25:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.1秒, 当前时间=2026-11-26 01:25:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 01:26:09+0800, 耗时 40.0 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 01:26:23+0800, 耗时 5.4 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=40.0s publish=8.6s pivot=5.4s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 01:26:32+0800, 耗时 62.5 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 01:26:44+0800, 耗时 7.0 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=62.5s publish=5.3s pivot=7.0s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.1秒, 当前时间=2026-11-26 01:35:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.5秒, 当前时间=2026-11-26 01:35:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 01:36:08+0800, 耗时 38.6 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 01:36:28+0800, 耗时 10.4 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.6s publish=9.6s pivot=10.4s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 01:36:36+0800, 耗时 66.1 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 01:36:56+0800, 耗时 9.0 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=66.1s publish=11.4s pivot=9.0s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.2秒, 当前时间=2026-11-26 01:45:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.3秒, 当前时间=2026-11-26 01:45:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 01:46:07+0800, 耗时 38.5 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 01:46:20+0800, 耗时 5.5 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.5s publish=8.0s pivot=5.5s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 01:46:29+0800, 耗时 60.4 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 01:46:41+0800, 耗时 7.3 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=60.4s publish=5.3s pivot=7.3s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.5秒, 当前时间=2026-11-26 01:55:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.0秒, 当前时间=2026-11-26 01:55:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 01:56:07+0800, 耗时 38.4 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 01:56:20+0800, 耗时 5.4 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.4s publish=8.0s pivot=5.4s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 01:56:29+0800, 耗时 60.2 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 01:56:42+0800, 耗时 7.3 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=60.2s publish=5.7s pivot=7.3s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.7秒, 当前时间=2026-11-26 02:05:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.1秒, 当前时间=2026-11-26 02:05:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 02:06:06+0800, 耗时 38.9 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 02:06:22+0800, 耗时 7.2 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.9s publish=9.0s pivot=7.2s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 02:06:31+0800, 耗时 63.9 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 02:06:44+0800, 耗时 7.7 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=63.9s publish=5.3s pivot=7.7s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.0秒, 当前时间=2026-11-26 02:15:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.1秒, 当前时间=2026-11-26 02:15:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 02:16:06+0800, 耗时 38.4 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 02:16:23+0800, 耗时 8.2 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.4s publish=9.1s pivot=8.2s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 02:16:31+0800, 耗时 63.6 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 02:16:51+0800, 耗时 9.0 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=63.6s publish=11.0s pivot=9.0s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.9秒, 当前时间=2026-11-26 02:25:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.2秒, 当前时间=2026-11-26 02:25:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 02:26:08+0800, 耗时 38.6 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 02:26:27+0800, 耗时 9.1 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.6s publish=10.3s pivot=9.1s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 02:26:34+0800, 耗时 64.8 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 02:26:53+0800, 耗时 8.2 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=64.8s publish=11.0s pivot=8.2s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.9秒, 当前时间=2026-11-26 02:35:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.2秒, 当前时间=2026-11-26 02:35:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 02:36:07+0800, 耗时 39.2 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 02:36:25+0800, 耗时 7.7 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=39.2s publish=9.5s pivot=7.7s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 02:36:34+0800, 耗时 65.5 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 02:36:54+0800, 耗时 8.9 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=65.5s publish=11.6s pivot=8.9s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.2秒, 当前时间=2026-11-26 02:45:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.2秒, 当前时间=2026-11-26 02:45:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 02:46:10+0800, 耗时 41.7 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 02:46:27+0800, 耗时 7.2 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=41.7s publish=10.0s pivot=7.2s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 02:46:34+0800, 耗时 65.4 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 02:46:49+0800, 耗时 9.5 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=65.4s publish=6.1s pivot=9.5s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.7秒, 当前时间=2026-11-26 02:55:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=23.9秒, 当前时间=2026-11-26 02:55:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 02:56:08+0800, 耗时 40.1 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 02:56:24+0800, 耗时 6.0 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=40.1s publish=9.2s pivot=6.0s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 02:56:32+0800, 耗时 63.2 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 02:56:44+0800, 耗时 6.9 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=63.2s publish=5.2s pivot=6.9s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.9秒, 当前时间=2026-11-26 03:05:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.2秒, 当前时间=2026-11-26 03:05:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 03:06:06+0800, 耗时 38.8 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 03:06:20+0800, 耗时 5.5 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.8s publish=8.0s pivot=5.5s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 03:06:28+0800, 耗时 61.1 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 03:06:41+0800, 耗时 6.9 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=61.1s publish=5.3s pivot=6.9s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=18.2秒, 当前时间=2026-11-26 03:15:21+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=27.1秒, 当前时间=2026-11-26 03:15:30+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 03:16:10+0800, 耗时 38.8 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 03:16:25+0800, 耗时 6.0 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.8s publish=8.6s pivot=6.0s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 03:16:33+0800, 耗时 61.9 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 03:16:46+0800, 耗时 6.9 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=61.9s publish=5.3s pivot=6.9s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.7秒, 当前时间=2026-11-26 03:25:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=23.9秒, 当前时间=2026-11-26 03:25:26+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 03:26:07+0800, 耗时 38.8 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 03:26:21+0800, 耗时 6.0 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.8s publish=8.0s pivot=6.0s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 03:26:29+0800, 耗时 61.4 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 03:26:43+0800, 耗时 7.1 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=61.4s publish=6.1s pivot=7.1s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.0秒, 当前时间=2026-11-26 03:35:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.4秒, 当前时间=2026-11-26 03:35:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 03:36:07+0800, 耗时 38.8 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 03:36:24+0800, 耗时 8.2 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.8s publish=8.6s pivot=8.2s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 03:36:33+0800, 耗时 64.5 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 03:36:53+0800, 耗时 9.3 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=64.5s publish=10.2s pivot=9.3s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.2秒, 当前时间=2026-11-26 03:45:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.7秒, 当前时间=2026-11-26 03:45:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 03:46:07+0800, 耗时 38.6 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 03:46:21+0800, 耗时 5.5 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.6s publish=8.2s pivot=5.5s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 03:46:30+0800, 耗时 60.7 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 03:46:42+0800, 耗时 7.2 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=60.7s publish=5.7s pivot=7.2s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.8秒, 当前时间=2026-11-26 03:55:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.0秒, 当前时间=2026-11-26 03:55:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 03:56:11+0800, 耗时 42.2 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 03:56:36+0800, 耗时 8.8 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=42.2s publish=15.9s pivot=8.8s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 03:56:37+0800, 耗时 68.1 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 03:56:57+0800, 耗时 9.2 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=68.1s publish=10.9s pivot=9.2s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.1秒, 当前时间=2026-11-26 04:05:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.0秒, 当前时间=2026-11-26 04:05:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 04:06:06+0800, 耗时 38.7 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 04:06:19+0800, 耗时 5.4 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.7s publish=8.3s pivot=5.4s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 04:06:28+0800, 耗时 61.1 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 04:06:40+0800, 耗时 6.9 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=61.1s publish=5.4s pivot=6.9s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.2秒, 当前时间=2026-11-26 04:15:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.3秒, 当前时间=2026-11-26 04:15:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 04:16:10+0800, 耗时 40.4 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 04:16:23+0800, 耗时 5.4 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=40.4s publish=8.0s pivot=5.4s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 04:16:31+0800, 耗时 62.0 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 04:16:44+0800, 耗时 6.9 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=62.0s publish=5.4s pivot=6.9s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.0秒, 当前时间=2026-11-26 04:25:24+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.2秒, 当前时间=2026-11-26 04:25:28+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 04:26:09+0800, 耗时 39.0 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 04:26:23+0800, 耗时 5.5 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=39.0s publish=8.0s pivot=5.5s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 04:26:32+0800, 耗时 61.8 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 04:26:45+0800, 耗时 6.9 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=61.8s publish=6.0s pivot=6.9s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.6秒, 当前时间=2026-11-26 04:35:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=23.9秒, 当前时间=2026-11-26 04:35:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 04:36:08+0800, 耗时 39.2 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 04:36:26+0800, 耗时 8.1 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=39.2s publish=9.7s pivot=8.1s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 04:36:35+0800, 耗时 65.8 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 04:36:55+0800, 耗时 8.7 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=65.8s publish=11.3s pivot=8.7s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.0秒, 当前时间=2026-11-26 04:45:21+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=25.1秒, 当前时间=2026-11-26 04:45:28+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 04:46:11+0800, 耗时 41.4 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 04:46:31+0800, 耗时 8.3 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=41.4s publish=12.3s pivot=8.3s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 04:46:36+0800, 耗时 66.3 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 04:46:50+0800, 耗时 8.6 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=66.3s publish=6.3s pivot=8.6s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.2秒, 当前时间=2026-11-26 04:55:24+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.3秒, 当前时间=2026-11-26 04:55:28+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 04:56:09+0800, 耗时 38.8 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 04:56:28+0800, 耗时 8.1 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.8s publish=10.8s pivot=8.1s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 04:56:37+0800, 耗时 66.1 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 04:56:57+0800, 耗时 9.1 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=66.1s publish=11.6s pivot=9.1s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.2秒, 当前时间=2026-11-26 05:05:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.5秒, 当前时间=2026-11-26 05:05:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 05:06:06+0800, 耗时 38.6 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 05:06:20+0800, 耗时 5.5 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.6s publish=8.2s pivot=5.5s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 05:06:28+0800, 耗时 60.8 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 05:06:41+0800, 耗时 7.1 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=60.8s publish=5.3s pivot=7.1s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.3秒, 当前时间=2026-11-26 05:15:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.2秒, 当前时间=2026-11-26 05:15:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 05:16:09+0800, 耗时 40.5 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 05:16:22+0800, 耗时 5.4 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=40.5s publish=7.9s pivot=5.4s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 05:16:31+0800, 耗时 62.2 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 05:16:43+0800, 耗时 7.2 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=62.2s publish=5.3s pivot=7.2s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.8秒, 当前时间=2026-11-26 05:25:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.1秒, 当前时间=2026-11-26 05:25:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 05:26:08+0800, 耗时 39.2 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 05:26:23+0800, 耗时 6.3 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=39.2s publish=8.8s pivot=6.3s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 05:26:31+0800, 耗时 62.3 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 05:26:44+0800, 耗时 7.1 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=62.3s publish=5.5s pivot=7.1s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.1秒, 当前时间=2026-11-26 05:35:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.4秒, 当前时间=2026-11-26 05:35:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 05:36:11+0800, 耗时 41.8 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 05:36:36+0800, 耗时 8.5 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=41.8s publish=16.7s pivot=8.5s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 05:36:37+0800, 耗时 68.2 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 05:36:53+0800, 耗时 9.1 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=68.2s publish=6.6s pivot=9.1s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.0秒, 当前时间=2026-11-26 05:45:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=23.9秒, 当前时间=2026-11-26 05:45:26+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 05:46:07+0800, 耗时 38.6 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 05:46:21+0800, 耗时 5.8 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.6s publish=7.8s pivot=5.8s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 05:46:30+0800, 耗时 61.0 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 05:46:42+0800, 耗时 6.9 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=61.0s publish=5.8s pivot=6.9s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.5秒, 当前时间=2026-11-26 05:55:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.1秒, 当前时间=2026-11-26 05:55:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 05:56:11+0800, 耗时 42.1 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 05:56:35+0800, 耗时 9.5 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=42.1s publish=14.2s pivot=9.5s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 05:56:37+0800, 耗时 67.6 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 05:56:52+0800, 耗时 9.1 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=67.6s publish=5.9s pivot=9.1s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.6秒, 当前时间=2026-11-26 06:05:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.1秒, 当前时间=2026-11-26 06:05:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 06:06:06+0800, 耗时 39.0 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 06:06:20+0800, 耗时 5.8 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=39.0s publish=8.3s pivot=5.8s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 06:06:29+0800, 耗时 61.5 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 06:06:41+0800, 耗时 7.0 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=61.5s publish=5.3s pivot=7.0s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.9秒, 当前时间=2026-11-26 06:15:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.2秒, 当前时间=2026-11-26 06:15:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 06:16:11+0800, 耗时 42.2 秒
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 06:16:36+0800, 耗时 67.7 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 06:16:38+0800, 耗时 8.8 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=42.2s publish=18.3s pivot=8.8s
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 06:16:58+0800, 耗时 9.1 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=67.7s publish=12.7s pivot=9.1s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.3秒, 当前时间=2026-11-26 06:25:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=23.8秒, 当前时间=2026-11-26 06:25:26+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 06:26:08+0800, 耗时 39.7 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 06:26:23+0800, 耗时 5.7 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=39.7s publish=9.2s pivot=5.7s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 06:26:31+0800, 耗时 62.8 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 06:26:44+0800, 耗时 7.0 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=62.8s publish=5.6s pivot=7.0s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.2秒, 当前时间=2026-11-26 06:35:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.4秒, 当前时间=2026-11-26 06:35:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 06:36:10+0800, 耗时 41.0 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 06:36:24+0800, 耗时 5.6 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=41.0s publish=8.3s pivot=5.6s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 06:36:32+0800, 耗时 63.6 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 06:36:47+0800, 耗时 7.3 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=63.6s publish=7.6s pivot=7.3s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.4秒, 当前时间=2026-11-26 06:45:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=23.4秒, 当前时间=2026-11-26 06:45:26+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 06:46:07+0800, 耗时 38.7 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 06:46:24+0800, 耗时 7.9 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.7s publish=8.8s pivot=7.9s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 06:46:31+0800, 耗时 63.1 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 06:46:52+0800, 耗时 9.1 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=63.1s publish=11.5s pivot=9.1s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.5秒, 当前时间=2026-11-26 06:55:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=23.6秒, 当前时间=2026-11-26 06:55:26+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 06:56:08+0800, 耗时 40.9 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 06:56:22+0800, 耗时 5.4 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=40.9s publish=8.0s pivot=5.4s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 06:56:30+0800, 耗时 62.7 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 06:56:43+0800, 耗时 6.9 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=62.7s publish=5.5s pivot=6.9s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.0秒, 当前时间=2026-11-26 07:05:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.3秒, 当前时间=2026-11-26 07:05:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 07:06:06+0800, 耗时 38.6 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 07:06:20+0800, 耗时 5.5 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.6s publish=8.3s pivot=5.5s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 07:06:28+0800, 耗时 60.8 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 07:06:41+0800, 耗时 7.1 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=60.8s publish=5.3s pivot=7.1s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.1秒, 当前时间=2026-11-26 07:15:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.0秒, 当前时间=2026-11-26 07:15:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 07:16:09+0800, 耗时 40.7 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 07:16:30+0800, 耗时 8.3 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=40.7s publish=12.6s pivot=8.3s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 07:16:34+0800, 耗时 66.3 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 07:16:49+0800, 耗时 8.7 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=66.3s publish=5.6s pivot=8.7s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.0秒, 当前时间=2026-11-26 07:25:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.2秒, 当前时间=2026-11-26 07:25:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 07:26:14+0800, 耗时 43.9 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 07:26:39+0800, 耗时 8.9 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=43.9s publish=16.4s pivot=8.9s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 07:26:40+0800, 耗时 70.7 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 07:26:58+0800, 耗时 8.9 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=70.7s publish=8.8s pivot=8.9s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.3秒, 当前时间=2026-11-26 07:35:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.9秒, 当前时间=2026-11-26 07:35:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 07:36:12+0800, 耗时 41.8 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 07:36:28+0800, 耗时 8.1 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=41.8s publish=8.8s pivot=8.1s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 07:36:36+0800, 耗时 66.6 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 07:36:53+0800, 耗时 8.9 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=66.6s publish=7.4s pivot=8.9s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.1秒, 当前时间=2026-11-26 07:45:24+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.3秒, 当前时间=2026-11-26 07:45:28+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 07:46:10+0800, 耗时 39.2 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 07:46:28+0800, 耗时 7.8 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=39.2s publish=9.8s pivot=7.8s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 07:46:34+0800, 耗时 63.2 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 07:46:47+0800, 耗时 7.4 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=63.2s publish=5.6s pivot=7.4s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.9秒, 当前时间=2026-11-26 07:55:24+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.2秒, 当前时间=2026-11-26 07:55:28+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 07:56:09+0800, 耗时 38.6 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 07:56:22+0800, 耗时 5.4 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.6s publish=8.1s pivot=5.4s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 07:56:31+0800, 耗时 60.4 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 07:56:43+0800, 耗时 7.1 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=60.4s publish=5.4s pivot=7.1s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.4秒, 当前时间=2026-11-26 08:05:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.2秒, 当前时间=2026-11-26 08:05:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 08:06:09+0800, 耗时 41.6 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 08:06:23+0800, 耗时 5.6 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=41.6s publish=8.3s pivot=5.6s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 08:06:31+0800, 耗时 64.2 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 08:06:44+0800, 耗时 7.0 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=64.2s publish=5.4s pivot=7.0s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.4秒, 当前时间=2026-11-26 08:15:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.3秒, 当前时间=2026-11-26 08:15:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 08:16:09+0800, 耗时 41.6 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 08:16:35+0800, 耗时 9.3 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=41.6s publish=16.8s pivot=9.3s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 08:16:37+0800, 耗时 69.2 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 08:16:52+0800, 耗时 9.3 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=69.2s publish=5.8s pivot=9.3s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.8秒, 当前时间=2026-11-26 08:25:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.2秒, 当前时间=2026-11-26 08:25:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 08:26:07+0800, 耗时 38.3 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 08:26:21+0800, 耗时 5.5 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.3s publish=8.4s pivot=5.5s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 08:26:29+0800, 耗时 61.0 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 08:26:42+0800, 耗时 7.0 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=61.0s publish=5.8s pivot=7.0s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.0秒, 当前时间=2026-11-26 08:35:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.5秒, 当前时间=2026-11-26 08:35:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 08:36:08+0800, 耗时 38.3 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 08:36:21+0800, 耗时 5.8 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.3s publish=7.8s pivot=5.8s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 08:36:30+0800, 耗时 60.6 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 08:36:43+0800, 耗时 7.1 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=60.6s publish=6.0s pivot=7.1s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.9秒, 当前时间=2026-11-26 08:45:24+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=25.1秒, 当前时间=2026-11-26 08:45:28+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 08:46:11+0800, 耗时 40.5 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 08:46:30+0800, 耗时 7.6 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=40.5s publish=12.0s pivot=7.6s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 08:46:37+0800, 耗时 66.5 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 08:46:52+0800, 耗时 8.9 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=66.5s publish=5.9s pivot=8.9s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.4秒, 当前时间=2026-11-26 08:55:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=23.6秒, 当前时间=2026-11-26 08:55:26+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 08:56:07+0800, 耗时 39.3 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 08:56:22+0800, 耗时 5.5 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=39.3s publish=9.6s pivot=5.5s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 08:56:30+0800, 耗时 62.4 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 08:56:42+0800, 耗时 7.1 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=62.4s publish=5.3s pivot=7.1s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.7秒, 当前时间=2026-11-26 09:05:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.1秒, 当前时间=2026-11-26 09:05:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 09:06:05+0800, 耗时 38.2 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 09:06:19+0800, 耗时 5.5 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.2s publish=8.1s pivot=5.5s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 09:06:28+0800, 耗时 60.5 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 09:06:40+0800, 耗时 6.9 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=60.5s publish=5.3s pivot=6.9s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.0秒, 当前时间=2026-11-26 09:15:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.3秒, 当前时间=2026-11-26 09:15:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 09:16:07+0800, 耗时 38.3 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 09:16:21+0800, 耗时 5.7 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.3s publish=8.5s pivot=5.7s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 09:16:30+0800, 耗时 61.5 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 09:16:42+0800, 耗时 7.0 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=61.5s publish=5.3s pivot=7.0s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.0秒, 当前时间=2026-11-26 09:25:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.5秒, 当前时间=2026-11-26 09:25:28+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 09:26:08+0800, 耗时 38.5 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 09:26:23+0800, 耗时 6.1 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.5s publish=8.9s pivot=6.1s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 09:26:31+0800, 耗时 61.7 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 09:26:44+0800, 耗时 7.1 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=61.7s publish=5.3s pivot=7.1s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.6秒, 当前时间=2026-11-26 09:35:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.0秒, 当前时间=2026-11-26 09:35:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 09:36:07+0800, 耗时 38.7 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 09:36:24+0800, 耗时 8.2 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.7s publish=9.0s pivot=8.2s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 09:36:33+0800, 耗时 65.0 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 09:36:54+0800, 耗时 8.6 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=65.0s publish=11.5s pivot=8.6s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.8秒, 当前时间=2026-11-26 09:45:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.1秒, 当前时间=2026-11-26 09:45:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 09:46:10+0800, 耗时 41.0 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 09:46:24+0800, 耗时 5.5 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=41.0s publish=8.1s pivot=5.5s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 09:46:33+0800, 耗时 63.1 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 09:46:45+0800, 耗时 6.8 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=63.1s publish=5.4s pivot=6.8s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.8秒, 当前时间=2026-11-26 09:55:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.2秒, 当前时间=2026-11-26 09:55:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 09:56:09+0800, 耗时 40.2 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 09:56:23+0800, 耗时 5.5 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=40.2s publish=8.1s pivot=5.5s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 09:56:31+0800, 耗时 62.2 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 09:56:44+0800, 耗时 7.2 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=62.2s publish=5.2s pivot=7.2s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.9秒, 当前时间=2026-11-26 10:05:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.3秒, 当前时间=2026-11-26 10:05:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 10:06:07+0800, 耗时 39.8 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 10:06:21+0800, 耗时 5.5 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=39.8s publish=8.4s pivot=5.5s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 10:06:29+0800, 耗时 62.2 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 10:06:42+0800, 耗时 7.1 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=62.2s publish=5.4s pivot=7.1s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.4秒, 当前时间=2026-11-26 10:15:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.2秒, 当前时间=2026-11-26 10:15:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 10:16:11+0800, 耗时 42.1 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 10:16:34+0800, 耗时 9.9 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=42.1s publish=13.2s pivot=9.9s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 10:16:37+0800, 耗时 68.0 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 10:16:52+0800, 耗时 9.1 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=68.0s publish=6.1s pivot=9.1s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.5秒, 当前时间=2026-11-26 10:25:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=23.8秒, 当前时间=2026-11-26 10:25:26+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 10:26:06+0800, 耗时 38.7 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 10:26:20+0800, 耗时 5.4 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.7s publish=8.0s pivot=5.4s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 10:26:28+0800, 耗时 60.5 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 10:26:41+0800, 耗时 7.3 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=60.5s publish=5.3s pivot=7.3s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.1秒, 当前时间=2026-11-26 10:35:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.4秒, 当前时间=2026-11-26 10:35:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 10:36:10+0800, 耗时 40.7 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 10:36:24+0800, 耗时 5.5 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=40.7s publish=8.2s pivot=5.5s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 10:36:32+0800, 耗时 62.7 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 10:36:44+0800, 耗时 7.0 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=62.7s publish=5.3s pivot=7.0s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.7秒, 当前时间=2026-11-26 10:45:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.2秒, 当前时间=2026-11-26 10:45:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 10:46:08+0800, 耗时 38.9 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 10:46:26+0800, 耗时 7.9 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.9s publish=9.8s pivot=7.9s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 10:46:34+0800, 耗时 65.1 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 10:46:55+0800, 耗时 9.0 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=65.1s publish=12.3s pivot=9.0s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.8秒, 当前时间=2026-11-26 10:55:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.0秒, 当前时间=2026-11-26 10:55:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 10:56:07+0800, 耗时 38.6 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 10:56:22+0800, 耗时 6.0 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.6s publish=9.0s pivot=6.0s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 10:56:30+0800, 耗时 61.8 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 10:56:42+0800, 耗时 6.9 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=61.8s publish=5.3s pivot=6.9s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.6秒, 当前时间=2026-11-26 11:05:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.0秒, 当前时间=2026-11-26 11:05:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 11:06:06+0800, 耗时 39.0 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 11:06:19+0800, 耗时 5.4 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=39.0s publish=7.9s pivot=5.4s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 11:06:28+0800, 耗时 60.9 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 11:06:40+0800, 耗时 7.0 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=60.9s publish=5.3s pivot=7.0s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.0秒, 当前时间=2026-11-26 11:15:24+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.3秒, 当前时间=2026-11-26 11:15:29+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 11:16:09+0800, 耗时 38.6 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 11:16:24+0800, 耗时 5.7 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.6s publish=8.8s pivot=5.7s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 11:16:33+0800, 耗时 62.3 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 11:16:46+0800, 耗时 7.1 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=62.3s publish=5.4s pivot=7.1s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.7秒, 当前时间=2026-11-26 11:25:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=23.9秒, 当前时间=2026-11-26 11:25:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 11:26:09+0800, 耗时 40.4 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 11:26:28+0800, 耗时 7.6 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=40.4s publish=10.8s pivot=7.6s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 11:26:36+0800, 耗时 66.8 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 11:26:56+0800, 耗时 9.4 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=66.8s publish=11.2s pivot=9.4s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.7秒, 当前时间=2026-11-26 11:35:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.0秒, 当前时间=2026-11-26 11:35:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 11:36:08+0800, 耗时 38.7 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 11:36:22+0800, 耗时 5.3 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.7s publish=8.9s pivot=5.3s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 11:36:31+0800, 耗时 61.8 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 11:36:45+0800, 耗时 7.5 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=61.8s publish=6.1s pivot=7.5s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.9秒, 当前时间=2026-11-26 11:45:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.2秒, 当前时间=2026-11-26 11:45:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 11:46:07+0800, 耗时 38.4 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 11:46:25+0800, 耗时 8.0 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.4s publish=9.8s pivot=8.0s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 11:46:34+0800, 耗时 65.4 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 11:46:55+0800, 耗时 8.8 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=65.4s publish=11.9s pivot=8.8s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.1秒, 当前时间=2026-11-26 11:55:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.3秒, 当前时间=2026-11-26 11:55:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 11:56:09+0800, 耗时 39.5 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 11:56:23+0800, 耗时 5.3 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=39.5s publish=8.8s pivot=5.3s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 11:56:31+0800, 耗时 61.2 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 11:56:44+0800, 耗时 8.0 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=61.2s publish=5.4s pivot=8.0s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.5秒, 当前时间=2026-11-26 12:05:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=23.8秒, 当前时间=2026-11-26 12:05:26+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 12:06:05+0800, 耗时 38.4 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 12:06:19+0800, 耗时 5.3 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.4s publish=8.3s pivot=5.3s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 12:06:28+0800, 耗时 60.7 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 12:06:40+0800, 耗时 7.0 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=60.7s publish=5.2s pivot=7.0s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.1秒, 当前时间=2026-11-26 12:15:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.1秒, 当前时间=2026-11-26 12:15:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 12:16:06+0800, 耗时 38.6 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 12:16:20+0800, 耗时 5.3 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.6s publish=8.0s pivot=5.3s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 12:16:29+0800, 耗时 60.9 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 12:16:42+0800, 耗时 7.1 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=60.9s publish=6.0s pivot=7.1s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.8秒, 当前时间=2026-11-26 12:25:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.0秒, 当前时间=2026-11-26 12:25:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 12:26:07+0800, 耗时 38.7 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 12:26:21+0800, 耗时 5.5 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.7s publish=8.2s pivot=5.5s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 12:26:29+0800, 耗时 60.5 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 12:26:42+0800, 耗时 7.4 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=60.5s publish=6.0s pivot=7.4s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.7秒, 当前时间=2026-11-26 12:35:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.3秒, 当前时间=2026-11-26 12:35:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 12:36:07+0800, 耗时 38.8 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 12:36:21+0800, 耗时 5.5 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.8s publish=7.8s pivot=5.5s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 12:36:30+0800, 耗时 61.1 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 12:36:43+0800, 耗时 7.0 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=61.1s publish=6.0s pivot=7.0s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.8秒, 当前时间=2026-11-26 12:45:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.1秒, 当前时间=2026-11-26 12:45:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 12:46:09+0800, 耗时 39.8 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 12:46:29+0800, 耗时 8.7 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=39.8s publish=11.5s pivot=8.7s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 12:46:35+0800, 耗时 66.5 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 12:46:56+0800, 耗时 9.3 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=66.5s publish=11.2s pivot=9.3s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.8秒, 当前时间=2026-11-26 12:55:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.0秒, 当前时间=2026-11-26 12:55:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 12:56:08+0800, 耗时 40.1 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 12:56:24+0800, 耗时 5.5 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=40.1s publish=9.6s pivot=5.5s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 12:56:31+0800, 耗时 62.9 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 12:56:44+0800, 耗时 7.2 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=62.9s publish=5.3s pivot=7.2s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.5秒, 当前时间=2026-11-26 13:05:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.2秒, 当前时间=2026-11-26 13:05:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 13:06:07+0800, 耗时 39.6 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 13:06:20+0800, 耗时 5.4 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=39.6s publish=8.0s pivot=5.4s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 13:06:29+0800, 耗时 61.6 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 13:06:41+0800, 耗时 7.0 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=61.6s publish=5.3s pivot=7.0s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=18.7秒, 当前时间=2026-11-26 13:15:21+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=25.0秒, 当前时间=2026-11-26 13:15:28+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 13:16:07+0800, 耗时 38.7 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 13:16:21+0800, 耗时 5.6 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.7s publish=8.1s pivot=5.6s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 13:16:30+0800, 耗时 60.8 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 13:16:42+0800, 耗时 7.1 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=60.8s publish=5.7s pivot=7.1s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.7秒, 当前时间=2026-11-26 13:25:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.1秒, 当前时间=2026-11-26 13:25:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 13:26:08+0800, 耗时 39.0 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 13:26:25+0800, 耗时 8.0 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=39.0s publish=9.1s pivot=8.0s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 13:26:34+0800, 耗时 65.5 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 13:26:55+0800, 耗时 9.1 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=65.5s publish=11.5s pivot=9.1s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.8秒, 当前时间=2026-11-26 13:35:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.0秒, 当前时间=2026-11-26 13:35:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 13:36:09+0800, 耗时 40.5 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 13:36:22+0800, 耗时 5.5 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=40.5s publish=8.2s pivot=5.5s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 13:36:31+0800, 耗时 63.1 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 13:36:48+0800, 耗时 9.7 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=63.1s publish=6.7s pivot=9.7s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.9秒, 当前时间=2026-11-26 13:45:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.0秒, 当前时间=2026-11-26 13:45:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 13:46:08+0800, 耗时 39.1 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 13:46:25+0800, 耗时 7.7 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=39.1s publish=9.4s pivot=7.7s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 13:46:34+0800, 耗时 64.9 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 13:46:55+0800, 耗时 9.2 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=64.9s publish=11.7s pivot=9.2s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.0秒, 当前时间=2026-11-26 13:55:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.0秒, 当前时间=2026-11-26 13:55:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 13:56:08+0800, 耗时 39.6 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 13:56:24+0800, 耗时 5.8 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=39.6s publish=9.5s pivot=5.8s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 13:56:32+0800, 耗时 63.0 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 13:56:45+0800, 耗时 7.2 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=63.0s publish=6.0s pivot=7.2s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.3秒, 当前时间=2026-11-26 14:05:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=23.7秒, 当前时间=2026-11-26 14:05:26+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 14:06:05+0800, 耗时 38.8 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 14:06:19+0800, 耗时 5.6 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.8s publish=8.0s pivot=5.6s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 14:06:28+0800, 耗时 60.9 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 14:06:40+0800, 耗时 6.9 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=60.9s publish=5.5s pivot=6.9s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.8秒, 当前时间=2026-11-26 14:15:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.0秒, 当前时间=2026-11-26 14:15:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 14:16:09+0800, 耗时 40.5 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 14:16:23+0800, 耗时 5.5 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=40.5s publish=8.1s pivot=5.5s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 14:16:31+0800, 耗时 62.4 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 14:16:43+0800, 耗时 7.0 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=62.4s publish=5.5s pivot=7.0s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.1秒, 当前时间=2026-11-26 14:25:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.2秒, 当前时间=2026-11-26 14:25:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 14:26:08+0800, 耗时 39.0 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 14:26:23+0800, 耗时 6.4 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=39.0s publish=8.8s pivot=6.4s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 14:26:31+0800, 耗时 62.4 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 14:26:44+0800, 耗时 7.3 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=62.4s publish=5.4s pivot=7.3s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.7秒, 当前时间=2026-11-26 14:35:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.0秒, 当前时间=2026-11-26 14:35:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 14:36:09+0800, 耗时 41.0 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 14:36:23+0800, 耗时 5.4 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=41.0s publish=8.6s pivot=5.4s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 14:36:32+0800, 耗时 63.4 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 14:36:44+0800, 耗时 6.7 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=63.4s publish=5.4s pivot=6.7s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.7秒, 当前时间=2026-11-26 14:45:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=23.9秒, 当前时间=2026-11-26 14:45:26+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 14:46:07+0800, 耗时 39.1 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 14:46:25+0800, 耗时 8.5 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=39.1s publish=9.4s pivot=8.5s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 14:46:34+0800, 耗时 66.2 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 14:46:54+0800, 耗时 9.0 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=66.2s publish=11.5s pivot=9.0s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.1秒, 当前时间=2026-11-26 14:55:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.3秒, 当前时间=2026-11-26 14:55:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 14:56:10+0800, 耗时 41.1 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 14:56:24+0800, 耗时 5.5 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=41.1s publish=8.5s pivot=5.5s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 14:56:32+0800, 耗时 63.3 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 14:56:45+0800, 耗时 7.1 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=63.3s publish=5.7s pivot=7.1s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.2秒, 当前时间=2026-11-26 15:05:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.5秒, 当前时间=2026-11-26 15:05:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 15:06:06+0800, 耗时 38.9 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 15:06:20+0800, 耗时 5.4 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.9s publish=8.3s pivot=5.4s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 15:06:29+0800, 耗时 61.3 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 15:06:41+0800, 耗时 7.1 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=61.3s publish=5.3s pivot=7.1s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.5秒, 当前时间=2026-11-26 15:15:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.3秒, 当前时间=2026-11-26 15:15:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 15:16:07+0800, 耗时 39.4 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 15:16:22+0800, 耗时 5.8 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=39.4s publish=9.1s pivot=5.8s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 15:16:30+0800, 耗时 62.5 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 15:16:43+0800, 耗时 7.1 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=62.5s publish=5.3s pivot=7.1s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.0秒, 当前时间=2026-11-26 15:25:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.3秒, 当前时间=2026-11-26 15:25:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 15:26:07+0800, 耗时 38.5 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 15:26:26+0800, 耗时 8.2 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.5s publish=11.0s pivot=8.2s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 15:26:34+0800, 耗时 65.9 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 15:26:54+0800, 耗时 8.9 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=65.9s publish=11.2s pivot=8.9s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.6秒, 当前时间=2026-11-26 15:35:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.0秒, 当前时间=2026-11-26 15:35:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 15:36:10+0800, 耗时 41.0 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 15:36:28+0800, 耗时 7.8 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=41.0s publish=10.0s pivot=7.8s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 15:36:33+0800, 耗时 64.5 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 15:36:48+0800, 耗时 8.8 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=64.5s publish=5.7s pivot=8.8s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.8秒, 当前时间=2026-11-26 15:45:24+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.3秒, 当前时间=2026-11-26 15:45:29+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 15:46:11+0800, 耗时 39.9 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 15:46:29+0800, 耗时 7.8 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=39.9s publish=10.0s pivot=7.8s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 15:46:37+0800, 耗时 65.9 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 15:46:57+0800, 耗时 9.1 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=65.9s publish=11.1s pivot=9.1s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.8秒, 当前时间=2026-11-26 15:55:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.1秒, 当前时间=2026-11-26 15:55:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 15:56:09+0800, 耗时 40.3 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 15:56:23+0800, 耗时 5.4 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=40.3s publish=8.7s pivot=5.4s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 15:56:31+0800, 耗时 62.7 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 15:56:44+0800, 耗时 7.0 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=62.7s publish=5.6s pivot=7.0s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.8秒, 当前时间=2026-11-26 16:05:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.0秒, 当前时间=2026-11-26 16:05:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 16:06:07+0800, 耗时 39.7 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 16:06:20+0800, 耗时 5.4 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=39.7s publish=8.1s pivot=5.4s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 16:06:28+0800, 耗时 61.5 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 16:06:41+0800, 耗时 6.9 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=61.5s publish=5.2s pivot=6.9s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.1秒, 当前时间=2026-11-26 16:15:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.4秒, 当前时间=2026-11-26 16:15:28+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 16:16:09+0800, 耗时 40.7 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 16:16:23+0800, 耗时 5.5 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=40.7s publish=8.2s pivot=5.5s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 16:16:31+0800, 耗时 62.7 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 16:16:43+0800, 耗时 6.9 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=62.7s publish=5.3s pivot=6.9s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.7秒, 当前时间=2026-11-26 16:25:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.1秒, 当前时间=2026-11-26 16:25:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 16:26:08+0800, 耗时 38.7 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 16:26:25+0800, 耗时 7.4 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.7s publish=9.3s pivot=7.4s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 16:26:35+0800, 耗时 65.3 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 16:26:55+0800, 耗时 9.0 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=65.3s publish=11.4s pivot=9.0s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.0秒, 当前时间=2026-11-26 16:35:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.3秒, 当前时间=2026-11-26 16:35:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 16:36:10+0800, 耗时 41.2 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 16:36:27+0800, 耗时 8.0 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=41.2s publish=9.7s pivot=8.0s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 16:36:36+0800, 耗时 67.5 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 16:36:56+0800, 耗时 9.0 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=67.5s publish=11.1s pivot=9.0s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.1秒, 当前时间=2026-11-26 16:45:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.3秒, 当前时间=2026-11-26 16:45:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 16:46:08+0800, 耗时 39.6 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 16:46:23+0800, 耗时 5.8 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=39.6s publish=9.1s pivot=5.8s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 16:46:31+0800, 耗时 62.9 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 16:46:44+0800, 耗时 6.9 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=62.9s publish=5.3s pivot=6.9s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.6秒, 当前时间=2026-11-26 16:55:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=23.8秒, 当前时间=2026-11-26 16:55:26+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 16:56:07+0800, 耗时 38.7 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 16:56:21+0800, 耗时 5.5 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.7s publish=8.0s pivot=5.5s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 16:56:30+0800, 耗时 61.2 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 16:56:43+0800, 耗时 7.0 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=61.2s publish=5.8s pivot=7.0s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.8秒, 当前时间=2026-11-26 17:05:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.2秒, 当前时间=2026-11-26 17:05:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 17:06:06+0800, 耗时 38.9 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 17:06:20+0800, 耗时 5.6 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.9s publish=8.4s pivot=5.6s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 17:06:29+0800, 耗时 61.7 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 17:06:41+0800, 耗时 7.2 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=61.7s publish=5.3s pivot=7.2s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.9秒, 当前时间=2026-11-26 17:15:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=23.8秒, 当前时间=2026-11-26 17:15:26+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 17:16:06+0800, 耗时 38.4 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 17:16:21+0800, 耗时 6.4 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.4s publish=8.4s pivot=6.4s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 17:16:29+0800, 耗时 62.0 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 17:16:42+0800, 耗时 7.2 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=62.0s publish=5.6s pivot=7.2s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.6秒, 当前时间=2026-11-26 17:25:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.0秒, 当前时间=2026-11-26 17:25:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 17:26:09+0800, 耗时 40.5 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 17:26:23+0800, 耗时 5.8 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=40.5s publish=8.4s pivot=5.8s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 17:26:31+0800, 耗时 63.2 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 17:26:44+0800, 耗时 7.1 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=63.2s publish=5.3s pivot=7.1s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.0秒, 当前时间=2026-11-26 17:35:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.3秒, 当前时间=2026-11-26 17:35:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 17:36:07+0800, 耗时 38.6 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 17:36:21+0800, 耗时 5.5 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.6s publish=8.2s pivot=5.5s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 17:36:30+0800, 耗时 61.1 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 17:36:43+0800, 耗时 7.2 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=61.1s publish=5.9s pivot=7.2s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.7秒, 当前时间=2026-11-26 17:45:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.1秒, 当前时间=2026-11-26 17:45:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 17:46:07+0800, 耗时 38.8 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 17:46:26+0800, 耗时 9.2 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.8s publish=9.1s pivot=9.2s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 17:46:35+0800, 耗时 66.5 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 17:46:55+0800, 耗时 8.9 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=66.5s publish=11.1s pivot=8.9s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.9秒, 当前时间=2026-11-26 17:55:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.1秒, 当前时间=2026-11-26 17:55:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 17:56:09+0800, 耗时 41.2 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 17:56:33+0800, 耗时 9.8 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=41.2s publish=13.5s pivot=9.8s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 17:56:35+0800, 耗时 66.9 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 17:56:49+0800, 耗时 9.0 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=66.9s publish=5.3s pivot=9.0s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.0秒, 当前时间=2026-11-26 18:05:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.3秒, 当前时间=2026-11-26 18:05:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 18:06:06+0800, 耗时 39.2 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 18:06:20+0800, 耗时 5.5 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=39.2s publish=8.2s pivot=5.5s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 18:06:29+0800, 耗时 61.3 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 18:06:41+0800, 耗时 7.1 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=61.3s publish=5.3s pivot=7.1s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.2秒, 当前时间=2026-11-26 18:15:24+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.4秒, 当前时间=2026-11-26 18:15:28+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 18:16:09+0800, 耗时 39.2 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 18:16:27+0800, 耗时 8.4 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=39.2s publish=9.3s pivot=8.4s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 18:16:35+0800, 耗时 65.6 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 18:16:55+0800, 耗时 9.1 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=65.6s publish=10.9s pivot=9.1s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.8秒, 当前时间=2026-11-26 18:25:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.2秒, 当前时间=2026-11-26 18:25:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 18:26:10+0800, 耗时 41.1 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 18:26:27+0800, 耗时 8.3 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=41.1s publish=9.2s pivot=8.3s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 18:26:36+0800, 耗时 67.1 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 18:26:56+0800, 耗时 8.9 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=67.1s publish=11.4s pivot=8.9s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.8秒, 当前时间=2026-11-26 18:35:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.3秒, 当前时间=2026-11-26 18:35:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 18:36:10+0800, 耗时 41.7 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 18:36:24+0800, 耗时 5.5 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=41.7s publish=8.7s pivot=5.5s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 18:36:32+0800, 耗时 64.1 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 18:36:45+0800, 耗时 6.8 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=64.1s publish=5.4s pivot=6.8s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.0秒, 当前时间=2026-11-26 18:45:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.3秒, 当前时间=2026-11-26 18:45:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 18:46:11+0800, 耗时 41.8 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 18:46:24+0800, 耗时 5.5 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=41.8s publish=8.1s pivot=5.5s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 18:46:33+0800, 耗时 64.2 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 18:46:45+0800, 耗时 6.9 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=64.2s publish=5.3s pivot=6.9s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.1秒, 当前时间=2026-11-26 18:55:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.2秒, 当前时间=2026-11-26 18:55:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 18:56:07+0800, 耗时 38.6 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 18:56:21+0800, 耗时 5.7 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.6s publish=8.2s pivot=5.7s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 18:56:29+0800, 耗时 60.9 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 18:56:42+0800, 耗时 7.6 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=60.9s publish=5.3s pivot=7.6s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=19.9秒, 当前时间=2026-11-26 19:05:22+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.2秒, 当前时间=2026-11-26 19:05:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 19:06:06+0800, 耗时 38.6 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 19:06:20+0800, 耗时 5.5 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=38.6s publish=8.3s pivot=5.5s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 19:06:28+0800, 耗时 61.0 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 19:06:41+0800, 耗时 7.0 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=61.0s publish=5.3s pivot=7.0s
+✅ Binance spot API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=20.1秒, 当前时间=2026-11-26 19:15:23+0800
+✅ Binance swap API, 获取 5m 成功, Resample 并更新 1h 成功, 耗时=24.1秒, 当前时间=2026-11-26 19:15:27+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-26 19:16:07+0800, 耗时 39.0 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-26 19:16:21+0800, 耗时 5.6 秒
+🌀 [io-stat] phase spot symbols=525 batches=3 market_dict=39.0s publish=8.2s pivot=5.6s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-26 19:16:30+0800, 耗时 61.3 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-26 19:16:42+0800, 耗时 7.1 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=61.3s publish=5.4s pivot=7.1s

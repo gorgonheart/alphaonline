@@ -1,0 +1,22 @@
+=== 25m aligned cutoffs (UTC) ===
+cutoff | test mode/status | prod mode/status | total test/prod/diff | prepare test/prod | account_calc test/prod | input_read test/prod | changed_series test/prod
+2026-11-25 00:25:00 | incremental/ok | replay/ok | 118.87/143.77/-24.90 | 4.11/23.12 | 109.50/102.81 | 2.32/6.24 | None/39
+2026-11-25 01:25:00 | replay/ok | replay/ok | 140.25/146.84/-6.59 | 20.35/29.83 | 114.09/99.23 | 3.28/11.65 | 3/49
+2026-11-25 02:25:00 | replay/ok | replay/ok | 193.73/128.55/+65.18 | 26.91/23.38 | 160.18/87.40 | 4.23/6.25 | 390/84
+2026-11-25 03:25:00 | incremental/ok | replay/ok | 138.14/131.46/+6.68 | 8.77/23.32 | 118.99/87.55 | 6.78/7.24 | None/23
+2026-11-25 04:25:00 | incremental/ok | replay/ok | 120.18/128.54/-8.37 | 6.22/23.46 | 106.63/87.38 | 4.27/7.03 | None/43
+test 25m all n=5 | total=138.14 prepare=8.77 account_calc=114.09 input_read=4.23 changed_series=196.5
+prod 25m all n=5 | total=131.46 prepare=23.38 account_calc=87.55 input_read=7.03 changed_series=43
+prod all 6 accounts n=28 | total=137.91 prepare=23.88 account_calc=92.12 input_read=7.42 changed_series=49.5
+=== upstream ready delay medians (s since XX:M5:00) ===
+test all_today n=56 | spot_ready=68.0 swap_ready=89.0 | barrier_spot=6.51 barrier_swap=13.21 | missed_spot_zero=52/56 missed_swap_zero=29/56 | market_dict_spot=29.9 market_dict_swap=52.5
+test after_11h n=11 | spot_ready=76.0 swap_ready=113.0 | barrier_spot=1.12 barrier_swap=2.31 | missed_spot_zero=11/11 missed_swap_zero=11/11 | market_dict_spot=41.4 market_dict_swap=70.0
+prod all_today n=83 | spot_ready=83.0 swap_ready=104.0 | barrier_spot=-1.00 barrier_swap=-1.00 | missed_spot_zero=0/83 missed_swap_zero=0/83 | market_dict_spot=38.9 market_dict_swap=62.6
+prod after_11h n=17 | spot_ready=84.0 swap_ready=106.0 | barrier_spot=-1.00 barrier_swap=-1.00 | missed_spot_zero=0/17 missed_swap_zero=0/17 | market_dict_spot=39.1 market_dict_swap=64.2
+=== prod 6 accounts latest rounds ===
+15m-nheart1104 cutoff=2026-11-25 04:15:00 mode=replay total_s=132.15 account_calc=90.47 prepare=28.96 input_read=11.37 changed_series=59
+25m-eart1106 cutoff=2026-11-25 04:25:00 mode=replay total_s=128.54 account_calc=87.38 prepare=23.46 input_read=7.03 changed_series=43
+35m_t1104 cutoff=2026-11-25 04:35:00 mode=replay total_s=136.46 account_calc=88.41 prepare=28.17 input_read=10.16 changed_series=56
+45m_gonheart1104 cutoff=2026-11-25 03:45:00 mode=replay total_s=130.46 account_calc=87.36 prepare=22.74 input_read=6.99 changed_series=24
+55m_o.rgonheart1104 cutoff=2026-11-25 03:55:00 mode=replay total_s=130.67 account_calc=87.57 prepare=22.89 input_read=6.57 changed_series=15
+5m-onheart1104 cutoff=2026-11-25 04:05:00 mode=replay total_s=139.35 account_calc=93.78 prepare=26.14 input_read=10.02 changed_series=24

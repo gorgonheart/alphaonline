@@ -40,6 +40,8 @@
 - **CPU 与优先级**：初始化 `nice=10`、`cpu_weight=10`、`backtest_workers=1`；正常交易 `nice=3`、`backtest_workers=3`。
 - **压力准入与保护**：可用内存 `< 256 MiB` 不准入；`< 128 MiB` 持续 `30s` 触发紧急保护；`memory_full_limit=25%`、`io_full_limit=50%`。
 
+> **实测边界（2026-11-27 只读采样）**：上述 `MemoryHigh/MemoryMax` **只作用于 `systemd-run` 拉起的自动初始化 scope**。常态轮次的 4 个 MODEL worker（`server_robust40.py trade`，各常驻 `996–1,221 MB`，`VmHWM 1.09–1.26 GB`）与并行旧实例 `alphatradetest` 的 4 个 `account_exec`（各 ~`1.0 GB`）都挂在 `user.slice/user-1000.slice/session-23.scope` 下，**没有任何 cgroup 内存上限**。后果：主线轮次与旧栈轮次重叠时 `MemAvailable` 会掉到 **`710 MB`**、swap used 冲到 **`4,353 MB`**（30 s 内 +3 GB 后回落），全天 swap 进出各 ~`1.55/1.66 MB/s`（日均 ~135 GB）。详见 [2026-11-27 双机对比与资源效率分析](../2026-11-27-prod-vs-test-and-resource-efficiency.md)。
+
 ---
 
 ## 3. 磁盘生命周期与目录所有权红线

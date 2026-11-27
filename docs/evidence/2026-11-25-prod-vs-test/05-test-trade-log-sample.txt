@@ -1,0 +1,11 @@
+=== pm2 log names ===
+pm2-logrotate-error.log
+pm2-logrotate-out.log
+realtime-data-error.log
+realtime-data-out.log
+=== dryrun out tail ===
+-- /home/ubuntu/.pm2/logs/*dryrun*out*.log
+=== trade log total_s sample ===
+2026-11-23 21:47:12,535 [INFO] - MODEL_REPLAY {"account": "fake", "stamp": 1793436000, "kind": "trade", "attempt": "4020539-1795441632503460857", "mode": "preflight", "committed": false, "trained_quarters": 0, "reused_quarters": 0, "scoring_calls": 0, "status": "error", "error_type": "ValueError", "total_s": 0.031534, "event": "end", "elapsed_s": 0.03155}
+2026-11-23 21:47:12,543 [INFO] - MODEL_REPLAY {"account": "fake", "stamp": 1793436000, "kind": "trade", "attempt": "4020539-1795441632541455170", "mode": "preflight", "committed": false, "trained_quarters": 0, "reused_quarters": 0, "scoring_calls": 0, "status": "error", "error_type": "OSError", "total_s": 0.001815, "event": "end", "elapsed_s": 0.001826}
+2026-11-23 21:47:12,549 [INFO] - MODEL_REPLAY {"account": "fake", "stamp": 1793436000, "kind": "trade", "attempt": "4020539-1795441632547449918", "mode": "preflight", "committed": false, "trained_quarters": 0, "reused_quarters": 0, "scoring_calls": 0, "status": "error", "error_type": "PermissionError", "total_s": 0.002436, "event": "end", "elapsed_s": 0.002451}

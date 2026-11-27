@@ -1,0 +1,11 @@
+=== [V] research today/post-release file counts (corrected quoting) ===
+today=0
+post_release=0
+newest_mtime=2026-11-06 18:58
+=== [W] ws_cache file mtimes ===
+spot.sqlite	34271232	2026-11-25 14:10:01.0187577330
+spot.sqlite-shm	32768	2026-11-25 14:10:00.0847575190
+spot.sqlite-wal	444992	2026-11-25 14:10:01.0637577440
+swap.sqlite	51068928	2026-11-25 14:10:03.4317582880
+swap.sqlite-shm	32768	2026-11-25 14:10:00.0847575190
+swap.sqlite-wal	4750392	2026-11-25 14:10:03.4857583000

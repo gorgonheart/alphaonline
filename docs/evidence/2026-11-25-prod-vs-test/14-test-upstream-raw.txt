@@ -1,0 +1,600 @@
+=== READY FILES (25m, today) ===
+market_pivot_spot_1795584300.ready	2026-11-25 13:25:55.8721357630
+market_pivot_spot_2026_1795584300.ready	2026-11-25 13:25:55.8711357630
+market_pivot_swap_1795584300.ready	2026-11-25 13:26:14.3851339800
+market_pivot_swap_2026_1795584300.ready	2026-11-25 13:26:14.3831339810
+spot_dict_1795584300.ready	2026-11-25 13:25:55.8861357620
+spot_dict_batch1_1795580700.ready	2026-11-25 12:25:29.3893382340
+spot_dict_batch1_1795584300.ready	2026-11-25 13:25:29.6921382860
+spot_dict_batch2_1795580700.ready	2026-11-25 12:25:30.5173369380
+spot_dict_batch2_1795584300.ready	2026-11-25 13:25:41.0181371950
+spot_dict_batch3_1795580700.ready	2026-11-25 12:25:30.0523374720
+spot_dict_batch3_1795584300.ready	2026-11-25 13:25:41.0551371910
+swap_dict_1795584300.ready	2026-11-25 13:26:14.4031339790
+swap_dict_batch1_1795577100.ready	2026-11-25 11:26:05.4178294280
+swap_dict_batch1_1795580700.ready	2026-11-25 12:25:57.9803053910
+swap_dict_batch1_1795584300.ready	2026-11-25 13:25:44.8131368290
+swap_dict_batch2_1795580700.ready	2026-11-25 12:25:48.0263168250
+swap_dict_batch2_1795584300.ready	2026-11-25 13:25:47.8341365380
+swap_dict_batch3_1795580700.ready	2026-11-25 12:25:50.7823136590
+swap_dict_batch3_1795584300.ready	2026-11-25 13:26:02.0191351710
+swap_dict_batch4_1795577100.ready	2026-11-25 11:26:07.7948297000
+swap_dict_batch4_1795580700.ready	2026-11-25 12:25:51.4423129010
+swap_dict_batch4_1795584300.ready	2026-11-25 13:26:03.4691350310
+swap_dict_batch5_1795577100.ready	2026-11-25 11:26:03.4658292040
+swap_dict_batch5_1795580700.ready	2026-11-25 12:25:59.4943036510
+swap_dict_batch5_1795584300.ready	2026-11-25 13:25:57.9231355650
+=== READY FILES (15m, today) ===
+market_pivot_spot_1795583700.ready	2026-11-25 13:15:59.5982108230
+market_pivot_spot_2026_1795583700.ready	2026-11-25 13:15:59.5962108230
+market_pivot_swap_1795583700.ready	2026-11-25 13:16:53.3941998980
+market_pivot_swap_2026_1795583700.ready	2026-11-25 13:16:53.3931998980
+spot_dict_1795583700.ready	2026-11-25 13:15:59.6072108210
+spot_dict_batch1_1795580100.ready	2026-11-25 12:15:29.3774821390
+spot_dict_batch1_1795583700.ready	2026-11-25 13:15:30.0052167600
+spot_dict_batch2_1795580100.ready	2026-11-25 12:15:30.0094810830
+spot_dict_batch2_1795583700.ready	2026-11-25 13:15:30.4422166730
+spot_dict_batch3_1795580100.ready	2026-11-25 12:15:47.9134540890
+spot_dict_batch3_1795583700.ready	2026-11-25 13:15:30.3872166840
+swap_dict_1795583700.ready	2026-11-25 13:16:53.4111998940
+swap_dict_batch1_1795580100.ready	2026-11-25 12:16:03.1374355880
+swap_dict_batch1_1795583700.ready	2026-11-25 13:16:06.8092093760
+swap_dict_batch2_1795580100.ready	2026-11-25 12:15:48.5504533150
+swap_dict_batch2_1795583700.ready	2026-11-25 13:15:50.5552126370
+swap_dict_batch3_1795576500.ready	2026-11-25 11:16:33.2897637720
+swap_dict_batch3_1795580100.ready	2026-11-25 12:15:49.8664517160
+swap_dict_batch3_1795583700.ready	2026-11-25 13:16:10.8052085740
+swap_dict_batch4_1795576500.ready	2026-11-25 11:16:34.7357639380
+swap_dict_batch4_1795580100.ready	2026-11-25 12:16:11.1684258280
+swap_dict_batch4_1795583700.ready	2026-11-25 13:16:14.8442077640
+swap_dict_batch5_1795580100.ready	2026-11-25 12:16:09.5684277720
+swap_dict_batch5_1795583700.ready	2026-11-25 13:16:02.4522102500
+=== UPSTREAM KEY LINES ===
+🌀 REST 兜底 grace(10.0s) 后计算 missed: spot=130 swap=369 (run_time=2026-11-25 00:05:00+08:00)
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=14.12s
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=15.69s
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 00:06:19+0800, 耗时 24.5 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 00:06:30+0800, 耗时 3.8 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=24.5s publish=6.6s pivot=3.8s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 00:07:15+0800, 耗时 44.6 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 00:07:33+0800, 耗时 8.3 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=44.6s publish=9.2s pivot=8.3s
+🌀 REST 兜底 grace(10.0s) 后计算 missed: spot=18 swap=271 (run_time=2026-11-25 00:15:00+08:00)
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=11.11s
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=15.61s
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 00:16:17+0800, 耗时 24.6 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 00:16:28+0800, 耗时 3.9 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=24.6s publish=7.0s pivot=3.9s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 00:17:10+0800, 耗时 42.6 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 00:17:28+0800, 耗时 8.0 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=42.6s publish=8.7s pivot=8.0s
+🌀 REST 兜底 grace(10.0s) 后计算 missed: spot=72 swap=243 (run_time=2026-11-25 00:25:00+08:00)
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=12.92s
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=14.35s
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 00:26:21+0800, 耗时 24.9 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 00:26:29+0800, 耗时 3.7 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=24.9s publish=4.5s pivot=3.7s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 00:27:14+0800, 耗时 44.3 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 00:27:29+0800, 耗时 7.9 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=44.3s publish=6.7s pivot=7.9s
+🌀 spot 初始化历史 K线, 阶段 1, 校验并清除过时数据, 全量自愈=0/520, 当前时间=2026-11-25 00:32:30+0800
+🌀 swap 初始化历史 K线, 阶段 1, 校验并清除过时数据, 全量自愈=0/767, 当前时间=2026-11-25 00:32:35+0800
+🌀 spot 初始化历史 K线, 阶段 3, 补全 5m K线根数, 交易对数量=13/520, 全量自愈=0, 当前时间=2026-11-25 00:32:49+0800
+🌀 swap 初始化历史 K线, 阶段 3, 补全 5m K线根数, 交易对数量=22/767, 全量自愈=0, 当前时间=2026-11-25 00:33:04+0800
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=9.08s
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=173 (run_time=2026-11-25 00:45:00+08:00)
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=20.26s
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 00:46:08+0800, 耗时 36.2 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 00:46:29+0800, 耗时 4.5 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=36.2s publish=9.1s pivot=4.5s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 00:46:51+0800, 耗时 79.3 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 00:47:02+0800, 耗时 3.7 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=79.3s publish=7.0s pivot=3.7s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=8.20s
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=12.96s
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=0 (run_time=2026-11-25 01:05:00+08:00)
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 01:06:02+0800, 耗时 38.6 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 01:06:18+0800, 耗时 7.5 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=38.6s publish=8.0s pivot=7.5s
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 01:06:25+0800, 耗时 60.9 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 01:06:32+0800, 耗时 1.7 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=60.9s publish=5.3s pivot=1.7s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=6.57s
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=6 (run_time=2026-11-25 01:15:00+08:00)
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=14.30s
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 01:16:01+0800, 耗时 37.2 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 01:16:11+0800, 耗时 3.8 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=37.2s publish=6.2s pivot=3.8s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 01:16:20+0800, 耗时 56.0 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 01:16:39+0800, 耗时 5.8 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=56.0s publish=12.9s pivot=5.8s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=7.26s
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=2 (run_time=2026-11-25 01:25:00+08:00)
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=14.13s
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 01:25:45+0800, 耗时 21.5 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 01:25:50+0800, 耗时 2.5 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=21.5s publish=2.2s pivot=2.5s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 01:26:07+0800, 耗时 43.2 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 01:26:13+0800, 耗时 2.7 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=43.2s publish=3.8s pivot=2.7s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=6.43s
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=13.91s
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=0 (run_time=2026-11-25 01:45:00+08:00)
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 01:45:50+0800, 耗时 26.7 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 01:46:00+0800, 耗时 2.8 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=26.7s publish=6.0s pivot=2.8s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 01:46:19+0800, 耗时 55.6 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 01:46:31+0800, 耗时 4.3 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=55.6s publish=7.1s pivot=4.3s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=5.87s
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=45 (run_time=2026-11-25 02:05:00+08:00)
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=15.00s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 02:05:54+0800, 耗时 30.2 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 02:06:06+0800, 耗时 5.1 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=30.2s publish=7.2s pivot=5.1s
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 02:06:21+0800, 耗时 57.2 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 02:06:27+0800, 耗时 1.0 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=57.2s publish=5.2s pivot=1.0s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=6.72s
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=12.71s
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=0 (run_time=2026-11-25 02:15:00+08:00)
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 02:15:46+0800, 耗时 22.6 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 02:15:53+0800, 耗时 1.7 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=22.6s publish=5.3s pivot=1.7s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 02:16:17+0800, 耗时 53.3 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 02:16:29+0800, 耗时 4.3 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=53.3s publish=7.2s pivot=4.3s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=12.69s
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=40 (run_time=2026-11-25 02:25:00+08:00)
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=15.12s
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 02:25:49+0800, 耗时 22.6 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 02:25:55+0800, 耗时 2.1 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=22.6s publish=3.2s pivot=2.1s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 02:26:10+0800, 耗时 42.6 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 02:26:16+0800, 耗时 2.9 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=42.6s publish=3.1s pivot=2.9s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=5.93s
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=12.86s
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=0 (run_time=2026-11-25 02:45:00+08:00)
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 02:45:46+0800, 耗时 22.7 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 02:45:54+0800, 耗时 1.9 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=22.7s publish=5.4s pivot=1.9s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 02:46:16+0800, 耗时 52.5 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 02:46:28+0800, 耗时 4.1 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=52.5s publish=7.1s pivot=4.1s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=6.56s
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=13.93s
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=0 (run_time=2026-11-25 03:05:00+08:00)
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 03:05:49+0800, 耗时 26.4 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 03:06:03+0800, 耗时 1.7 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=26.4s publish=11.9s pivot=1.7s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 03:06:20+0800, 耗时 57.2 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 03:06:31+0800, 耗时 3.4 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=57.2s publish=7.1s pivot=3.4s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=7.61s
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=12.69s
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=0 (run_time=2026-11-25 03:15:00+08:00)
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 03:15:49+0800, 耗时 26.4 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 03:16:07+0800, 耗时 2.1 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=26.4s publish=15.1s pivot=2.1s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 03:16:19+0800, 耗时 55.9 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 03:16:29+0800, 耗时 4.0 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=55.9s publish=6.8s pivot=4.0s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=6.08s
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=13.90s
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=0 (run_time=2026-11-25 03:25:00+08:00)
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 03:25:44+0800, 耗时 21.6 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 03:25:49+0800, 耗时 2.5 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=21.6s publish=2.2s pivot=2.5s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 03:26:05+0800, 耗时 42.5 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 03:26:12+0800, 耗时 2.9 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=42.5s publish=3.8s pivot=2.9s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=6.85s
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=13.32s
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=0 (run_time=2026-11-25 03:45:00+08:00)
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 03:45:53+0800, 耗时 30.0 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 03:46:07+0800, 耗时 5.1 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=30.0s publish=9.2s pivot=5.1s
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 03:46:22+0800, 耗时 59.4 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 03:46:29+0800, 耗时 1.2 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=59.4s publish=5.1s pivot=1.2s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=8.37s
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=207 (run_time=2026-11-25 04:05:00+08:00)
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=20.53s
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 04:06:03+0800, 耗时 30.1 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 04:06:12+0800, 耗时 3.0 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=30.1s publish=6.1s pivot=3.0s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 04:06:43+0800, 耗时 69.8 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 04:06:54+0800, 耗时 4.3 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=69.8s publish=7.0s pivot=4.3s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=8.11s
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=97 (run_time=2026-11-25 04:15:00+08:00)
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=17.06s
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 04:16:00+0800, 耗时 32.8 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 04:16:11+0800, 耗时 3.6 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=32.8s publish=6.9s pivot=3.6s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 04:16:29+0800, 耗时 62.2 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 04:16:41+0800, 耗时 4.9 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=62.2s publish=7.0s pivot=4.9s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=6.05s
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=9 (run_time=2026-11-25 04:25:00+08:00)
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=14.48s
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 04:25:48+0800, 耗时 23.6 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 04:25:53+0800, 耗时 2.5 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=23.6s publish=2.3s pivot=2.5s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 04:26:12+0800, 耗时 47.7 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 04:26:18+0800, 耗时 2.9 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=47.7s publish=3.1s pivot=2.9s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=7.17s
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=397 (run_time=2026-11-25 04:45:00+08:00)
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=20.23s
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 04:45:53+0800, 耗时 23.7 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 04:46:02+0800, 耗时 2.8 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=23.7s publish=6.2s pivot=2.8s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 04:46:29+0800, 耗时 59.7 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 04:46:40+0800, 耗时 4.4 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=59.7s publish=6.8s pivot=4.4s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=8.90s
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=11.63s
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=0 (run_time=2026-11-25 05:05:00+08:00)
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 05:05:50+0800, 耗时 27.1 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 05:06:01+0800, 耗时 2.6 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=27.1s publish=7.9s pivot=2.6s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 05:06:19+0800, 耗时 55.8 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 05:06:29+0800, 耗时 3.7 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=55.8s publish=7.0s pivot=3.7s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=5.89s
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=7 (run_time=2026-11-25 05:15:00+08:00)
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=14.24s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 05:15:53+0800, 耗时 30.3 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 05:16:05+0800, 耗时 4.6 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=30.3s publish=7.2s pivot=4.6s
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 05:16:16+0800, 耗时 53.2 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 05:16:22+0800, 耗时 1.1 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=53.2s publish=5.2s pivot=1.1s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=5.60s
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=2 (run_time=2026-11-25 05:25:00+08:00)
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=14.11s
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 05:25:55+0800, 耗时 31.7 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 05:26:00+0800, 耗时 2.6 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=31.7s publish=2.8s pivot=2.6s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 05:26:06+0800, 耗时 43.0 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 05:26:12+0800, 耗时 2.8 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=43.0s publish=3.3s pivot=2.8s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=6.41s
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=13 (run_time=2026-11-25 05:45:00+08:00)
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=14.38s
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 05:45:57+0800, 耗时 33.8 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 05:46:11+0800, 耗时 6.3 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=33.8s publish=7.2s pivot=6.3s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 05:46:23+0800, 耗时 60.0 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 05:46:34+0800, 耗时 4.2 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=60.0s publish=7.0s pivot=4.2s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=5.79s
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=43 (run_time=2026-11-25 06:05:00+08:00)
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=14.81s
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 06:05:50+0800, 耗时 26.7 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 06:05:59+0800, 耗时 2.8 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=26.7s publish=5.8s pivot=2.8s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 06:06:15+0800, 耗时 51.2 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 06:06:25+0800, 耗时 3.3 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=51.2s publish=7.1s pivot=3.3s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=6.28s
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=8 (run_time=2026-11-25 06:15:00+08:00)
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=14.32s
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 06:15:49+0800, 耗时 25.7 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 06:15:58+0800, 耗时 3.0 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=25.7s publish=6.2s pivot=3.0s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 06:16:15+0800, 耗时 51.5 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 06:16:26+0800, 耗时 4.3 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=51.5s publish=6.8s pivot=4.3s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=6.24s
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=13.92s
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=0 (run_time=2026-11-25 06:25:00+08:00)
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 06:25:45+0800, 耗时 22.1 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 06:25:50+0800, 耗时 1.8 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=22.1s publish=2.9s pivot=1.8s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 06:26:05+0800, 耗时 42.4 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 06:26:12+0800, 耗时 2.9 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=42.4s publish=3.5s pivot=2.9s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=5.17s
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=1 (run_time=2026-11-25 06:45:00+08:00)
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=14.10s
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 06:45:47+0800, 耗时 23.7 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 06:45:57+0800, 耗时 2.7 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=23.7s publish=6.4s pivot=2.7s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 06:46:18+0800, 耗时 54.5 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 06:46:29+0800, 耗时 3.8 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=54.5s publish=7.2s pivot=3.8s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=9.97s
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=142 (run_time=2026-11-25 07:05:00+08:00)
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=18.30s
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 07:05:54+0800, 耗时 26.7 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 07:06:04+0800, 耗时 2.5 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=26.7s publish=6.9s pivot=2.5s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 07:06:23+0800, 耗时 55.7 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 07:06:34+0800, 耗时 3.5 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=55.7s publish=7.0s pivot=3.5s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=8.27s
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=91 (run_time=2026-11-25 07:15:00+08:00)
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=17.02s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 07:16:04+0800, 耗时 36.5 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 07:16:19+0800, 耗时 6.6 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=36.5s publish=8.1s pivot=6.6s
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 07:16:39+0800, 耗时 71.0 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 07:16:46+0800, 耗时 1.6 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=71.0s publish=6.0s pivot=1.6s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=5.72s
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=9 (run_time=2026-11-25 07:25:00+08:00)
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=14.26s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 07:26:03+0800, 耗时 39.5 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 07:26:13+0800, 耗时 5.4 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=39.5s publish=4.5s pivot=5.4s
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 07:26:14+0800, 耗时 50.5 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 07:26:17+0800, 耗时 1.1 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=50.5s publish=2.4s pivot=1.1s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=5.25s
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=55 (run_time=2026-11-25 07:45:00+08:00)
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=14.95s
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 07:45:54+0800, 耗时 29.9 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 07:46:04+0800, 耗时 3.3 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=29.9s publish=6.8s pivot=3.3s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 07:46:19+0800, 耗时 55.0 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 07:46:30+0800, 耗时 4.3 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=55.0s publish=7.0s pivot=4.3s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=7.85s
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=12.95s
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=0 (run_time=2026-11-25 08:05:00+08:00)
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 08:05:54+0800, 耗时 30.5 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 08:06:06+0800, 耗时 5.1 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=30.5s publish=7.3s pivot=5.1s
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 08:06:22+0800, 耗时 59.1 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 08:06:29+0800, 耗时 1.3 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=59.1s publish=5.2s pivot=1.3s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=7.68s
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=12.29s
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=0 (run_time=2026-11-25 08:15:00+08:00)
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 08:16:11+0800, 耗时 46.6 秒
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 08:16:19+0800, 耗时 54.1 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 08:16:34+0800, 耗时 4.0 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=54.1s publish=5.4s pivot=4.0s
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 08:16:56+0800, 耗时 7.4 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=46.6s publish=36.9s pivot=7.4s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=7.09s
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=13.74s
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=0 (run_time=2026-11-25 08:25:00+08:00)
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 08:26:05+0800, 耗时 40.5 秒
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 08:26:10+0800, 耗时 45.2 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 08:26:13+0800, 耗时 3.4 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=40.5s publish=4.1s pivot=3.4s
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 08:26:14+0800, 耗时 1.2 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=45.2s publish=2.6s pivot=1.2s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=6.05s
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=44 (run_time=2026-11-25 08:45:00+08:00)
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=15.45s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 08:45:56+0800, 耗时 30.4 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 08:46:11+0800, 耗时 5.0 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=30.4s publish=9.7s pivot=5.0s
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 08:46:34+0800, 耗时 68.6 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 08:46:40+0800, 耗时 1.1 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=68.6s publish=5.0s pivot=1.1s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=9.19s
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=10.78s
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=0 (run_time=2026-11-25 09:05:00+08:00)
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 09:05:48+0800, 耗时 23.5 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 09:05:55+0800, 耗时 1.8 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=23.5s publish=5.2s pivot=1.8s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 09:06:29+0800, 耗时 64.6 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 09:06:40+0800, 耗时 4.0 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=64.6s publish=7.0s pivot=4.0s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=7.24s
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=1 (run_time=2026-11-25 09:15:00+08:00)
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=14.07s
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 09:15:52+0800, 耗时 28.2 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 09:15:59+0800, 耗时 1.8 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=28.2s publish=5.6s pivot=1.8s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 09:16:17+0800, 耗时 53.9 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 09:16:29+0800, 耗时 3.8 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=53.9s publish=7.5s pivot=3.8s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=8.83s
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=12.75s
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=0 (run_time=2026-11-25 09:25:00+08:00)
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 09:25:47+0800, 耗时 22.9 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 09:25:52+0800, 耗时 1.8 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=22.9s publish=3.2s pivot=1.8s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 09:26:07+0800, 耗时 43.1 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 09:26:13+0800, 耗时 2.8 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=43.1s publish=3.5s pivot=2.8s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=9.43s
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=12.13s
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=0 (run_time=2026-11-25 09:45:00+08:00)
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 09:45:57+0800, 耗时 33.6 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 09:46:08+0800, 耗时 2.9 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=33.6s publish=7.2s pivot=2.9s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 09:46:19+0800, 耗时 55.2 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 09:46:30+0800, 耗时 4.1 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=55.2s publish=6.8s pivot=4.1s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=8.31s
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=13.14s
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=0 (run_time=2026-11-25 10:05:00+08:00)
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 10:05:55+0800, 耗时 31.0 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 10:06:07+0800, 耗时 5.0 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=31.0s publish=7.3s pivot=5.0s
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 10:06:19+0800, 耗时 55.5 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 10:06:26+0800, 耗时 1.5 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=55.5s publish=5.2s pivot=1.5s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=11.33s
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=170 (run_time=2026-11-25 10:15:00+08:00)
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=20.36s
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 10:16:12+0800, 耗时 37.6 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 10:16:21+0800, 耗时 2.4 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=37.6s publish=5.7s pivot=2.4s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 10:16:42+0800, 耗时 67.0 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 10:16:52+0800, 耗时 3.7 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=67.0s publish=7.0s pivot=3.7s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=8.91s
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=82 (run_time=2026-11-25 10:25:00+08:00)
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=16.34s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 10:26:02+0800, 耗时 33.7 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 10:26:10+0800, 耗时 4.6 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=33.7s publish=3.3s pivot=4.6s
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 10:26:21+0800, 耗时 52.8 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 10:26:24+0800, 耗时 1.2 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=52.8s publish=2.0s pivot=1.2s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=6.46s
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=13.21s
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=0 (run_time=2026-11-25 10:45:00+08:00)
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 10:45:51+0800, 耗时 27.5 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 10:46:00+0800, 耗时 1.9 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=27.5s publish=6.2s pivot=1.9s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 10:46:43+0800, 耗时 79.4 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 10:46:56+0800, 耗时 4.7 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=79.4s publish=7.3s pivot=4.7s
+🌀 spot 初始化历史 K线, 阶段 1, 校验并清除过时数据, 全量自愈=0/520, 当前时间=2026-11-25 10:58:18+0800
+🌀 swap 初始化历史 K线, 阶段 1, 校验并清除过时数据, 全量自愈=0/767, 当前时间=2026-11-25 10:58:24+0800
+🌀 spot 初始化历史 K线, 阶段 3, 补全 5m K线根数, 交易对数量=13/520, 全量自愈=0, 当前时间=2026-11-25 10:58:35+0800
+🌀 swap 初始化历史 K线, 阶段 3, 补全 5m K线根数, 交易对数量=22/767, 全量自愈=0, 当前时间=2026-11-25 10:58:49+0800
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=1.05s
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=1.79s
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=0 (run_time=2026-11-25 11:15:00+08:00)
+✅ Resample spot 内存合成就绪: 520/520 symbol (后台待刷盘=0), 当前时间=2026-11-25 11:15:16+0800
+✅ Resample swap 内存合成就绪: 767/767 symbol (后台待刷盘=0), 当前时间=2026-11-25 11:15:24+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 11:16:05+0800, 耗时 41.5 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 11:16:16+0800, 耗时 2.5 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=41.5s publish=7.3s pivot=2.5s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 11:17:07+0800, 耗时 103.1 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 11:17:38+0800, 耗时 4.1 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=103.1s publish=26.9s pivot=4.1s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=1.08s
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=1.99s
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=0 (run_time=2026-11-25 11:25:00+08:00)
+✅ Resample spot 内存合成就绪: 520/520 symbol (后台待刷盘=0), 当前时间=2026-11-25 11:25:16+0800
+✅ Resample swap 内存合成就绪: 767/767 symbol (后台待刷盘=0), 当前时间=2026-11-25 11:25:25+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 11:25:55+0800, 耗时 30.0 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 11:26:00+0800, 耗时 3.0 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=30.0s publish=2.4s pivot=3.0s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 11:26:16+0800, 耗时 51.3 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 11:26:22+0800, 耗时 2.9 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=51.3s publish=3.1s pivot=2.9s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=1.31s
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=2.54s
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=0 (run_time=2026-11-25 11:45:00+08:00)
+✅ Resample spot 内存合成就绪: 520/520 symbol (后台待刷盘=0), 当前时间=2026-11-25 11:45:18+0800
+✅ Resample swap 内存合成就绪: 767/767 symbol (后台待刷盘=0), 当前时间=2026-11-25 11:45:26+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 11:46:18+0800, 耗时 51.2 秒
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 11:46:36+0800, 耗时 70.0 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 11:46:53+0800, 耗时 7.1 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=70.0s publish=9.6s pivot=7.1s
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 11:47:07+0800, 耗时 4.9 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=51.2s publish=43.6s pivot=4.9s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=0.89s
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=2.00s
+✅ Resample spot 内存合成就绪: 520/520 symbol (后台待刷盘=0), 当前时间=2026-11-25 12:05:15+0800
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=0 (run_time=2026-11-25 12:05:00+08:00)
+✅ Resample swap 内存合成就绪: 767/767 symbol (后台待刷盘=0), 当前时间=2026-11-25 12:05:24+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 12:06:06+0800, 耗时 41.4 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 12:06:31+0800, 耗时 4.8 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=41.4s publish=19.7s pivot=4.8s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 12:06:46+0800, 耗时 81.8 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 12:07:13+0800, 耗时 5.9 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=81.8s publish=20.1s pivot=5.9s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=1.10s
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=2.41s
+✅ Resample spot 内存合成就绪: 520/520 symbol (后台待刷盘=520), 当前时间=2026-11-25 12:15:14+0800
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=0 (run_time=2026-11-25 12:15:00+08:00)
+✅ Resample swap 内存合成就绪: 767/767 symbol (后台待刷盘=767), 当前时间=2026-11-25 12:15:22+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 12:16:08+0800, 耗时 46.0 秒
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 12:16:24+0800, 耗时 61.7 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 12:16:37+0800, 耗时 5.5 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=61.7s publish=7.0s pivot=5.5s
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 12:16:54+0800, 耗时 6.2 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=46.0s publish=38.7s pivot=6.2s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=1.12s
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=2.26s
+✅ Resample spot 内存合成就绪: 520/520 symbol (后台待刷盘=520), 当前时间=2026-11-25 12:25:13+0800
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=0 (run_time=2026-11-25 12:25:00+08:00)
+✅ Resample swap 内存合成就绪: 767/767 symbol (后台待刷盘=767), 当前时间=2026-11-25 12:25:21+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 12:25:39+0800, 耗时 17.9 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 12:25:43+0800, 耗时 2.2 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=17.9s publish=2.1s pivot=2.2s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 12:26:04+0800, 耗时 43.7 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 12:26:11+0800, 耗时 3.1 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=43.7s publish=3.2s pivot=3.1s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=1.12s
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=2.25s
+✅ Resample spot 内存合成就绪: 520/520 symbol (后台待刷盘=520), 当前时间=2026-11-25 12:45:15+0800
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=0 (run_time=2026-11-25 12:45:00+08:00)
+✅ Resample swap 内存合成就绪: 767/767 symbol (后台待刷盘=767), 当前时间=2026-11-25 12:45:21+0800
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 12:46:32+0800, 耗时 71.0 秒
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 12:46:34+0800, 耗时 73.7 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 12:46:44+0800, 耗时 2.1 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=73.7s publish=6.9s pivot=2.1s
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 12:47:32+0800, 耗时 8.3 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=71.0s publish=51.6s pivot=8.3s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=1.12s
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=2.34s
+✅ Resample spot 内存合成就绪: 520/520 symbol (后台待刷盘=520), 当前时间=2026-11-25 13:05:14+0800
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=0 (run_time=2026-11-25 13:05:00+08:00)
+✅ Resample swap 内存合成就绪: 767/767 symbol (后台待刷盘=767), 当前时间=2026-11-25 13:05:20+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 13:06:10+0800, 耗时 50.7 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 13:06:20+0800, 耗时 2.9 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=50.7s publish=6.1s pivot=2.9s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 13:06:51+0800, 耗时 91.4 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 13:07:18+0800, 耗时 6.3 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=91.4s publish=20.3s pivot=6.3s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=1.21s
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=2.40s
+✅ Resample spot 内存合成就绪: 520/520 symbol (后台待刷盘=520), 当前时间=2026-11-25 13:15:13+0800
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=0 (run_time=2026-11-25 13:15:00+08:00)
+✅ Resample swap 内存合成就绪: 767/767 symbol (后台待刷盘=767), 当前时间=2026-11-25 13:15:21+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 13:15:49+0800, 耗时 27.7 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 13:15:59+0800, 耗时 3.1 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=27.7s publish=7.0s pivot=3.1s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 13:16:39+0800, 耗时 77.5 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 13:16:53+0800, 耗时 7.0 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=77.5s publish=7.0s pivot=7.0s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=1.14s
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=2.40s
+✅ Resample spot 内存合成就绪: 520/520 symbol (后台待刷盘=520), 当前时间=2026-11-25 13:25:14+0800
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=0 (run_time=2026-11-25 13:25:00+08:00)
+✅ Resample swap 内存合成就绪: 767/767 symbol (后台待刷盘=767), 当前时间=2026-11-25 13:25:21+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 13:25:51+0800, 耗时 29.4 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 13:25:55+0800, 耗时 2.3 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=29.4s publish=2.2s pivot=2.3s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 13:26:08+0800, 耗时 46.4 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 13:26:14+0800, 耗时 3.0 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=46.4s publish=3.0s pivot=3.0s
+🌀 barrier[spot] 完成: success=520/520 skipped=0 耗时=1.19s
+🌀 barrier[swap] 完成: success=767/767 skipped=0 耗时=2.31s
+✅ Resample spot 内存合成就绪: 520/520 symbol (后台待刷盘=520), 当前时间=2026-11-25 13:45:14+0800
+🌀 REST 兜底 grace(14.0s) 后计算 missed: spot=0 swap=0 (run_time=2026-11-25 13:45:00+08:00)
+✅ Resample swap 内存合成就绪: 767/767 symbol (后台待刷盘=767), 当前时间=2026-11-25 13:45:20+0800
+✅ 预处理 Market Dict (含因子) spot 完成, 当前时间=2026-11-25 13:45:49+0800, 耗时 29.1 秒
+✅ 预处理 Pivot Table spot 完成, 当前时间=2026-11-25 13:45:59+0800, 耗时 3.5 秒
+🌀 [io-stat] phase spot symbols=520 batches=3 market_dict=29.1s publish=5.5s pivot=3.5s
+✅ 预处理 Market Dict (含因子) swap 完成, 当前时间=2026-11-25 13:46:19+0800, 耗时 59.1 秒
+✅ 预处理 Pivot Table swap 完成, 当前时间=2026-11-25 13:46:31+0800, 耗时 4.8 秒
+🌀 [io-stat] phase swap symbols=767 batches=5 market_dict=59.1s publish=7.1s pivot=4.8s
+=== ERROR COUNT ===
+0
+=== PM2 ERROR LOG TAIL ===
+  File "/home/ubuntu/miniconda3/envs/alpha311/lib/python3.11/multiprocessing/process.py", line 108, in run
+    self._target(*self._args, **self._kwargs)
+  File "/home/ubuntu/alpha/core/pipeline/runtime_supervisor.py", line 117, in run_writer_subprocess
+    writer.consume_loop(queue)
+  File "/home/ubuntu/alpha/core/storage/writer.py", line 242, in consume_loop
+    item = queue.get()
+           ^^^^^^^^^^^
+  File "/home/ubuntu/miniconda3/envs/alpha311/lib/python3.11/multiprocessing/queues.py", line 103, in get
+    res = self._recv_bytes()
+          ^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/miniconda3/envs/alpha311/lib/python3.11/multiprocessing/connection.py", line 216, in recv_bytes
+    buf = self._recv_bytes(maxlength)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/ubuntu/miniconda3/envs/alpha311/lib/python3.11/multiprocessing/connection.py", line 430, in _recv_bytes
+    buf = self._recv(4)
+          ^^^^^^^^^^^^^
+  File "/home/ubuntu/miniconda3/envs/alpha311/lib/python3.11/multiprocessing/connection.py", line 395, in _recv
+    chunk = read(handle, remaining)
+            ^^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt

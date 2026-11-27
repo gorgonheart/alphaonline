@@ -1,0 +1,54 @@
+=== [K] all .arrow files under preprocess_1h_resample (name / bytes / mtime) ===
+--- /home/ubuntu/alpha/data/preprocess_1h_resample/15m
+spot_dict_1795583700.arrow	1489129378	2026-11-25 13:15:55.0902117270
+swap_dict_1795583700.arrow	1982644938	2026-11-25 13:16:45.3812015740
+--- /home/ubuntu/alpha/data/preprocess_1h_resample/25m
+spot_dict_1795584300.arrow	607597786	2026-11-25 13:25:52.3951360980
+swap_dict_1795584300.arrow	908924202	2026-11-25 13:26:09.7621344240
+--- /home/ubuntu/alpha/data/preprocess_1h_resample/45m
+spot_dict_1795585500.arrow	1489143898	2026-11-25 13:45:54.2662119210
+swap_dict_1795585500.arrow	1982708282	2026-11-25 13:46:25.4532645200
+--- /home/ubuntu/alpha/data/preprocess_1h_resample/5m
+spot_dict_1795586700.arrow	1489267458	2026-11-25 14:05:57.7787160790
+swap_dict_1795586700.arrow	1982839730	2026-11-25 14:06:38.5967221280
+=== [L] all files 15m (name / bytes / mtime) ===
+market_pivot_spot_1795583700.ready	16	2026-11-25 13:15
+market_pivot_spot_2025.complete	25	2026-11-23 11:02
+market_pivot_spot_2025.pkl	56712803	2026-11-23 11:02
+market_pivot_spot_2026_1795583700.ready	17	2026-11-25 13:15
+market_pivot_spot_2026.pkl	98376405	2026-11-25 13:15
+market_pivot_swap_1795583700.ready	17	2026-11-25 13:16
+market_pivot_swap_2025.complete	25	2026-11-23 11:02
+market_pivot_swap_2025.pkl	93770614	2026-11-23 11:02
+market_pivot_swap_2026_1795583700.ready	16	2026-11-25 13:16
+market_pivot_swap_2026.pkl	193407919	2026-11-25 13:16
+spot_dict_1795583700.arrow	1489129378	2026-11-25 13:15
+spot_dict_1795583700.ready	17	2026-11-25 13:15
+spot_dict_batch1_1795580100.ready	17	2026-11-25 12:15
+spot_dict_batch1_1795583700.ready	17	2026-11-25 13:15
+spot_dict_batch1.pkl	290770820	2026-11-25 13:15
+spot_dict_batch2_1795580100.ready	17	2026-11-25 12:15
+spot_dict_batch2_1795583700.ready	17	2026-11-25 13:15
+spot_dict_batch2.pkl	285071392	2026-11-25 13:15
+spot_dict_batch3_1795580100.ready	17	2026-11-25 12:15
+spot_dict_batch3_1795583700.ready	16	2026-11-25 13:15
+spot_dict_batch3.pkl	263842635	2026-11-25 13:15
+swap_dict_1795583700.arrow	1982644938	2026-11-25 13:16
+swap_dict_1795583700.ready	17	2026-11-25 13:16
+swap_dict_batch1_1795580100.ready	17	2026-11-25 12:16
+swap_dict_batch1_1795583700.ready	17	2026-11-25 13:16
+swap_dict_batch1.pkl	289164482	2026-11-25 13:16
+swap_dict_batch2_1795580100.ready	17	2026-11-25 12:15
+swap_dict_batch2_1795583700.ready	17	2026-11-25 13:15
+swap_dict_batch2.pkl	258962147	2026-11-25 13:15
+swap_dict_batch3_1795576500.ready	17	2026-11-25 11:16
+swap_dict_batch3_1795580100.ready	16	2026-11-25 12:15
+swap_dict_batch3_1795583700.ready	16	2026-11-25 13:16
+swap_dict_batch3.pkl	262573165	2026-11-25 13:16
+swap_dict_batch4_1795576500.ready	17	2026-11-25 11:16
+swap_dict_batch4_1795580100.ready	17	2026-11-25 12:16
+swap_dict_batch4_1795583700.ready	17	2026-11-25 13:16
+swap_dict_batch4.pkl	267043430	2026-11-25 13:16
+swap_dict_batch5_1795580100.ready	17	2026-11-25 12:16
+swap_dict_batch5_1795583700.ready	17	2026-11-25 13:16
+swap_dict_batch5.pkl	70529540	2026-11-25 13:16

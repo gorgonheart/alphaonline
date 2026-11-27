@@ -1,0 +1,26 @@
+=== READY 25m TODAY ===
+market_pivot_spot_1795688700.ready	2026-11-26 18:25:42.9250368180
+market_pivot_spot_2026_1795688700.ready	2026-11-26 18:25:42.9230368180
+market_pivot_swap_1795688700.ready	2026-11-26 18:26:00.6630360030
+market_pivot_swap_2026_1795688700.ready	2026-11-26 18:26:00.6620360040
+spot_dict_1795688700.ready	2026-11-26 18:25:42.9360368180
+spot_dict_batch1_1795688700.ready	2026-11-26 18:25:27.1180381210
+spot_dict_batch2_1795688700.ready	2026-11-26 18:25:27.7470380690
+spot_dict_batch3_1795688700.ready	2026-11-26 18:25:26.5110381710
+swap_dict_1795688700.ready	2026-11-26 18:26:00.6680360030
+swap_dict_batch1_1795688700.ready	2026-11-26 18:25:30.5040378390
+swap_dict_batch2_1795688700.ready	2026-11-26 18:25:46.5390366530
+swap_dict_batch3_1795688700.ready	2026-11-26 18:25:47.7530365970
+swap_dict_batch4_1795688700.ready	2026-11-26 18:25:49.2960365260
+swap_dict_batch5_1795688700.ready	2026-11-26 18:25:41.9860368840
+=== READY COUNT BY HOUR (spot) ===
+      3 2026-11-26 18
+=== ERROR COUNTS ===
+trade_errors=2
+upstream_errors=0
+=== PM2 ERROR TAIL ===
+          ^^^^^^^^^^^^^
+  File "/home/ubuntu/miniconda3/envs/alpha311/lib/python3.11/multiprocessing/connection.py", line 395, in _recv
+    chunk = read(handle, remaining)
+            ^^^^^^^^^^^^^^^^^^^^^^^
+KeyboardInterrupt

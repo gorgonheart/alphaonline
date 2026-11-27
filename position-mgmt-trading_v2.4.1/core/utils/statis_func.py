@@ -1,0 +1,1071 @@
+"""
+邢不行｜策略分享会
+仓位管理实盘框架
+
+版权所有 ©️ 邢不行
+微信: xbx1717
+
+本代码仅供个人学习使用，未经授权不得复制、修改或用于商业用途。
+
+Author: 邢不行
+"""
+import os
+import traceback
+from datetime import datetime, timedelta
+from pathlib import Path
+
+import dataframe_image as dfi
+import numpy as np
+import pandas as pd
+
+from core.model.account_config import AccountConfig
+from core.utils.dingding import send_wechat_work_msg, send_wechat_work_img
+from core.utils.path_kit import get_file_path, get_folder_path
+
+data_path = get_folder_path('data', as_path_type=True)
+
+
+def net_fund(df):
+    """份额法计算净值：type=log 为权益记录，type=transfer 为出入金（账户总净值列为金额）"""
+    first_log_index = (df['type'] == 'log').idxmax()
+    df = df.loc[first_log_index:, :]
+    df.reset_index(inplace=True, drop=True)
+
+    df.loc[0, '净值'] = 1
+    df.loc[0, '份额'] = df.iloc[0]['账户总净值'] / df.iloc[0]['净值']
+    df.loc[0, '当前总市值'] = df.iloc[0]['账户总净值']
+    for i in range(1, len(df)):
+        if df.iloc[i]['type'] == 'log':
+            df.loc[i, '当前总市值'] = df.iloc[i]['账户总净值']
+            df.loc[i, '份额'] = df.iloc[i - 1]['份额']
+            df.loc[i, '净值'] = df.iloc[i]['当前总市值'] / df.loc[i]['份额']
+        if df.iloc[i]['type'] == 'transfer':
+            reduce_cnt = df.iloc[i]['账户总净值'] / df.iloc[i - 1]['净值']
+            df.loc[i, '份额'] = df.loc[i - 1]['份额'] + reduce_cnt
+            df.loc[i, '当前总市值'] = df.iloc[i]['账户总净值'] + df.iloc[i - 1]['当前总市值']
+            df.loc[i, '净值'] = df.iloc[i]['当前总市值'] / df.iloc[i]['份额']
+
+    return df
+
+
+def calc_spot_position(spot_position, account_name, spot_last_price):
+    """
+    发送现货、合约持仓信息
+    :param spot_position: 现货持仓
+    :param account_name: 账户名称
+    :param spot_last_price: 现货最新价格
+    :return:
+              side  change    pos_u   pnl_u  avg_price  cur_price
+    symbol
+    ARDRU     1  59.24%   419.98  248.81     0.0515     0.0820
+    BTSU      1  36.90%   184.30   68.00     0.0071     0.0097
+    GLMU      1  26.67%   691.78  184.49     0.1466     0.1857
+    """
+    # 初始化两个持仓df
+    spot_send_df = pd.DataFrame()
+    # =如果现货存在持仓
+    if not spot_position.empty:
+        # 处理symbol列/索引的兼容性问题
+        if 'symbol' in spot_position.columns:
+            # 如果symbol是列，设置为索引
+            spot_position.set_index('symbol', inplace=True)
+        spot_position['当前价格'] = spot_last_price
+        # =创建一个保存数据的列表
+        position_info_list = []
+        # =遍历每个持仓的币种
+        for symbol in spot_position.index:
+            # =生成路径
+            path = get_file_path(data_path, account_name, '持仓信息', f'{symbol}.csv')
+            # =判断是否存在持仓数据
+            if os.path.exists(path):  # 如果该币种保存过文件，则读取历史持仓数据
+                position_info = pd.read_csv(path, encoding='gbk', parse_dates=['time'])
+                position_info = position_info[position_info['time'] == position_info['time'].max()]  # 只保留最新的一条数据
+                position_info['方向'] = 1  # 方向为1
+                # 取出部分列append到列表中
+                position_info = position_info[['symbol', '方向', '持仓量', '持仓额', '持仓均价']]
+            else:  # 如果没有没存数据，则赋值为nan
+                position_info = pd.DataFrame(columns=['symbol', '方向', '持仓量', '持仓额', '持仓均价'], index=[0])
+                position_info.loc[0, 'symbol'] = symbol
+                position_info.loc[0, '方向'] = 1
+                position_info.loc[0, '持仓量'] = spot_position.loc[symbol, '当前持仓量']
+                position_info.loc[0, '持仓额'] = np.nan
+                position_info.loc[0, '持仓均价'] = np.nan
+
+            # =将读取到的币种持仓数据添加到列表中
+            position_info_list.append(position_info)
+
+        # =合并数据
+        all_position_info = pd.concat(position_info_list, axis=0, copy=False)
+        # =整理现货持仓数据
+        spot_position = spot_position.reset_index()
+
+        # =将现货持仓数据与读取到的数据merge一下
+        spot_send_df = pd.merge(all_position_info, spot_position, on='symbol', how='right')
+        spot_send_df['change'] = spot_send_df['当前价格'] / spot_send_df['持仓均价'] - 1  # 计算涨跌幅
+        spot_send_df.loc[spot_send_df['持仓均价'] < 0, 'change'] = 1 - spot_send_df['当前价格'] / spot_send_df[
+            '持仓均价']  # 如果持仓成本为负
+        spot_send_df.sort_values('change', ascending=False, inplace=True)  # 以涨跌幅排序
+        spot_send_df['pnl_u'] = spot_send_df['change'] * spot_send_df['持仓额']  # 计算现货的持仓盈亏
+        spot_send_df.loc[spot_send_df['持仓均价'] < 0, 'pnl_u'] = spot_send_df['change'] * spot_send_df['持仓额'] * -1
+        spot_send_df['change'] = spot_send_df['change'].transform(
+            lambda x: f'{x * 100:.2f}%' if str(x) != 'nan' else x)  # 最后将数据转成百分比
+
+        # =修改列名
+        rename_cols = {'方向': 'side', '当前持仓量': 'pos_amount', '持仓额': 'pos_u', '持仓均价': 'avg_price', '当前价格': 'cur_price'}
+        spot_send_df.rename(columns=rename_cols, inplace=True)
+
+        # =修改格式并整理
+        spot_send_df = spot_send_df[['symbol', 'side', 'change', 'pos_u', 'pnl_u', 'avg_price', 'cur_price', 'pos_amount']]
+        spot_send_df['pos_u'] = spot_send_df['pos_u'].fillna(value=spot_send_df['cur_price'] * spot_send_df['pos_amount'])
+        spot_send_df['pos_u'] = spot_send_df['pos_u'].map(lambda x: round(x, 2))
+        spot_send_df['pnl_u'] = spot_send_df['pnl_u'].map(lambda x: round(x, 2))
+        spot_send_df['avg_price'] = spot_send_df['avg_price'].map(lambda x: round(x, 4))
+        spot_send_df['cur_price'] = spot_send_df['cur_price'].map(lambda x: round(x, 4))
+        spot_send_df['pos_amount'] = spot_send_df['pos_amount'].map(lambda x: round(x, 4))
+        spot_send_df.set_index('symbol', inplace=True)
+
+    return spot_send_df
+
+
+def calc_swap_position(swap_position):
+    """
+    发送现货、合约持仓信息
+    :param swap_position: 合约持仓
+    :return:
+              side  change    pos_u   pnl_u  avg_price  cur_price
+    symbol
+    ARDRU     1  59.24%   419.98  248.81     0.0515     0.0820
+    BTSU      1  36.90%   184.30   68.00     0.0071     0.0097
+    GLMU      1  26.67%   691.78  184.49     0.1466     0.1857
+    """
+    swap_send_df = pd.DataFrame()
+    # 如果存在合约持仓
+    if not swap_position.empty:
+        # =整理合约持仓数据
+        swap_send_df = swap_position.copy()
+        swap_send_df['side'] = swap_send_df['当前持仓量'].apply(
+            lambda x: 1 if float(x) > 0 else (-1 if float(x) < 0 else 0))  # 取出方向
+        swap_send_df['change'] = (swap_send_df['当前标记价格'] / swap_send_df['均价'] - 1) * swap_send_df[
+            'side']  # 计算涨跌幅
+        swap_send_df['pos_u'] = swap_send_df['当前持仓量'] * swap_send_df['当前标记价格']  # 计算持仓额
+        swap_send_df.rename(columns={'均价': 'avg_price', '当前持仓量': 'pos_amount', '持仓盈亏': 'pnl_u', '当前标记价格': 'cur_price'},
+                            inplace=True)  # 修改列名
+        swap_send_df = swap_send_df[['side', 'change', 'pos_u', 'pnl_u', 'avg_price', 'cur_price', 'pos_amount']]
+        swap_send_df.sort_values(['side', 'change'], ascending=[True, False], inplace=True)  # 以涨跌幅排序
+        swap_send_df['change'] = swap_send_df['change'].transform(
+            lambda x: f'{x * 100:.2f}%' if str(x) != 'nan' else x)  # 最后将数据转成百分比
+
+        # =修改格式
+        swap_send_df['pos_u'] = swap_send_df['pos_u'].map(lambda x: round(x, 2))
+        swap_send_df['pnl_u'] = swap_send_df['pnl_u'].map(lambda x: round(x, 2))
+        swap_send_df['avg_price'] = swap_send_df['avg_price'].map(lambda x: round(x, 4))
+        swap_send_df['cur_price'] = swap_send_df['cur_price'].map(lambda x: round(x, 4))
+        swap_send_df['pos_amount'] = swap_send_df['pos_amount'].map(lambda x: round(x, 4))
+
+    return swap_send_df
+
+
+def save_send_pos_info(timestamp_key, pos_df, account_name, pos_type='spot'):
+    pos_pkl_path = get_file_path(data_path, account_name, '账户信息', f'pos_{pos_type}.pkl', as_path_type=True)
+    if pos_pkl_path.exists():
+        pos_pkl = pd.read_pickle(pos_pkl_path)
+    else:
+        pos_pkl = {}
+    
+    # 添加新数据
+    pos_pkl[timestamp_key] = pos_df
+    
+    # 清理7天前的数据（基于传入的timestamp_key）
+    seven_days_ms = 7 * 24 * 60 * 60 * 1000  # 7天的毫秒数
+    cutoff_timestamp = timestamp_key - seven_days_ms
+    
+    # 删除超过7天的数据
+    keys_to_remove = [key for key in pos_pkl.keys() if key < cutoff_timestamp]
+    for key in keys_to_remove:
+        del pos_pkl[key]
+    
+    # 保存数据
+    pd.to_pickle(pos_pkl, pos_pkl_path)
+    
+    # 输出清理信息
+    if keys_to_remove:
+        print(f"清理了{len(keys_to_remove)}条超过7天的{pos_type}持仓记录")
+
+
+def save_position_snapshot(account_config: AccountConfig, run_time):
+    """
+    保存持仓快照（在下单前执行，确保能捕获到所有持仓币种）
+    :param account_config: 账户配置
+    :param run_time: 运行时间
+    """
+    spot_last_price = account_config.bn.get_spot_ticker_price_series()
+    spot_position = account_config.spot_position
+    swap_position = account_config.swap_position
+    account_name = account_config.name
+    
+    print(f"保存持仓快照: 现货{len(spot_position) if not spot_position.empty else 0}个, 合约{len(swap_position) if not swap_position.empty else 0}个")
+
+    # 处理现货持仓快照 - 即使为空也保存记录
+    if not spot_position.empty:
+        spot_snapshot = calc_spot_position(spot_position, account_name, spot_last_price)
+        
+        if not spot_snapshot.empty:
+            # 添加时间列
+            spot_snapshot_copy = spot_snapshot.reset_index()
+            spot_snapshot_copy['timestamp'] = run_time
+            
+            # 保存到PKL文件
+            spot_pkl_path = get_file_path(data_path, account_name, '账户信息', 'spot_position_history.pkl', as_path_type=True)
+            if spot_pkl_path.exists():
+                existing_data = pd.read_pickle(spot_pkl_path)
+                updated_data = pd.concat([existing_data, spot_snapshot_copy], ignore_index=True)
+            else:
+                updated_data = spot_snapshot_copy
+            
+            # 清理7天前的数据
+            cutoff_time = datetime.now() - timedelta(days=7)
+            updated_data = updated_data[updated_data['timestamp'] >= cutoff_time]
+            
+            # 确保目录存在
+            spot_pkl_path.parent.mkdir(parents=True, exist_ok=True)
+            pd.to_pickle(updated_data, spot_pkl_path)
+    else:
+        # 即使没有现货持仓，也保存一个空记录
+        empty_spot_record = pd.DataFrame({
+            'symbol': ['EMPTY'],
+            'side': [0],
+            'change': ['0.00%'],
+            'pos_u': [0.0],
+            'pnl_u': [0.0],
+            'avg_price': [0.0],
+            'cur_price': [0.0],
+            'timestamp': [run_time]
+        })
+        
+        spot_pkl_path = get_file_path(data_path, account_name, '账户信息', 'spot_position_history.pkl', as_path_type=True)
+        if spot_pkl_path.exists():
+            existing_data = pd.read_pickle(spot_pkl_path)
+            updated_data = pd.concat([existing_data, empty_spot_record], ignore_index=True)
+        else:
+            updated_data = empty_spot_record
+        
+        # 清理7天前的数据
+        cutoff_time = datetime.now() - timedelta(days=7)
+        updated_data = updated_data[updated_data['timestamp'] >= cutoff_time]
+        
+        # 确保目录存在
+        spot_pkl_path.parent.mkdir(parents=True, exist_ok=True)
+        pd.to_pickle(updated_data, spot_pkl_path)
+
+    # 处理合约持仓快照 - 即使为空也保存记录
+    if not swap_position.empty:
+        swap_snapshot = calc_swap_position(swap_position)
+        
+        if not swap_snapshot.empty:
+            # 添加时间列
+            swap_snapshot_copy = swap_snapshot.reset_index()
+            swap_snapshot_copy['timestamp'] = run_time
+            
+            # 保存到PKL文件
+            swap_pkl_path = get_file_path(data_path, account_name, '账户信息', 'swap_position_history.pkl', as_path_type=True)
+            if swap_pkl_path.exists():
+                existing_data = pd.read_pickle(swap_pkl_path)
+                updated_data = pd.concat([existing_data, swap_snapshot_copy], ignore_index=True)
+            else:
+                updated_data = swap_snapshot_copy
+            
+            # 清理7天前的数据
+            cutoff_time = datetime.now() - timedelta(days=7)
+            updated_data = updated_data[updated_data['timestamp'] >= cutoff_time]
+                
+            # 确保目录存在
+            swap_pkl_path.parent.mkdir(parents=True, exist_ok=True)
+            pd.to_pickle(updated_data, swap_pkl_path)
+    else:
+        # 即使没有合约持仓，也保存一个空记录
+        empty_swap_record = pd.DataFrame({
+            'symbol': ['EMPTY'],
+            'side': [0],
+            'change': ['0.00%'],
+            'pos_u': [0.0],
+            'pnl_u': [0.0],
+            'avg_price': [0.0],
+            'cur_price': [0.0],
+            'timestamp': [run_time]
+        })
+        
+        swap_pkl_path = get_file_path(data_path, account_name, '账户信息', 'swap_position_history.pkl', as_path_type=True)
+        if swap_pkl_path.exists():
+            existing_data = pd.read_pickle(swap_pkl_path)
+            updated_data = pd.concat([existing_data, empty_swap_record], ignore_index=True)
+        else:
+            updated_data = empty_swap_record
+        
+        # 清理7天前的数据
+        cutoff_time = datetime.now() - timedelta(days=7)
+        updated_data = updated_data[updated_data['timestamp'] >= cutoff_time]
+            
+        # 确保目录存在
+        swap_pkl_path.parent.mkdir(parents=True, exist_ok=True)
+        pd.to_pickle(updated_data, swap_pkl_path)
+
+
+def get_historical_position(account_name, hours_ago, pos_type='spot'):
+    """
+    获取历史持仓数据
+    :param account_name: 账户名
+    :param hours_ago: 多少小时前
+    :param pos_type: 持仓类型 'spot' 或 'swap'
+    :return: 历史持仓DataFrame
+    """
+    pos_pkl_path = get_file_path(data_path, account_name, '账户信息', f'{pos_type}_position_history.pkl', as_path_type=True)
+    
+    if not pos_pkl_path.exists():
+        return pd.DataFrame()
+
+    pos_data = pd.read_pickle(pos_pkl_path)
+    
+    if pos_data.empty:
+        return pd.DataFrame()
+
+    # 计算目标时间
+    target_time = datetime.now() - timedelta(hours=hours_ago)
+    
+    # 确保timestamp列是datetime类型
+    pos_data['timestamp'] = pd.to_datetime(pos_data['timestamp'])
+    
+    # 查找最接近的历史数据
+    available_times = pos_data['timestamp'].unique()
+    
+    if len(available_times) == 0:
+        return pd.DataFrame()
+
+    # 找到最接近且不超过目标时间的时间戳
+    valid_times = available_times[available_times <= target_time]
+    
+    if len(valid_times) == 0:
+        # 如果没有找到不超过目标时间的时间戳，返回最早的时间戳
+        closest_time = available_times.min()
+    else:
+        closest_time = valid_times.max()
+
+    # 返回对应时间的数据
+    result_data = pos_data[pos_data['timestamp'] == closest_time].copy()
+    
+    # 删除timestamp列，保持symbol作为普通列（不设为索引）
+    result_data = result_data.drop('timestamp', axis=1).reset_index(drop=True)
+    
+    # 如果历史数据只包含EMPTY记录，返回空DataFrame
+    if not result_data.empty and result_data['symbol'].iloc[0] == 'EMPTY':
+        return pd.DataFrame()
+    
+    return result_data
+
+
+def calc_position_pnl(current_pos, historical_pos, spot_last_price, pos_type='spot', total_equity=None):
+    """
+    计算持仓盈亏
+    :param current_pos: 当前持仓
+    :param historical_pos: 历史持仓
+    :param spot_last_price: 现货最新价格
+    :param pos_type: 持仓类型，'spot' 或 'swap'
+    :param total_equity: 账户总净值，用于计算盈亏占总资金的百分比
+    :return: 盈亏DataFrame
+    """
+    if current_pos.empty or historical_pos.empty:
+        return pd.DataFrame()
+
+    # 合并当前持仓和历史持仓
+    current_pos_copy = current_pos.copy() if not current_pos.empty else pd.DataFrame()
+    historical_pos_copy = historical_pos.copy() if not historical_pos.empty else pd.DataFrame()
+
+    # 确保symbol列可用 - 智能处理不同数据格式
+    if not current_pos_copy.empty:
+        if 'symbol' not in current_pos_copy.columns:
+            current_pos_copy = current_pos_copy.reset_index()
+    
+    if not historical_pos_copy.empty:
+        if 'symbol' not in historical_pos_copy.columns:
+            historical_pos_copy = historical_pos_copy.reset_index()
+    
+    # 如果历史数据仍然没有symbol列，跳过盈亏计算
+    if not historical_pos_copy.empty and 'symbol' not in historical_pos_copy.columns:
+        return pd.DataFrame()
+
+    # 获取所有涉及的币种
+    current_symbols = set(current_pos_copy['symbol'].tolist()) if not current_pos_copy.empty and 'symbol' in current_pos_copy.columns else set()
+    historical_symbols = set(historical_pos_copy['symbol'].tolist()) if not historical_pos_copy.empty and 'symbol' in historical_pos_copy.columns else set()
+    all_symbols = current_symbols.union(historical_symbols)
+
+    if not all_symbols:
+        return pd.DataFrame()
+
+    # 构建盈亏DataFrame
+    pnl_list = []
+
+    for symbol in all_symbols:
+        pnl_info = {'symbol': symbol}
+
+        # 获取当前持仓信息
+        if not current_pos_copy.empty and 'symbol' in current_pos_copy.columns:
+            current_row = current_pos_copy[current_pos_copy['symbol'] == symbol]
+            if not current_row.empty:
+                current_row = current_row.iloc[0]
+                current_pos_u = current_row['pos_u']
+                current_price = current_row['cur_price']
+                current_side = current_row['side']
+            else:
+                current_pos_u = 0
+                current_price = spot_last_price.get(symbol, 0)
+                current_side = 0
+        else:
+            # 当前持仓为空或缺少symbol列
+            current_pos_u = 0
+            current_price = spot_last_price.get(symbol, 0)
+            current_side = 0
+        
+        # 特殊处理：如果当前价格为0（通常是因为平仓），尝试从市场数据获取
+        if current_price == 0 and symbol in spot_last_price:
+            current_price = spot_last_price[symbol]
+
+        # 获取历史持仓信息
+        historical_exists = False
+        if not historical_pos_copy.empty and 'symbol' in historical_pos_copy.columns:
+            historical_row = historical_pos_copy[historical_pos_copy['symbol'] == symbol]
+            if not historical_row.empty:
+                historical_row = historical_row.iloc[0]
+                historical_pos_u = historical_row['pos_u']
+                historical_price = historical_row['cur_price']
+                historical_side = historical_row['side']
+                historical_exists = True
+            else:
+                historical_pos_u = 0
+                historical_price = 0
+                historical_side = 0
+        else:
+            # 历史数据为空或缺少symbol列
+            historical_pos_u = 0
+            historical_price = 0
+            historical_side = 0
+
+        # 计算盈亏
+        if historical_pos_u == 0 and current_pos_u == 0:
+            continue  # 如果历史和当前都没有持仓，跳过
+
+        # 价格涨跌幅 - 只有当历史数据存在且历史价格和当前价格都不为0时才计算
+        if historical_exists and historical_price != 0 and current_price != 0:
+            raw_price_change = (current_price / historical_price - 1)
+        else:
+            raw_price_change = None
+
+        # 持仓盈亏（窗口期价格变化对历史仓位的 mark-to-market 影响）
+        if historical_pos_u != 0 and raw_price_change is not None:
+            if historical_side == 1:  # 多头：价格上涨盈利，下跌亏损
+                position_pnl = abs(historical_pos_u) * raw_price_change
+            elif historical_side == -1:  # 空头：价格下跌盈利，上涨亏损
+                position_pnl = abs(historical_pos_u) * raw_price_change * -1
+            else:
+                position_pnl = 0
+        else:
+            position_pnl = 0
+
+        # 没有成交流水，无法可靠拆出交易盈亏
+        trade_pnl = 0
+        # 窗口期持仓盈亏等于价格变化带来的 mark-to-market 影响
+        total_pnl = position_pnl
+
+        pnl_info.update({
+            f'historical_pos_u': round(historical_pos_u, 2),
+            f'current_pos_u': round(current_pos_u, 2),
+            f'historical_price': round(historical_price, 4) if historical_price != 0 else 0,
+            f'current_price': round(current_price, 4),
+            f'price_change': round((total_pnl / total_equity) * 100, 2) if total_equity and total_equity != 0 else None,  # 盈亏占总资金的百分比
+            f'position_pnl': round(position_pnl, 2),
+            f'trade_pnl': round(trade_pnl, 2),
+            f'total_pnl': round(total_pnl, 2),
+            f'side': current_side if current_pos_u != 0 else historical_side,
+            f'type': pos_type  # 添加持仓类型
+        })
+
+        pnl_list.append(pnl_info)
+
+    if not pnl_list:
+        return pd.DataFrame()
+
+    pnl_df = pd.DataFrame(pnl_list)
+    pnl_df = pnl_df.sort_values('total_pnl', ascending=False)
+
+    return pnl_df
+
+
+def calculate_and_send_pnl_report(account_config: AccountConfig, spot_position, swap_position, spot_last_price, me_conf=None):
+    """
+    计算并发送持仓盈亏报告
+    :param account_config: 账户配置
+    :param spot_position: 现货持仓
+    :param swap_position: 合约持仓
+    :param spot_last_price: 现货最新价格
+    :param me_conf: MultiEquityBacktestConfig，可选，用于为每个币种附加所属策略信息
+    """
+    account_name = account_config.name
+
+    # 获取策略映射（可选）
+    spot_strategy_map, swap_strategy_map = {}, {}
+    if me_conf is not None:
+        try:
+            spot_strategy_map, swap_strategy_map = build_symbol_strategy_columns(me_conf, max_strategy_display=3)
+        except BaseException:
+            print('[盈亏报告] 获取策略映射失败:')
+            print(traceback.format_exc())
+        # 兜底：用最近 24h 历史选币存档回填「当前持仓周期已轮出/平仓」的币种归属，
+        # 避免 hold_period=1h 每小时换币时，24h 盈亏里的旧币因不在当前周期选币中而显示空
+        try:
+            spot_bf, swap_bf = build_recent_strategy_backfill_map(account_name, hours=24, max_strategy_display=3)
+            # 当前周期映射优先级更高，覆盖历史兜底
+            spot_strategy_map = {**spot_bf, **spot_strategy_map}
+            swap_strategy_map = {**swap_bf, **swap_strategy_map}
+        except BaseException:
+            print('[盈亏报告] 回填24h历史选币归属失败:')
+            print(traceback.format_exc())
+
+    # 获取账户总净值
+    total_equity = account_config.swap_equity + account_config.spot_equity
+
+    # swap 闭仓币种 current_price 需要从合约价字典里查，不能复用 spot_last_price
+    swap_last_price = account_config.bn.get_swap_ticker_price_series()
+
+    # 获取当前持仓
+    current_spot_pos = calc_spot_position(spot_position, account_name, spot_last_price)
+    current_swap_pos = calc_swap_position(swap_position)
+
+    # 计算1小时盈亏
+    hist_spot_1h = get_historical_position(account_name, 1, 'spot')
+    hist_swap_1h = get_historical_position(account_name, 1, 'swap')
+
+    spot_pnl_1h = calc_position_pnl(current_spot_pos, hist_spot_1h, spot_last_price, 'spot', total_equity)
+    swap_pnl_1h = calc_position_pnl(current_swap_pos, hist_swap_1h, swap_last_price, 'swap', total_equity)
+
+    # 计算24小时盈亏
+    hist_spot_24h = get_historical_position(account_name, 24, 'spot')
+    hist_swap_24h = get_historical_position(account_name, 24, 'swap')
+
+    spot_pnl_24h = calc_position_pnl(current_spot_pos, hist_spot_24h, spot_last_price, 'spot', total_equity)
+    swap_pnl_24h = calc_position_pnl(current_swap_pos, hist_swap_24h, swap_last_price, 'swap', total_equity)
+
+    # 合并现货和合约盈亏数据
+    all_pnl_1h = pd.concat([spot_pnl_1h, swap_pnl_1h], ignore_index=True) if not spot_pnl_1h.empty or not swap_pnl_1h.empty else pd.DataFrame()
+    all_pnl_24h = pd.concat([spot_pnl_24h, swap_pnl_24h], ignore_index=True) if not spot_pnl_24h.empty or not swap_pnl_24h.empty else pd.DataFrame()
+
+    # 生成报告
+    pnl_msg = f"【持仓盈亏报告】\n"
+    pnl_msg += f"账户: {account_name}\n"
+    pnl_msg += f"时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+    pnl_msg += f"PS: 统计期间中途价格波动，与账户净值差额略有偏差\n\n"
+
+    # 生成1小时TOP5盈亏信息
+    if not all_pnl_1h.empty:
+        # 过滤出有意义的数据
+        significant_pnl_1h = all_pnl_1h[all_pnl_1h['total_pnl'].abs() > 0.01].copy()
+        if not significant_pnl_1h.empty:
+            # 按总盈亏排序
+            significant_pnl_1h = significant_pnl_1h.sort_values('total_pnl', ascending=False)
+            
+            # 获取盈利TOP5和亏损TOP5
+            profit_top5_1h = significant_pnl_1h[significant_pnl_1h['total_pnl'] > 0].head(5)
+            loss_top5_1h = significant_pnl_1h[significant_pnl_1h['total_pnl'] < 0].tail(5)
+            
+            total_1h = significant_pnl_1h['total_pnl'].sum()
+            pnl_msg += f"【1小时盈亏 总计: {total_1h:.2f} U】\n"
+            
+            # 盈利TOP5
+            if not profit_top5_1h.empty:
+                pnl_msg += f"📈 盈利TOP5:\n"
+                for _, row in profit_top5_1h.iterrows():
+                    # 完善的nan检查：检查None、nan和其他无效值
+                    if pd.isna(row['price_change']) or row['price_change'] is None:
+                        price_change_str = "平仓"
+                    else:
+                        price_change_str = f"{row['price_change']:.2f}%"
+                    type_name = "现货" if row['type'] == 'spot' else "合约"
+                    strategy_map = spot_strategy_map if row['type'] == 'spot' else swap_strategy_map
+                    strategy_str = strategy_map.get(row['symbol'], '')
+                    strategy_suffix = f" [策略: {strategy_str}]" if strategy_str else ''
+                    pnl_msg += f"  {row['symbol']}({type_name}): +{row['total_pnl']:.2f} U ({price_change_str}){strategy_suffix}\n"
+                pnl_msg += "\n"
+
+            # 亏损TOP5
+            if not loss_top5_1h.empty:
+                pnl_msg += f"📉 亏损TOP5:\n"
+                for _, row in loss_top5_1h.iterrows():
+                    # 完善的nan检查：检查None、nan和其他无效值
+                    if pd.isna(row['price_change']) or row['price_change'] is None:
+                        price_change_str = "平仓"
+                    else:
+                        price_change_str = f"{row['price_change']:.2f}%"
+                    type_name = "现货" if row['type'] == 'spot' else "合约"
+                    strategy_map = spot_strategy_map if row['type'] == 'spot' else swap_strategy_map
+                    strategy_str = strategy_map.get(row['symbol'], '')
+                    strategy_suffix = f" [策略: {strategy_str}]" if strategy_str else ''
+                    pnl_msg += f"  {row['symbol']}({type_name}): {row['total_pnl']:.2f} U ({price_change_str}){strategy_suffix}\n"
+                pnl_msg += "\n"
+
+    # 生成24小时TOP5盈亏信息
+    if not all_pnl_24h.empty:
+        # 过滤出有意义的数据
+        significant_pnl_24h = all_pnl_24h[all_pnl_24h['total_pnl'].abs() > 0.01].copy()
+        if not significant_pnl_24h.empty:
+            # 按总盈亏排序
+            significant_pnl_24h = significant_pnl_24h.sort_values('total_pnl', ascending=False)
+            
+            # 获取盈利TOP5和亏损TOP5
+            profit_top5_24h = significant_pnl_24h[significant_pnl_24h['total_pnl'] > 0].head(5)
+            loss_top5_24h = significant_pnl_24h[significant_pnl_24h['total_pnl'] < 0].tail(5)
+            
+            total_24h = significant_pnl_24h['total_pnl'].sum()
+            pnl_msg += f"【24小时盈亏 总计: {total_24h:.2f} U】\n"
+            
+            # 盈利TOP5
+            if not profit_top5_24h.empty:
+                pnl_msg += f"📈 盈利TOP5:\n"
+                for _, row in profit_top5_24h.iterrows():
+                    # 完善的nan检查：检查None、nan和其他无效值
+                    if pd.isna(row['price_change']) or row['price_change'] is None:
+                        price_change_str = "平仓"
+                    else:
+                        price_change_str = f"{row['price_change']:.2f}%"
+                    type_name = "现货" if row['type'] == 'spot' else "合约"
+                    strategy_map = spot_strategy_map if row['type'] == 'spot' else swap_strategy_map
+                    strategy_str = strategy_map.get(row['symbol'], '')
+                    strategy_suffix = f" [策略: {strategy_str}]" if strategy_str else ''
+                    pnl_msg += f"  {row['symbol']}({type_name}): +{row['total_pnl']:.2f} U ({price_change_str}){strategy_suffix}\n"
+                pnl_msg += "\n"
+
+            # 亏损TOP5
+            if not loss_top5_24h.empty:
+                pnl_msg += f"📉 亏损TOP5:\n"
+                for _, row in loss_top5_24h.iterrows():
+                    # 完善的nan检查：检查None、nan和其他无效值
+                    if pd.isna(row['price_change']) or row['price_change'] is None:
+                        price_change_str = "平仓"
+                    else:
+                        price_change_str = f"{row['price_change']:.2f}%"
+                    type_name = "现货" if row['type'] == 'spot' else "合约"
+                    strategy_map = spot_strategy_map if row['type'] == 'spot' else swap_strategy_map
+                    strategy_str = strategy_map.get(row['symbol'], '')
+                    strategy_suffix = f" [策略: {strategy_str}]" if strategy_str else ''
+                    pnl_msg += f"  {row['symbol']}({type_name}): {row['total_pnl']:.2f} U ({price_change_str}){strategy_suffix}\n"
+                pnl_msg += "\n"
+
+    # 发送报告信息
+    if pnl_msg:
+        send_wechat_work_msg(pnl_msg, account_config.wechat_webhook_url)
+
+    # 保存详细的盈亏数据到pkl文件
+    try:
+        # 生成毫秒级时间戳作为key
+        timestamp_key = int(datetime.utcnow().timestamp()) * 1000
+        
+        # 准备保存的数据字典
+        pnl_record = {}
+        
+        # 处理1小时和24小时盈亏数据
+        for pnl_data, period in [(all_pnl_1h, '1小时'), (all_pnl_24h, '24小时')]:
+            period_key = '1h' if period == '1小时' else '24h'
+            
+            if not pnl_data.empty:
+                # 过滤出有意义的数据（总盈亏不为0）
+                significant_pnl = pnl_data[pnl_data['total_pnl'].abs() > 0.01]
+                if not significant_pnl.empty:
+                    # 只保留重要列
+                    display_cols = ['symbol', 'price_change', 'position_pnl', 'trade_pnl', 'total_pnl', 'type']
+                    display_data = significant_pnl[display_cols].copy()
+                    display_data = display_data.sort_values('total_pnl', ascending=False)
+                    
+                    # 转换为字典格式保存
+                    pnl_record[period_key] = display_data.to_dict('records')
+                else:
+                    pnl_record[period_key] = []
+            else:
+                pnl_record[period_key] = []
+        
+        # 读取现有的pkl文件
+        pnl_pkl_path = get_file_path(data_path, account_name, '账户信息', 'pnl_history.pkl', as_path_type=True)
+        
+        if pnl_pkl_path.exists():
+            existing_data = pd.read_pickle(pnl_pkl_path)
+        else:
+            existing_data = {}
+        
+        # 添加新数据
+        existing_data[timestamp_key] = pnl_record
+        
+        # 清理7天前的数据（基于传入的timestamp_key）
+        seven_days_ms = 7 * 24 * 60 * 60 * 1000  # 7天的毫秒数
+        cutoff_timestamp = timestamp_key - seven_days_ms
+        
+        # 删除超过7天的数据
+        keys_to_remove = [key for key in existing_data.keys() if key < cutoff_timestamp]
+        for key in keys_to_remove:
+            del existing_data[key]
+        
+        # 确保目录存在
+        pnl_pkl_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # 保存到pkl文件
+        pd.to_pickle(existing_data, pnl_pkl_path)
+        
+        print(f"保存盈亏详细数据到: {pnl_pkl_path}")
+        print(f"当前保存记录数: {len(existing_data)}")
+        if keys_to_remove:
+            print(f"清理了{len(keys_to_remove)}条超过7天的旧记录")
+            
+    except Exception as e:
+        print(f"保存盈亏详细数据失败: {e}")
+        print(traceback.format_exc())
+
+
+def send_img_for_dataframe(dataframe, wechat_webhook_url):
+    try:
+        # =定义导出图片位置
+        pos_pic_path = get_file_path(data_path, 'pos.png')
+        # =导出图片
+        dfi.export(dataframe, pos_pic_path, table_conversion='matplotlib', max_cols=-1, max_rows=-1)
+        # =发送图片
+        send_wechat_work_img(pos_pic_path, wechat_webhook_url)
+    except BaseException as e:
+        print(traceback.format_exc())
+        print('转换图片出现错误', e)
+
+
+def _join_strategy_names(items, max_display):
+    """将多个策略名拼接为展示串，超过 max_display 个时省略尾部并标注剩余数量。"""
+    items = list(items)
+    if len(items) <= max_display:
+        return ', '.join(items)
+    head = ', '.join(items[:max_display])
+    return f"{head} (+{len(items) - max_display} more)"
+
+
+def build_symbol_strategy_columns(me_conf, max_strategy_display=5):
+    """
+    遍历 me_conf.factory.config_list，逐个读取每个 BacktestConfig 的
+    最新持仓周期选币结果.pkl，构建 symbol → "父策略名(L), 父策略名(S)" 映射。
+    用于在持仓图片中追加 "strategy" 列。
+
+    :param me_conf: MultiEquityBacktestConfig，提供 factory.config_list 与 factory.result_folder
+    :param max_strategy_display: 最多显示多个策略名称，超过显示省略
+    :return: (spot_map, swap_map) 两个 dict；未命中的 symbol 不在返回值中，由调用方决定显示
+    """
+    def _format(items):
+        return _join_strategy_names(items, max_strategy_display)
+
+    active_idx_set = None
+    try:
+        ratios_df = pd.read_csv(me_conf.factory.result_folder / '仓位比例.csv', index_col=0)
+        last_row = ratios_df.iloc[-1]
+        active_idx_set = {
+            i for i in range(len(me_conf.factory.config_list))
+            if abs(float(last_row.get(str(i), 0))) > 1e-12
+        }
+    except BaseException:
+        print('[策略名称列] 读取 仓位比例.csv 失败，按全部 conf 活跃处理:')
+        print(traceback.format_exc())
+
+    spot_parts = []
+    swap_parts = []
+    for idx, conf in enumerate(me_conf.factory.config_list):
+        if active_idx_set is not None and idx not in active_idx_set:
+            continue
+        p = conf.get_result_folder() / '最新持仓周期选币结果.pkl'
+        if not p.exists():
+            continue
+        try:
+            df_i = pd.read_pickle(p)
+        except BaseException:
+            print(f'[策略名称列] 读取 {p} 失败:')
+            print(traceback.format_exc())
+            continue
+        if df_i.empty:
+            continue
+        df_i = df_i.copy()
+        df_i['symbol_spot'] = df_i['symbol_spot'].astype(object).fillna('').astype(str)
+        df_i['symbol_swap'] = df_i['symbol_swap'].astype(object).fillna('').astype(str)
+        df_i['parent_dir'] = np.char.add(conf.name, np.where(df_i['方向'] == 1, '(L)', '(S)'))
+
+        spot_part = df_i.loc[df_i['symbol_spot'] != '', ['symbol_spot', 'parent_dir']]
+        if not spot_part.empty:
+            spot_parts.append(spot_part)
+        swap_part = df_i.loc[df_i['symbol_swap'] != '', ['symbol_swap', 'parent_dir']]
+        if not swap_part.empty:
+            swap_parts.append(swap_part)
+
+    if spot_parts:
+        spot_df = pd.concat(spot_parts, ignore_index=True).drop_duplicates()
+        spot_df = spot_df.sort_values(['symbol_spot', 'parent_dir'])
+        spot_map = spot_df.groupby('symbol_spot')['parent_dir'].apply(_format).to_dict()
+    else:
+        spot_map = {}
+
+    if swap_parts:
+        swap_df = pd.concat(swap_parts, ignore_index=True).drop_duplicates()
+        swap_df = swap_df.sort_values(['symbol_swap', 'parent_dir'])
+        swap_map = swap_df.groupby('symbol_swap')['parent_dir'].apply(_format).to_dict()
+    else:
+        swap_map = {}
+
+    return spot_map, swap_map
+
+
+def build_recent_strategy_backfill_map(account_name, hours=24, max_strategy_display=5):
+    """
+    从最近 hours 小时的选币结果存档构建 symbol → "父策略名(L/S)" 映射，
+    用于回填「当前持仓周期已轮出/平仓、但近 hours 小时内持有过」的币种归属。
+
+    背景：当 hold_period=1h 每小时换币时，持仓盈亏报告的 24h 统计里会出现
+    当前周期选币结果中不存在的币种，build_symbol_strategy_columns 无法识别其
+    归属（显示空）。本函数从按小时归档的选币快照里回溯补齐。
+
+    数据来源：data/{account}/select_coin/{YYYY-MM-DD_HH}.pkl
+              （save_final_select_results 每小时写入，保留 72h）
+
+    仅识别带 parent_name 列的存档记录；更早格式的存档无此列、对应币种不回填
+    （存档仅保留 72h，会随时间自愈）。
+
+    :return: (spot_map, swap_map)，未命中的 symbol 不在返回值中
+    """
+    spot_map, swap_map = {}, {}
+    try:
+        dir_path = data_path / account_name / 'select_coin'
+        if not dir_path.exists():
+            return spot_map, swap_map
+
+        # 以整点为界向前取 hours 小时的存档文件
+        cutoff = (datetime.now() - timedelta(hours=hours)).replace(minute=0, second=0, microsecond=0)
+        parts = []
+        for f in dir_path.glob('*.pkl'):
+            try:
+                file_time = datetime.strptime(f.stem, '%Y-%m-%d_%H')
+            except ValueError:
+                continue
+            if file_time < cutoff:
+                continue
+            try:
+                df_i = pd.read_pickle(f)
+            except BaseException:
+                continue
+            if df_i.empty or 'parent_name' not in df_i.columns or '方向' not in df_i.columns:
+                continue
+            parts.append(df_i)
+
+        if not parts:
+            return spot_map, swap_map
+
+        df_all = pd.concat(parts, ignore_index=True, copy=False).copy()
+        df_all['parent_name'] = df_all['parent_name'].astype(object).fillna('').astype(str)
+        df_all = df_all[df_all['parent_name'] != '']
+        if df_all.empty:
+            return spot_map, swap_map
+
+        for col in ('symbol_spot', 'symbol_swap'):
+            if col in df_all.columns:
+                df_all[col] = df_all[col].astype(object).fillna('').astype(str)
+            else:
+                df_all[col] = ''
+
+        df_all['parent_dir'] = np.char.add(
+            df_all['parent_name'].to_numpy(dtype=str),
+            np.where(df_all['方向'] == 1, '(L)', '(S)'),
+        )
+
+        spot_part = df_all.loc[df_all['symbol_spot'] != '', ['symbol_spot', 'parent_dir']].drop_duplicates()
+        if not spot_part.empty:
+            spot_part = spot_part.sort_values(['symbol_spot', 'parent_dir'])
+            spot_map = spot_part.groupby('symbol_spot')['parent_dir'].apply(
+                lambda s: _join_strategy_names(s, max_strategy_display)).to_dict()
+
+        swap_part = df_all.loc[df_all['symbol_swap'] != '', ['symbol_swap', 'parent_dir']].drop_duplicates()
+        if not swap_part.empty:
+            swap_part = swap_part.sort_values(['symbol_swap', 'parent_dir'])
+            swap_map = swap_part.groupby('symbol_swap')['parent_dir'].apply(
+                lambda s: _join_strategy_names(s, max_strategy_display)).to_dict()
+    except BaseException:
+        print('[盈亏报告] 构建24h历史选币归属兜底映射失败:')
+        print(traceback.format_exc())
+
+    return spot_map, swap_map
+
+
+# ====================================================================================================
+# 最近 1h 成交额统计
+# ====================================================================================================
+
+def format_volume_message(spot_qv: float, swap_qv: float) -> str:
+    """
+    将 spot/swap 成交额格式化为推送消息行。
+
+    :param spot_qv: 现货成交额 (USDT)
+    :param swap_qv: 合约成交额 (USDT)
+    :return: 形如 '最近1h成交额:12345.80 (spot:8000.12, swap:4345.68)'
+    """
+    total = spot_qv + swap_qv
+    return f'最近1h成交额:{total:.2f} (spot:{spot_qv:.2f}, swap:{swap_qv:.2f})'
+
+
+_RECORD_COLUMNS = [
+    'run_time', 'exec_time', 'account_name', 'symbol_type', 'symbol',
+    'side', 'trade_mode', 'orig_qty', 'executed_qty', 'quote_qty',
+    'avg_price', 'order_status', 'client_order_id',
+]
+
+
+def build_order_records(success_orders, orders_df, symbol_type, run_time, account_name):
+    """
+    将交易所成交回执列表归一化为 13 字段 DataFrame。
+
+    spot/swap 字段名差异：
+      - spot: cummulativeQuoteQty / transactTime
+      - swap: cumQuote / updateTime + avgPrice
+
+    成交额 quote_qty 取值优先级：交易所回执 cumQuote/cummulativeQuoteQty →
+    avg_price * executed_qty → 挂单 price * executed_qty。
+    （Binance CM/UM 整合自 2026-06-30 起移除 U本位下单「即时响应」中的 cumQuote 字段，
+    故不再以 cumQuote 是否存在作为有效性判据，改用 executed_qty 是否 > 0。）
+
+    无效记录（空 dict / 缺关键字段 / 未成交 executed_qty<=0）会被跳过。
+    """
+    rows = []
+    for order_res in success_orders:
+        if not order_res or not isinstance(order_res, dict):
+            continue
+        symbol = order_res.get('symbol')
+        if not symbol:
+            continue
+        status = order_res.get('status')
+        if status not in ('FILLED', 'PARTIALLY_FILLED'):
+            continue
+
+        if symbol_type == 'spot':
+            quote_qty_raw = order_res.get('cummulativeQuoteQty')
+            exec_time_raw = order_res.get('transactTime')
+            avg_price_raw = None
+        else:
+            quote_qty_raw = order_res.get('cumQuote')
+            exec_time_raw = order_res.get('updateTime')
+            avg_price_raw = order_res.get('avgPrice')
+
+        executed_qty = float(order_res.get('executedQty', 0) or 0)
+        orig_qty = float(order_res.get('origQty', 0) or 0)
+
+        # 无实际成交量直接跳过。
+        # 注意：不再用 quote_qty_raw(cumQuote) 是否存在作判据——
+        # CM/UM 整合自 2026-06-30 起移除 U本位下单即时响应中的 cumQuote 字段。
+        if executed_qty <= 0:
+            continue
+
+        # 成交均价：优先回执 avgPrice，其次 cumQuote/executed_qty，最后退化为挂单 price
+        if avg_price_raw is not None and float(avg_price_raw) > 0:
+            avg_price = float(avg_price_raw)
+        elif quote_qty_raw is not None and float(quote_qty_raw) > 0:
+            avg_price = float(quote_qty_raw) / executed_qty
+        else:
+            avg_price = float(order_res.get('price', 0) or 0)
+
+        # 成交额：优先交易所回执 cumQuote/cummulativeQuoteQty（须 > 0）；
+        # cumQuote 缺失(普通账户，键为 None)或返回 0(统一账户/PM 即时回执 cumQuote、avgPrice
+        # 均为 '0.00000000') 时，用 avg_price * executed_qty 兜底，避免采信 0 导致成交额恒为 0
+        if quote_qty_raw is not None and float(quote_qty_raw) > 0:
+            quote_qty = float(quote_qty_raw)
+        else:
+            quote_qty = avg_price * executed_qty
+
+        if exec_time_raw is None:
+            exec_time = pd.NaT
+        else:
+            exec_time = pd.to_datetime(int(exec_time_raw), unit='ms')
+
+        if symbol in orders_df.index:
+            trade_mode = orders_df.loc[symbol].get('交易模式', '')
+            if isinstance(trade_mode, pd.Series):
+                trade_mode = trade_mode.iloc[0]
+        else:
+            trade_mode = ''
+
+        rows.append({
+            'run_time': run_time,
+            'exec_time': exec_time,
+            'account_name': account_name,
+            'symbol_type': symbol_type,
+            'symbol': symbol,
+            'side': order_res.get('side', ''),
+            'trade_mode': trade_mode,
+            'orig_qty': orig_qty,
+            'executed_qty': executed_qty,
+            'quote_qty': quote_qty,
+            'avg_price': avg_price,
+            'order_status': status,
+            'client_order_id': order_res.get('clientOrderId', ''),
+        })
+
+    return pd.DataFrame(rows, columns=_RECORD_COLUMNS)
+
+
+def save_order_records(success_spot_df, success_swap_df, run_time, account_name):
+    """
+    将 spot/swap 成交记录追加到 data/{account}/订单记录/order_history_{YYYYMM}.csv
+
+    - 编码 gbk，与现有 equity.csv 一致
+    - 文件不存在则建表头；存在则 append 不写表头
+    - 任何 IO/编码异常都不上抛，只打 warning 日志，避免阻断主流程
+    """
+    try:
+        frames = [df for df in (success_spot_df, success_swap_df) if df is not None and not df.empty]
+        if not frames:
+            return
+        merged = pd.concat(frames, axis=0, ignore_index=True)
+        if merged.empty:
+            return
+
+        merged['run_time'] = pd.to_datetime(merged['run_time']).dt.strftime('%Y-%m-%d %H:%M:%S')
+
+        target_dir = data_path / account_name / '订单记录'
+        target_dir.mkdir(parents=True, exist_ok=True)
+        file_name = f'order_history_{run_time.strftime("%Y%m")}.csv'
+        target_path = target_dir / file_name
+
+        write_header = not target_path.exists()
+        merged.to_csv(target_path, mode='a', header=write_header, index=False, encoding='gbk')
+    except Exception as e:
+        traceback.print_exc()
+        print(f'[订单记录] save_order_records 失败：{e}（不阻断主流程）')
+
+
+def compute_recent_volume(account_name, run_time):
+    """
+    从订单记录 csv 中按 (account_name, run_time) 精确过滤，求 spot/swap 成交额。
+
+    :return: (spot_qv, swap_qv) tuple[float, float]，文件缺失或无匹配返回 (0.0, 0.0)
+    """
+    try:
+        file_path = data_path / account_name / '订单记录' / f'order_history_{run_time.strftime("%Y%m")}.csv'
+        if not file_path.exists():
+            return 0.0, 0.0
+
+        df = pd.read_csv(file_path, encoding='gbk', parse_dates=['run_time'])
+        if df.empty:
+            return 0.0, 0.0
+
+        df['run_time'] = pd.to_datetime(df['run_time'], format='mixed', errors='coerce')
+
+        mask = (df['account_name'] == account_name) & (df['run_time'] == run_time)
+        if not mask.any():
+            return 0.0, 0.0
+
+        sub = df.loc[mask]
+        spot_qv = float(sub.loc[sub['symbol_type'] == 'spot', 'quote_qty'].sum())
+        swap_qv = float(sub.loc[sub['symbol_type'] == 'swap', 'quote_qty'].sum())
+        return spot_qv, swap_qv
+    except Exception as e:
+        traceback.print_exc()
+        print(f'[订单记录] compute_recent_volume 失败：{e}（返回 0, 0）')
+        return 0.0, 0.0
+#󠀂󠁥󠀹󠁢󠁥󠀹󠁡󠁥󠀵󠀸󠁤󠀹󠁡󠁥󠀸󠀸󠀷󠁢󠀴󠀲󠀰󠀳󠀳󠀳󠀲󠀳󠀲󠀳󠀹󠀳󠀷󠁿
